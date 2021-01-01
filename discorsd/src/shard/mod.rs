@@ -252,8 +252,9 @@ impl<B: Bot + 'static> Shard<B> {
     }
 
     async fn handle_dispatch(&mut self, event: DispatchPayload) -> Result<()> {
+        use DispatchPayload::*;
         event.clone().update(&self.bot.cache).await;
-        if let DispatchPayload::Ready(ready) = &event {
+        if let Ready(ready) = &event {
             // make sure were using the right API version
             assert_eq!(API_VERSION, ready.v);
 
@@ -268,28 +269,33 @@ impl<B: Bot + 'static> Shard<B> {
         // todo panic if this panicked?
         let _handle = tokio::spawn(async move {
             let result = match event {
-                DispatchPayload::Ready(_ready) => bot.bot.ready(Arc::clone(&bot)).await,
-                DispatchPayload::Resumed(_resumed) => bot.bot.resumed(Arc::clone(&bot)).await,
-                DispatchPayload::GuildCreate(guild) => bot.bot.guild_create(
+                Ready(_ready) => bot.bot.ready(Arc::clone(&bot)).await,
+                Resumed(_resumed) => bot.bot.resumed(Arc::clone(&bot)).await,
+                GuildCreate(guild) => bot.bot.guild_create(
                     guild.guild, Arc::clone(&bot),
                 ).await,
-                DispatchPayload::MessageCreate(message) => bot.bot.message_create(
+                MessageCreate(message) => bot.bot.message_create(
                     message.message, Arc::clone(&bot),
                 ).await,
-                DispatchPayload::MessageUpdate(update) => bot.bot.message_update(
+                MessageUpdate(update) => bot.bot.message_update(
                     bot.cache.message(update.id).await.unwrap(),
                     Arc::clone(&bot),
                     update,
                 ).await,
-                DispatchPayload::InteractionCreate(interaction) => bot.bot.interaction(
+                InteractionCreate(interaction) => bot.bot.interaction(
                     interaction.interaction, Arc::clone(&bot),
                 ).await,
-                DispatchPayload::MessageReactionAdd(add) => bot.bot.reaction(
+                MessageReactionAdd(add) => bot.bot.reaction(
                     add.into(),
                     Arc::clone(&bot),
                 ).await,
-                DispatchPayload::MessageReactionRemove(remove) => bot.bot.reaction(
+                MessageReactionRemove(remove) => bot.bot.reaction(
                     remove.into(),
+                    Arc::clone(&bot),
+                ).await,
+                IntegrationUpdate(integration) => bot.bot.integration_update(
+                    integration.guild_id,
+                    integration.integration,
                     Arc::clone(&bot),
                 ).await,
                 _ => Ok(())

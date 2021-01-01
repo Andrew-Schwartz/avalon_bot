@@ -146,6 +146,13 @@ impl Channel {
             Channel::Dm(_) | Channel::GroupDm(_) => None,
         }
     }
+
+    pub fn text(&self) -> Option<&TextChannel> {
+        match self {
+            Channel::Text(text) => Some(text),
+            _ => None,
+        }
+    }
 }
 
 id_eq!(Channel);
@@ -217,6 +224,11 @@ impl Id for TextChannel {
         self.id
     }
 }
+impl From<TextChannel> for Channel {
+    fn from(c: TextChannel) -> Self {
+        Channel::Text(c)
+    }
+}
 
 // todo: this should have last_message_id?
 /// a direct message between users
@@ -240,6 +252,11 @@ impl Id for DmChannel {
 
     fn id(&self) -> Self::Id {
         self.id
+    }
+}
+impl From<DmChannel> for Channel {
+    fn from(c: DmChannel) -> Self {
+        Channel::Dm(c)
     }
 }
 
@@ -290,6 +307,11 @@ impl Id for VoiceChannel {
         self.id
     }
 }
+impl From<VoiceChannel> for Channel {
+    fn from(c: VoiceChannel) -> Self {
+        Channel::Voice(c)
+    }
+}
 
 /// a direct message between multiple users
 ///
@@ -321,6 +343,11 @@ impl Id for GroupDmChannel {
         self.id
     }
 }
+impl From<GroupDmChannel> for Channel {
+    fn from(c: GroupDmChannel) -> Self {
+        Channel::GroupDm(c)
+    }
+}
 
 /// an [organizational category](https://support.discord.com/hc/en-us/articles/115001580171-Channel-Categories-101)
 /// within a server that contains up to 50 channels
@@ -347,6 +374,11 @@ impl Id for CategoryChannel {
 
     fn id(&self) -> Self::Id {
         self.id
+    }
+}
+impl From<CategoryChannel> for Channel {
+    fn from(c: CategoryChannel) -> Self {
+        Channel::Category(c)
     }
 }
 
@@ -388,6 +420,11 @@ impl Id for NewsChannel {
         self.id
     }
 }
+impl From<NewsChannel> for Channel {
+    fn from(c: NewsChannel) -> Self {
+        Channel::News(c)
+    }
+}
 
 /// a channel in which game developers can
 /// [sell their game on Discord](https://discord.com/developers/docs/game-and-server-management/special-channels)
@@ -419,6 +456,11 @@ impl Id for StoreChannel {
 
     fn id(&self) -> Self::Id {
         self.id
+    }
+}
+impl From<StoreChannel> for Channel {
+    fn from(c: StoreChannel) -> Self {
+        Channel::Store(c)
     }
 }
 

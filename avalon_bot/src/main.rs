@@ -159,61 +159,26 @@ impl discorsd::Bot for Bot {
         info!("Guild Create: {} ({})", guild.name.as_ref().unwrap(), guild.id);
         self.games.write().await.entry(guild.id).or_default();
 
-        // let general = guild.channels.iter()
-        //     .filter_map(|c| match c {
-        //         Channel::Text(c) => Some(c),
-        //         _ => None,
-        //     })
-        //     .find(|e| e.name == "general")
-        //     .unwrap();
-        // let user = state.user().await;
-        // general.send(&state, "Commands are now enabled!").await?;
-        // general.send(&state, embed(|e| {
-        //     e.color(Color::GOLD);
-        //     e.title("🎉 Big update for Avalon Bot! 🎉");
-        //     e.description(format!("I have a whole new codebase, and am faster and more \
-        //         error-proof than ever before! I also now use Discord's slash commands, so you can use \
-        //         commands by typing `/roles add ...` (and have roles auto-completed) instead of having to \
-        //         type out `!roles merlin morgana assassin percival` yourself like a total loser. Slash \
-        //         commands do need separate authorization, so {} or someone else who has permissions \
-        //         should click on the title of this message to give me those permissions.",
-        //         guild.owner_id.ping_nick()
-        //     ));
-        //     e.url(format!(
-        //         "https://discord.com/oauth2/authorize?scope=applications.commands%20bot&client_id={}&permissions={}&guild_id={}",
-        //         user.id,
-        //         67497024,
-        //         guild.id,
-        //     ))
-        // })).await?;
-        // return Ok(());
+        self.init_guild_commands(guild.id, &state).await?;
 
-        let commands = state.client.get_guild_commands(state.application_id().await, guild.id).await?;
-        for command in commands {
-            state.client.delete_guild_command(
-                state.application_id().await,
-                guild.id,
-                command.id,
-            ).await.unwrap();
-        }
-        {
-            let mut commands = self.commands.write().await;
-            let mut commands = commands.entry(guild.id)
-                .or_default()
-                .write().await;
-            let rcs = self.reaction_commands.write().await;
-            // create_command(&*state, guild.id, &mut commands, UptimeCommand).await?;
-            self.reset_guild_commands(&*state, &mut commands, rcs, guild.id).await;
-        }
-
-        if Utc::now().signed_duration_since(*self.first_log_in.get().unwrap()).num_seconds() >= 20 {
+        if Utc::now().signed_duration_since(self.most_recent_login().await.unwrap()).num_seconds() >= 20 {
             self.config.channel.send(&state, format!(
                 "🎉 Joined new guild **{}** (`{}`) 🎉",
-                guild.name.unwrap(),
+                guild.name.as_ref().unwrap(),
                 guild.id,
             )).await?;
         }
 
+        Ok(())
+    }
+
+    async fn integration_update(&self, guild: GuildId, integration: Integration, state: Arc<BotState<Self>>) -> anyhow::Result<()> {
+        info!("Guild Integration Update: {:?}", integration);
+        self.init_guild_commands(guild, &state).await?;
+        let channels = state.cache.guild_channels(guild, Channel::text).await;
+        let channel = channels.iter().find(|c| c.name == "general")
+            .unwrap_or_else(|| channels.iter().next().unwrap());
+        channel.send(&state, "Slash Commands are now enabled!").await?;
         Ok(())
     }
 
@@ -308,6 +273,7 @@ impl discorsd::Bot for Bot {
     }
 }
 
+
 async fn delete_command<F: Fn(&dyn SlashCommand) -> bool>(
     state: &BotState<Bot>,
     guild: GuildId,
@@ -344,6 +310,25 @@ async fn create_command<C: SlashCommand>(
 }
 
 impl Bot {
+    async fn init_guild_commands(&self, guild: GuildId, state: &BotState<Bot>) -> ClientResult<()> {
+        let commands = state.client.get_guild_commands(state.application_id().await, guild).await?;
+        for command in commands {
+            state.client.delete_guild_command(
+                state.application_id().await,
+                guild,
+                command.id,
+            ).await.unwrap();
+        }
+        let mut commands = self.commands.write().await;
+        let mut commands = commands.entry(guild)
+            .or_default()
+            .write().await;
+        let rcs = self.reaction_commands.write().await;
+        // create_command(&*state, guild, &mut commands, UptimeCommand).await?;
+        self.reset_guild_commands(&state, &mut commands, rcs, guild).await;
+        Ok(())
+    }
+
     async fn reset_guild_commands(
         &self,
         state: &BotState<Bot>,
@@ -376,6 +361,14 @@ impl Bot {
         ];
         let new = commands::create_guild_commands(&state, guild, new).await;
         commands.extend(new);
+    }
+
+    pub async fn most_recent_login(&self) -> Option<DateTime<Utc>> {
+        if let Some(time) = *self.log_in.read().await {
+            Some(time)
+        } else {
+            self.first_log_in.get().copied()
+        }
     }
 
     pub async fn debug(&self) -> DebugBot<'_> {

@@ -6,7 +6,7 @@ use log::error;
 
 use crate::cache::Cache;
 use crate::http::DiscordClient;
-use crate::http::model::{ApplicationId, Interaction, User};
+use crate::http::model::{ApplicationId, Interaction, User, Integration, GuildId};
 use crate::http::model::guild::Guild;
 use crate::http::model::message::Message;
 use crate::shard::{Shard, ShardError};
@@ -76,6 +76,7 @@ impl<B: Debug> Debug for BotState<B> {
 //     }
 // }
 
+#[allow(unused)]
 #[async_trait]
 pub trait Bot: Send + Sync + Sized {
     type Error: Display + Send;
@@ -84,19 +85,21 @@ pub trait Bot: Send + Sync + Sized {
 
     fn identify(&self) -> Identify { Identify::new(self.token().to_string()) }
 
-    async fn ready(&self, _state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    async fn ready(&self, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
 
-    async fn resumed(&self, _state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    async fn resumed(&self, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
 
-    async fn guild_create(&self, _guild: Guild, _state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    async fn guild_create(&self, guild: Guild, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
 
-    async fn message_create(&self, _message: Message, _state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    async fn message_create(&self, message: Message, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
 
-    async fn message_update(&self, _message: Message, _state: Arc<BotState<Self>>, _updates: MessageUpdate) -> Result<(), Self::Error> { Ok(()) }
+    async fn message_update(&self, message: Message, state: Arc<BotState<Self>>, updates: MessageUpdate) -> Result<(), Self::Error> { Ok(()) }
 
-    async fn interaction(&self, _interaction: Interaction, _state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    async fn interaction(&self, interaction: Interaction, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
 
-    async fn reaction(&self, _reaction: ReactionUpdate, _state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    async fn reaction(&self, reaction: ReactionUpdate, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+
+    async fn integration_update(&self, guild: GuildId, integration: Integration, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
 
     async fn error(&self, error: Self::Error) {
         error!("{}", error);

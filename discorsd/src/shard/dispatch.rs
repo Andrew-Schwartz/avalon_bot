@@ -591,35 +591,9 @@ impl Update for EmojiUpdate {
 // why does this and GUILD_INTEGRATIONS_UPDATE exist? who knows
 #[derive(Deserialize, Debug, Clone)]
 pub struct IntegrationUpdate {
-    #[serde(rename = "user")]
-    pub owner: User,
-    /// always "discord"?
-    #[serde(rename = "type")]
-    pub kind: String,
-    pub name: String,
-    // todo check
-    // i think this is what this is? actually no hmmm...
-    pub id: ApplicationId,
-    pub enabled: bool,
-    pub application: ApplicationInfo,
-    pub account: Account,
     pub guild_id: GuildId,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct ApplicationInfo {
-    pub summary: String,
-    pub name: String,
-    pub id: ApplicationId,
-    pub icon: Option<String>,
-    pub description: String,
-    pub bot: User,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct Account {
-    pub name: String,
-    pub id: ApplicationId,
+    #[serde(flatten)]
+    pub integration: Integration,
 }
 
 #[async_trait]

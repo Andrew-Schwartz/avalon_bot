@@ -1,6 +1,6 @@
 use std::collections::hash_map::{self, Entry, HashMap};
 use std::fmt;
-use std::iter::Map;
+use std::iter::{Map, FromIterator};
 use std::marker::PhantomData;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -45,17 +45,29 @@ impl Cache {
     }
 
     pub async fn channel<C: Id<Id=ChannelId>>(&self, id: C) -> Option<TextChannel> {
-        self.channels.read().await.get(&id.id()).cloned()
+        self.channels.read().await.get(id).cloned()
     }
 
     pub async fn message<M: Id<Id=MessageId>>(&self, id: M) -> Option<Message> {
-        self.messages.read().await.get(&id.id()).cloned()
+        self.messages.read().await.get(id).cloned()
     }
 
     pub async fn reactions<M: Id<Id=MessageId>>(&self, id: M) -> Vec<Reaction> {
-        self.messages.read().await.get(&id.id())
+        self.messages.read().await.get(id)
             .map(|m| m.reactions.clone())
             .unwrap_or_default()
+    }
+
+    pub async fn guild_channels<G, F, C>(&self, id: G, filter_map: F) -> IdMap<C> where
+        G: Id<Id=GuildId>,
+        C: Into<Channel> + Clone + Id<Id=ChannelId>,
+        F: FnMut(&Channel) -> Option<&C>,
+    {
+        self.guilds.read().await.get(id).iter()
+            .flat_map(|g| &g.channels)
+            .filter_map(filter_map)
+            .cloned()
+            .collect()
     }
 }
 
@@ -178,6 +190,21 @@ impl<I: Id + Serialize> Serialize for IdMap<I> {
             .map(|i| seq.serialize_element(i))
             .collect::<Result<(), S::Error>>()?;
         seq.end()
+    }
+}
+
+impl<I: Id> FromIterator<I> for IdMap<I> {
+    fn from_iter<T: IntoIterator<Item=I>>(iter: T) -> Self {
+        let map = iter.into_iter()
+            .map(|i| (i.id(), i))
+            .collect();
+        Self(map)
+    }
+}
+
+impl<I: Id> FromIterator<(I::Id, I)> for IdMap<I> {
+    fn from_iter<T: IntoIterator<Item=(I::Id, I)>>(iter: T) -> Self {
+        Self(HashMap::from_iter(iter))
     }
 }
 

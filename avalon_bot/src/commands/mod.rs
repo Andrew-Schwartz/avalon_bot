@@ -114,20 +114,22 @@ impl From<InteractionUse<NotUsed>> for InteractionUse<Used> {
 }
 
 pub(crate) async fn init_global_commands<State: AsRef<BotState<Bot>>>(state: State) {
-    let state = state.as_ref();
-    let app = state.application_id().await;
-    // let guild = state.bot.guild_id;
-    let ids = tokio::stream::iter(&GLOBAL_COMMANDS)
-        .then(|command| async move {
-            let resp = state.client
-                .create_global_command(app, /*guild,*/ command.command())
-                .await
-                .unwrap_or_else(|_| panic!("when creating `{}`", command.name()));
-            (resp.id, *command)
-        })
-        .collect()
-        .await;
-    GLOBAL_IDS.set(ids).ok().unwrap()
+    if GLOBAL_IDS.get().is_none() {
+        let state = state.as_ref();
+        let app = state.application_id().await;
+        // let guild = state.bot.guild_id;
+        let ids = tokio::stream::iter(&GLOBAL_COMMANDS)
+            .then(|command| async move {
+                let resp = state.client
+                    .create_global_command(app, /*guild,*/ command.command())
+                    .await
+                    .unwrap_or_else(|_| panic!("when creating `{}`", command.name()));
+                (resp.id, *command)
+            })
+            .collect()
+            .await;
+        let _ = GLOBAL_IDS.set(ids);
+    }
 }
 
 pub(crate) async fn create_guild_commands<State>(
