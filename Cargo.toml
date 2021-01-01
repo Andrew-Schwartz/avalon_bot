@@ -1,0 +1,6 @@
+[workspace]
+members = [
+	"discorsd",
+	"avalon_bot",
+	"make_boards"
+]
