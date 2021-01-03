@@ -12,18 +12,20 @@ use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+use avalon::lotl::ToggleLady;
 use avalon::roles::RolesCommand;
 use discorsd::{BotExt, BotState, shard};
-use discorsd::{anyhow, async_trait};
+use discorsd::async_trait;
 use discorsd::http::channel::{ChannelExt, create_message, CreateMessage, embed};
 use discorsd::http::ClientResult;
 use discorsd::http::model::*;
 use discorsd::shard::dispatch::ReactionUpdate;
 use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, UpdateStatus};
 
-use crate::avalon::{Avalon, toggle_lotl::ToggleLady};
+use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
 use crate::commands::{AddMeCommand, InteractionUse, ReactionCommand, SlashCommand};
+use discorsd::errors::BotError;
 
 #[macro_use]
 mod macros;
@@ -90,7 +92,6 @@ async fn main() -> shard::Result<()> {
 
     tokio::spawn(async {
         use tokio::{io::AsyncWriteExt, fs::File, time::delay_for};
-        use std::time::Duration;
 
         loop {
             match File::create("uptime.txt").await {
@@ -102,7 +103,7 @@ async fn main() -> shard::Result<()> {
             }
 
             // write file every 15 mins
-            delay_for(Duration::from_secs(60 * 15)).await;
+            delay_for(std::time::Duration::from_secs(60 * 15)).await;
         }
     });
 
@@ -111,9 +112,11 @@ async fn main() -> shard::Result<()> {
     Bot::new(config).run().await
 }
 
+type Result<T> = std::result::Result<T, BotError>;
+
 #[async_trait]
 impl discorsd::Bot for Bot {
-    type Error = anyhow::Error;
+    type Error = BotError;
 
     fn token(&self) -> &str {
         self.config.token.as_str()
@@ -128,7 +131,7 @@ impl discorsd::Bot for Bot {
         })
     }
 
-    async fn ready(&self, state: Arc<BotState<Self>>) -> anyhow::Result<()> {
+    async fn ready(&self, state: Arc<BotState<Self>>) -> Result<()> {
         if let Err(now) = self.first_log_in.set(Utc::now()) {
             *self.log_in.write().await = Some(now);
         }
@@ -145,7 +148,7 @@ impl discorsd::Bot for Bot {
         Ok(())
     }
 
-    async fn resumed(&self, state: Arc<BotState<Self>>) -> anyhow::Result<()> {
+    async fn resumed(&self, state: Arc<BotState<Self>>) -> Result<()> {
         state.client.create_message(state.bot.config.channel, create_message(|m| {
             m.embed(|e| {
                 e.title("Avalon Bot has resumed");
@@ -155,7 +158,7 @@ impl discorsd::Bot for Bot {
         Ok(())
     }
 
-    async fn guild_create(&self, guild: Guild, state: Arc<BotState<Self>>) -> anyhow::Result<()> {
+    async fn guild_create(&self, guild: Guild, state: Arc<BotState<Self>>) -> Result<()> {
         info!("Guild Create: {} ({})", guild.name.as_ref().unwrap(), guild.id);
         self.games.write().await.entry(guild.id).or_default();
 
@@ -172,17 +175,7 @@ impl discorsd::Bot for Bot {
         Ok(())
     }
 
-    async fn integration_update(&self, guild: GuildId, integration: Integration, state: Arc<BotState<Self>>) -> anyhow::Result<()> {
-        info!("Guild Integration Update: {:?}", integration);
-        self.init_guild_commands(guild, &state).await?;
-        let channels = state.cache.guild_channels(guild, Channel::text).await;
-        let channel = channels.iter().find(|c| c.name == "general")
-            .unwrap_or_else(|| channels.iter().next().unwrap());
-        channel.send(&state, "Slash Commands are now enabled!").await?;
-        Ok(())
-    }
-
-    async fn message_create(&self, message: Message, state: Arc<BotState<Self>>) -> anyhow::Result<()> {
+    async fn message_create(&self, message: Message, state: Arc<BotState<Self>>) -> Result<()> {
         match message.content.as_ref() {
             "!ping" => {
                 let mut resp = state.client.create_message(message.channel_id, CreateMessage::build(|m| {
@@ -190,7 +183,10 @@ impl discorsd::Bot for Bot {
                         e.title("Pong");
                     });
                 })).await?;
-                let elapsed = Local::now().signed_duration_since(message.timestamp).to_std()?;
+                let elapsed = Utc::now()
+                    .signed_duration_since(message.timestamp)
+                    .to_std()
+                    .map_err(|_| BotError::Chrono)?;
                 let embed = resp.embeds.remove(0);
                 resp.edit(&state, embed.build(|e| {
                     e.footer_text(format!("Took {:?} to respond", elapsed));
@@ -233,7 +229,7 @@ impl discorsd::Bot for Bot {
         Ok(())
     }
 
-    async fn interaction(&self, interaction: Interaction, state: Arc<BotState<Self>>) -> anyhow::Result<()> {
+    async fn interaction(&self, interaction: Interaction, state: Arc<BotState<Self>>) -> Result<()> {
         let interaction = commands::run_global_commands(interaction, Arc::clone(&state)).await?;
         if let Err(interaction) = interaction {
             let id = interaction.data.id;
@@ -251,7 +247,7 @@ impl discorsd::Bot for Bot {
         Ok(())
     }
 
-    async fn reaction(&self, reaction: ReactionUpdate, state: Arc<BotState<Self>>) -> anyhow::Result<()> {
+    async fn reaction(&self, reaction: ReactionUpdate, state: Arc<BotState<Self>>) -> Result<()> {
         let mut results = Vec::new();
         let commands = state.bot.reaction_commands.read().await.iter()
             .filter(|rc| rc.applies(&reaction))
@@ -265,6 +261,16 @@ impl discorsd::Bot for Bot {
             res?;
         }
 
+        Ok(())
+    }
+
+    async fn integration_update(&self, guild: GuildId, integration: Integration, state: Arc<BotState<Self>>) -> Result<()> {
+        info!("Guild Integration Update: {:?}", integration);
+        self.init_guild_commands(guild, &state).await?;
+        let channels = state.cache.guild_channels(guild, Channel::text).await;
+        let channel = channels.iter().find(|c| c.name == "general")
+            .unwrap_or_else(|| channels.iter().next().unwrap());
+        channel.send(&state, "Slash Commands are now enabled!").await?;
         Ok(())
     }
 

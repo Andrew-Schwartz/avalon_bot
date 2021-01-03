@@ -124,7 +124,7 @@ pub trait ChannelExt: Id<Id=ChannelId> {
 
 impl<C: Id<Id=ChannelId>> ChannelExt for C {}
 
-impl MessageRef {
+impl ChannelMessageId {
     /// Edit this message
     pub async fn edit<Client, Msg>(&self, client: Client, edit: Msg) -> ClientResult<Message>
         where Client: AsRef<DiscordClient>,
@@ -162,28 +162,28 @@ impl Message {
         where Client: AsRef<DiscordClient>,
               Msg: Into<EditMessage>,
     {
-        *self = MessageRef::from(&*self).edit(client, edit).await?;
+        *self = ChannelMessageId::from(&*self).edit(client, edit).await?;
         Ok(())
     }
 
     /// Delete this message.
     pub async fn delete<Client: AsRef<DiscordClient>>(self, client: Client) -> ClientResult<()> {
-        MessageRef::from(self).delete(client).await
+        ChannelMessageId::from(self).delete(client).await
     }
 
     pub async fn react<E, Client>(&self, client: Client, emoji: E) -> ClientResult<()>
         where E: Into<Emoji>,
               Client: AsRef<DiscordClient>,
     {
-        MessageRef::from(self).react(client, emoji).await
+        ChannelMessageId::from(self).react(client, emoji).await
     }
 
     pub async fn pin<Client: AsRef<DiscordClient>>(&self, client: Client) -> ClientResult<()> {
-        MessageRef::from(self).pin(client).await
+        ChannelMessageId::from(self).pin(client).await
     }
 
     pub async fn unpin<Client: AsRef<DiscordClient>>(&self, client: Client) -> ClientResult<()> {
-        MessageRef::from(self).unpin(client).await
+        ChannelMessageId::from(self).unpin(client).await
     }
 }
 
@@ -244,9 +244,13 @@ impl CreateMessage {
         self.content = content.to_string();
     }
 
+    pub fn embed_with<F: FnOnce(&mut RichEmbed)>(&mut self, embed: RichEmbed, builder: F) {
+        self.embed = Some(RichEmbed::build_with(embed, builder));
+    }
+
     pub fn embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) {
         let embed = self.embed.take().unwrap_or_default();
-        self.embed = Some(RichEmbed::build_with(embed, builder));
+        self.embed_with(embed, builder);
     }
 
     pub fn image<P: AsRef<Path>>(&mut self, image: P) {

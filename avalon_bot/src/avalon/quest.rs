@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
+use discorsd::http::channel::create_message;
 use discorsd::UserMarkupExt;
 
+use crate::{create_command, delete_command};
 use crate::avalon::quest::QuestUserError::*;
+use crate::avalon::vote::{PartyVote, VoteStatus};
 use crate::utils::IterExt;
 
 use super::*;
-use discorsd::http::channel::create_message;
-use crate::avalon::vote::{PartyVote, VoteStatus};
-use crate::{delete_command, create_command};
+use discorsd::http::model::ChannelMessageId;
 
 #[derive(Clone, Debug)]
 pub struct QuestCommand(pub usize);
@@ -42,7 +43,7 @@ impl SlashCommand for QuestCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<NotUsed>,
                  data: ApplicationCommandInteractionData,
-    ) -> Result<InteractionUse<Used>> {
+    ) -> Result<InteractionUse<Used>, BotError> {
         let data = QuestData::from(data);
         let mut guard = state.bot.games.write().await;
         let game = guard.get_mut(&interaction.guild).unwrap().game_mut();
@@ -69,35 +70,49 @@ impl SlashCommand for QuestCommand {
                     if let Ok(interaction) = &result {
                         let list_party = party.iter().list_grammatically(|u| u.ping_nick());
                         let mut votes = HashMap::new();
+                        let mut handles = Vec::new();
                         for player in &game.players {
-                            let msg = player.send_dm(&*state, create_message(|m|
-                                m.content(format!(
-                                    "React ✅ to vote to approve the quest, or ❌ to reject it.\
-                                            \nThe proposed party is {}",
-                                    list_party
-                                ))
-                            )).await?;
-                            votes.insert((msg.id, player.id()), 0);
                             let state = Arc::clone(&state);
-                            tokio::spawn(async move {
-                                msg.react(&state.client, PartyVote::APPROVE).await?;
-                                msg.react(&state.client, PartyVote::REJECT).await?;
-                                ClientResult::Ok(())
+                            let list_party = list_party.clone();
+                            let player = player.clone();
+                            let handle = tokio::spawn(async move {
+                                let msg = player.send_dm(&state, create_message(|m|
+                                    m.content(format!(
+                                        "React ✅ to vote to approve the quest, or ❌ to reject it.\
+                                            \nThe proposed party is {}",
+                                        list_party
+                                    ))
+                                )).await?;
+                                let msg = ChannelMessageId::from(msg);
+                                // votes.insert((msg.id, player.id()), 0);
+                                let state = Arc::clone(&state);
+                                tokio::spawn(async move {
+                                    msg.react(&state.client, PartyVote::APPROVE).await?;
+                                    msg.react(&state.client, PartyVote::REJECT).await?;
+                                    ClientResult::Ok(())
+                                }).await.expect("reaction task does not panic")?;
+                                ClientResult::Ok((msg.message, player.id()))
                             });
+                            handles.push(handle);
                         }
+                        for res in futures::future::join_all(handles).await {
+                            let msg = res.expect("vote tasks do not panic")?;
+                            votes.insert(msg, 0);
+                        }
+
                         let guard = state.bot.commands.read().await;
                         let guild = interaction.guild;
                         let mut commands = guard.get(&guild).unwrap().write().await;
                         let party_vote = PartyVote {
                             guild,
-                            messages: votes.keys().copied().collect()
+                            messages: votes.keys().copied().collect(),
                         };
                         state.bot.reaction_commands.write().await
                             .push(Box::new(party_vote));
                         create_command(&*state, guild, &mut commands, VoteStatus).await?;
                         delete_command(
                             &*state, guild, &mut commands,
-                            |c| c.is::<QuestCommand>()
+                            |c| c.is::<QuestCommand>(),
                         ).await?;
                         game.state = AvalonState::PartyVote(votes, party);
                     }

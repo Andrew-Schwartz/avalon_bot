@@ -1,23 +1,21 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use discorsd::{BotState, UserMarkupExt};
-use discorsd::http::{ClientResult, DiscordClient};
+use discorsd::http::ClientResult;
 use discorsd::http::channel::{ChannelExt, create_message, embed};
-use discorsd::http::model::{ChannelId, Color, CommandId, GuildId, Id, MessageId, MessageRef, UserId};
+use discorsd::http::model::{ChannelId, Color, CommandId, GuildId, Id, MessageId, UserId, ChannelMessageId};
 
 use crate::{Bot, create_command, delete_command};
 use crate::commands::{ReactionCommand, SlashCommand};
 
 use super::{Avalon, AvalonPlayer};
 use super::assassinate::Assassinate;
-use super::characters::Character::{Assassin, Merlin};
-use super::characters::Loyalty::Evil;
+use super::characters::{Character::{Assassin, Merlin}, Loyalty::Evil};
 use super::lotl::LotlCommand;
 use super::quest::QuestCommand;
 use super::rounds::{Round, Rounds};
 use super::stop::*;
 use super::vote::*;
-use downcast_rs::__std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct AvalonGame {
@@ -31,7 +29,7 @@ pub struct AvalonGame {
     pub good_won: Vec<bool>,
     pub rejected_quests: usize,
     pub prev_ladies: Vec<UserId>,
-    pub pins: HashSet<MessageRef>,
+    pub pins: HashSet<ChannelMessageId>,
     pub stop_votes: (i8, i8),
 }
 
@@ -52,9 +50,14 @@ impl AvalonGame {
             good_won: Vec::new(),
             rejected_quests: 0,
             prev_ladies: Vec::new(),
-            pins: HashSet::new(),
+            pins: Default::default(),
             stop_votes: (0, 0),
         }
+    }
+
+    pub fn next_leader(leader: &mut usize, num_players: usize) {
+        *leader += 1;
+        *leader %= num_players;
     }
 
     pub fn leader(&self) -> &AvalonPlayer {
@@ -73,26 +76,6 @@ impl AvalonGame {
     pub fn round(&self) -> Round {
         self.rounds[self.round]
     }
-
-    pub async fn pin<Client, Msg>(&mut self, client: Client, message: Msg) -> ClientResult<()>
-        where Client: AsRef<DiscordClient>,
-              Msg: Into<MessageRef>,
-    {
-        let message = message.into();
-        message.pin(client).await?;
-        self.pins.insert(message);
-        Ok(())
-    }
-
-    // pub async fn unpin<Client, Msg>(&mut self, client: Client, message: Msg) -> ClientResult<()>
-    //     where Client: AsRef<DiscordClient>,
-    //           Msg: Into<MessageRef>,
-    // {
-    //     let message = message.into();
-    //     message.unpin(client).await?;
-    //     self.pins.remove(&message);
-    //     Ok(())
-    // }
 
     pub fn board_image(&self) -> String {
         format!(
@@ -184,7 +167,7 @@ impl Avalon {
             AvalonState::Lotl
         } else {
             game.round += 1;
-            game.leader += 1;
+            AvalonGame::next_leader(&mut game.leader, game.players.len());
             game.start_round(state, guild, commands).await?;
             AvalonState::RoundStart
         };
@@ -212,7 +195,7 @@ impl AvalonGame {
             m.content(self.leader().ping_nick());
             m.embed(|e| {
                 e.color(Color::GOLD);
-                e.title(format!("Round {}: The leader is {}", self.round, self.leader().member.nick_or_name()));
+                e.title(format!("Quest {}: The leader is {}", self.round, self.leader().member.nick_or_name()));
                 if let Some(lotl) = self.lotl() {
                     if self.round != 5 {
                         e.description(format!("{} has the Lady of the Lake", lotl.member.nick_or_name()));
@@ -226,7 +209,6 @@ impl AvalonGame {
                         format!(", {} fails are needed for this quest to fail.", round.fails)
                     }),
                 );
-                e.image(self.board_image())
             });
         })).await?;
 

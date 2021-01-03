@@ -23,7 +23,7 @@ impl SlashCommand for Assassinate {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<NotUsed>,
                  mut data: ApplicationCommandInteractionData,
-    ) -> Result<InteractionUse<Used>> {
+    ) -> Result<InteractionUse<Used>, BotError> {
         let result = if interaction.member.id() == self.0 {
             let target = data.options.remove(0)
                 .value
@@ -46,6 +46,7 @@ impl SlashCommand for Assassinate {
                     }).without_source()).await
                 }
                 Some(guess) => {
+                    let interaction = interaction.ack_source(&state.client).await?;
                     let game_over = embed(|e| {
                         if guess.role == Merlin {
                             e.color(Color::RED);
@@ -53,14 +54,19 @@ impl SlashCommand for Assassinate {
                         } else {
                             let merlin = game.players.iter().find(|p| p.role == Merlin).unwrap();
                             e.color(Color::BLUE);
-                            e.title(format!("Incorrect! {} was Merlin! The good guys win!", merlin.member.nick_or_name()))
+                            e.title(format!(
+                                "Incorrect! {} was actually {}, and {} was Merlin! The good guys win!",
+                                guess.member.nick_or_name(),
+                                guess.role,
+                                merlin.member.nick_or_name(),
+                            ))
                         }
                     });
                     let guard = state.bot.commands.read().await;
                     let mut commands = guard.get(&interaction.guild).unwrap()
                         .write().await;
                     avalon.game_over(&*state, interaction.guild, &mut commands, game_over).await?;
-                    interaction.ack_source(&state.client).await
+                    Ok(interaction)
                 }
             }
         } else {

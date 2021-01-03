@@ -4,8 +4,8 @@ use std::sync::Arc;
 use itertools::Itertools;
 use rand::prelude::SliceRandom;
 
-pub use discorsd::{anyhow::Result, async_trait, BotState};
-use discorsd::http::channel::{ChannelExt, embed, RichEmbed, embed_with};
+pub use discorsd::{async_trait, BotState, errors::BotError};
+use discorsd::http::channel::{ChannelExt, embed, embed_with, RichEmbed};
 use discorsd::http::ClientResult;
 use discorsd::http::model::{ChannelId, Color, CommandId, GuildId, GuildMember, Id, MessageId, UserId};
 pub use discorsd::http::model::interaction::{self, *};
@@ -23,7 +23,6 @@ pub mod characters;
 pub mod quest;
 pub mod start;
 pub mod roles;
-pub mod toggle_lotl;
 pub mod rounds;
 pub mod config;
 pub mod vote;

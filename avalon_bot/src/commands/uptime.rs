@@ -3,13 +3,14 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use discorsd::{anyhow, async_trait, BotState};
+use discorsd::{async_trait, BotState};
 use discorsd::http::channel::embed;
 use discorsd::http::interaction::message;
 use discorsd::http::model::{ApplicationCommandInteractionData, Color, Command, TopLevelOption};
 
 use crate::Bot;
 use crate::commands::{InteractionUse, NotUsed, SlashCommand, SlashCommandExt, Used};
+use discorsd::errors::BotError;
 
 #[derive(Copy, Clone, Debug)]
 pub struct UptimeCommand;
@@ -31,7 +32,7 @@ impl SlashCommand for UptimeCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<NotUsed>,
                  _: ApplicationCommandInteractionData,
-    ) -> anyhow::Result<InteractionUse<Used>> {
+    ) -> Result<InteractionUse<Used>, BotError> {
         let msg = if let Some(ready) = state.bot.first_log_in.get().cloned() {
             let embed = embed(|e| {
                 e.color(Color::GOLD);

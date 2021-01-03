@@ -17,7 +17,4 @@ pub mod serde_utils;
 pub mod bot;
 pub mod utils;
 pub mod markup_extensions;
-
-pub mod anyhow {
-    pub use anyhow::{Error, Result};
-}
+pub mod errors;

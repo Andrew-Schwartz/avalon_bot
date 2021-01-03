@@ -119,7 +119,10 @@ impl DiscordClient {
                 eb.max_elapsed_time = Some(Duration::from_secs(10));
                 eb
             },
-            |e, dur| warn!("Error in request after {:?}: {}", dur, e),
+            |e: ClientError, dur|
+                if !matches!(e, ClientError::Http(StatusCode::TOO_MANY_REQUESTS, Route::CreateReaction(_, _, _))) {
+                    warn!("Error in request after {:?}: {}", dur, e)
+                },
         ).await
     }
 

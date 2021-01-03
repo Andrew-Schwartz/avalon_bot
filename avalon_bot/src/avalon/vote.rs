@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use discorsd::http::model::{Color, Emoji, GuildId};
+use discorsd::http::model::{Color, EmbedField, Emoji, GuildId};
 use discorsd::shard::dispatch::{ReactionType::*, ReactionUpdate};
 use discorsd::UserMarkupExt;
 
@@ -26,7 +26,7 @@ impl ReactionCommand for PartyVote {
         self.messages.contains(&(reaction.message_id, reaction.user_id))
     }
 
-    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<()> {
+    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError> {
         if let Emoji::Unicode { name } = &reaction.emoji {
             let delta = match name.chars().next() {
                 Some(Self::APPROVE) => 1,
@@ -39,6 +39,7 @@ impl ReactionCommand for PartyVote {
             let mut guard = state.bot.games.write().await;
             let avalon = guard.get_mut(&self.guild).unwrap();
             let game = avalon.game_mut();
+            // we only show the board here if the quest is rejected
             let AvalonGame { state: avalon_state, players, .. } = game;
             if let AvalonState::PartyVote(votes, party) = avalon_state {
                 let vote = votes.get_mut(&(reaction.message_id, reaction.user_id)).unwrap();
@@ -49,19 +50,20 @@ impl ReactionCommand for PartyVote {
                         .partition::<Vec<_>, _>(|(_, v)| **v == 1);
                     let vote_summary = approver.iter()
                         .chain(&rejecter)
-                        .map(|(&(_, user), &vote)| (
+                        .map(|(&(_, user), &vote)| EmbedField::new_inline(
                             players.iter()
                                 .find(|p| p.id() == user)
                                 .unwrap()
                                 .member
                                 .nick_or_name(),
                             if vote == 1 { "Approved" } else { "Rejected" },
-                            /*inline*/ true,
-                        ));
+                        ))
+                        .collect_vec();
 
                     let new_state = if rejecter.len() >= approver.len() {
-                        game.leader += 1;
+                        AvalonGame::next_leader(&mut game.leader, players.len());
                         game.rejected_quests += 1;
+                        let board = game.board_image();
                         match game.rejected_quests {
                             5 => {
                                 let guard = state.bot.commands.read().await;
@@ -69,7 +71,8 @@ impl ReactionCommand for PartyVote {
                                     .write().await;
                                 return avalon.game_over(&state, self.guild, &mut commands, embed(|e| {
                                     e.color(Color::RED);
-                                    e.title("With 5 rejected parties in a row, the bad guys win")
+                                    e.title("With 5 rejected parties in a row, the bad guys win");
+                                    e.image(board);
                                 })).await.map_err(|e| e.into());
                             }
                             rejects => {
@@ -79,6 +82,7 @@ impl ReactionCommand for PartyVote {
                                         r => e.title(format!("There are now {} rejects in a row", r)),
                                     };
                                     e.fields(vote_summary);
+                                    e.image(board);
                                 })).await?;
                                 let guard = state.bot.commands.read().await;
                                 let mut commands = guard.get(&self.guild).unwrap()
@@ -166,7 +170,7 @@ impl ReactionCommand for QuestVote {
         self.messages.contains(&(reaction.message_id, reaction.user_id))
     }
 
-    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<()> {
+    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError> {
         if let Emoji::Unicode { name } = &reaction.emoji {
             let delta = match name.chars().next() {
                 Some(Self::SUCCEED) => 1,
@@ -187,8 +191,9 @@ impl ReactionCommand for QuestVote {
 
                 if votes.iter().filter(|(_, v)| **v == 0).count() == 0 {
                     let fails = votes.iter().filter(|(_, v)| **v == -1).count();
+                    let questers = votes.keys().map(|(_, u)| u).list_grammatically(UserId::ping_nick);
 
-                    let msg = if fails >= round.fails {
+                    if fails >= round.fails {
                         game.good_won.push(false);
                         game.channel.send(&state.client, embed(|e| {
                             e.color(Color::RED);
@@ -199,27 +204,24 @@ impl ReactionCommand for QuestVote {
                                     format!("were {} fails", fails)
                                 }
                             ));
-                            e.description(format!(
-                                "Reminder: {} were on this quest",
-                                votes.keys().map(|(_, u)| u).list_grammatically(UserId::ping_nick)
-                            ))
+                            e.description(format!("Reminder: {} were on this quest", questers));
+                            e.image(game.board_image());
                         })).await?
                     } else {
                         game.good_won.push(true);
+                        let nvotes = votes.len();
                         game.channel.send(&state.client, embed(|e| {
                             e.color(Color::BLUE);
                             e.title(if fails == 0 {
-                                format!("All {} were successes", votes.len())
+                                format!("All {} were successes", nvotes)
                             } else {
-                                format!("There were {} fails, but {} were required this round", fails, round.fails)
+                                format!("There were {} fails, but {} were required this quest", fails, round.fails)
                             });
-                            e.description(format!(
-                                "Reminder: {} were on this quest",
-                                votes.keys().map(|(_, u)| u).list_grammatically(UserId::ping_nick)
-                            ))
+                            e.description(format!("Reminder: {} were on this quest", questers));
+                            e.image(game.board_image());
                         })).await?
                     };
-                    let _ = game.pin(&state, msg).await;
+                    // let _ = game.pin(&state, msg).await;
                     let guard = state.bot.commands.read().await;
                     let mut commands = guard.get(&self.guild).unwrap()
                         .write().await;
@@ -256,7 +258,7 @@ impl SlashCommand for VoteStatus {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<NotUsed>,
                  _data: ApplicationCommandInteractionData,
-    ) -> Result<InteractionUse<Used>> {
+    ) -> Result<InteractionUse<Used>, BotError> {
         let guard = state.bot.games.read().await;
         let game = guard.get(&interaction.guild).unwrap().game_ref();
         match &game.state {

@@ -10,6 +10,8 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use crate::http::channel::RichEmbed;
 use crate::http::model::{AllowedMentions, GuildMember, MessageFlags};
 use crate::http::model::ids::*;
+use crate::errors::OptionParseError;
+use std::str::FromStr;
 
 /*
 (\w+)\??\**\t\??(.+)\t(.+)
@@ -379,19 +381,22 @@ impl From<CommandChoice<bool>> for ApplicationCommandOptionChoice {
 
 impl From<CommandChoice<UserId>> for ApplicationCommandOptionChoice {
     fn from(choice: CommandChoice<UserId>) -> Self {
-        Self { name: choice.name.to_string(), value: OptionValue::String(choice.value.to_string()) }
+        let name = choice.name.to_string();
+        Self { value: OptionValue::String(name.clone()), name }
     }
 }
 
 impl From<CommandChoice<ChannelId>> for ApplicationCommandOptionChoice {
     fn from(choice: CommandChoice<ChannelId>) -> Self {
-        Self { name: choice.name.to_string(), value: OptionValue::String(choice.value.to_string()) }
+        let name = choice.name.to_string();
+        Self { value: OptionValue::String(name.clone()), name }
     }
 }
 
 impl From<CommandChoice<RoleId>> for ApplicationCommandOptionChoice {
     fn from(choice: CommandChoice<RoleId>) -> Self {
-        Self { name: choice.name.to_string(), value: OptionValue::String(choice.value.to_string()) }
+        let name = choice.name.to_string();
+        Self { value: OptionValue::String(name.clone()), name }
     }
 }
 
@@ -830,7 +835,6 @@ pub struct ApplicationCommandOptionChoice {
     pub value: OptionValue,
 }
 
-// todo maybe the None version should be in here?
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum OptionValue {
@@ -840,40 +844,68 @@ pub enum OptionValue {
 }
 
 impl OptionValue {
-    pub fn unwrap_string(self) -> String {
+    pub fn string(self) -> Result<String, OptionParseError> {
         if let Self::String(s) = self {
-            s
+            Ok(s)
         } else {
-            panic!("expected a string")
+            Err(self.parse_error(ApplicationCommandOptionType::String))
         }
     }
+    pub fn unwrap_string(self) -> String {
+        self.string().unwrap()
+    }
 
-    pub fn unwrap_int(self) -> i64 {
+    pub fn int(self) -> Result<i64, OptionParseError> {
         if let Self::Integer(i) = self {
-            i
+            Ok(i)
         } else {
-            panic!("expected an integer")
+            Err(self.parse_error(ApplicationCommandOptionType::Integer))
         }
     }
+    pub fn unwrap_int(self) -> i64 {
+        self.int().unwrap()
+    }
 
-    pub fn unwrap_bool(self) -> bool {
+    pub fn bool(self) -> Result<bool, OptionParseError> {
         if let Self::Bool(b) = self {
-            b
+            Ok(b)
         } else {
-            panic!("expected a boolean")
+            Err(self.parse_error(ApplicationCommandOptionType::Boolean))
         }
     }
+    pub fn unwrap_bool(self) -> bool {
+        self.bool().unwrap()
+    }
 
+    pub fn user(self) -> Result<UserId, OptionParseError> {
+        self.id(ApplicationCommandOptionType::User)
+    }
     pub fn unwrap_user(self) -> UserId {
-        self.unwrap_string().parse().unwrap()
+        self.user().unwrap()
     }
 
+    pub fn channel(self) -> Result<ChannelId, OptionParseError> {
+        self.id(ApplicationCommandOptionType::Channel)
+    }
     pub fn unwrap_channel(self) -> ChannelId {
-        self.unwrap_string().parse().unwrap()
+        self.channel().unwrap()
     }
 
+    pub fn role(self) -> Result<RoleId, OptionParseError> {
+        self.id(ApplicationCommandOptionType::Role)
+    }
     pub fn unwrap_role(self) -> RoleId {
-        self.unwrap_string().parse().unwrap()
+        self.role().unwrap()
+    }
+
+    fn id<I: FromStr>(self, desired: ApplicationCommandOptionType) -> Result<I, OptionParseError> {
+        match self.string() {
+            Ok(s) => s.parse().map_err(|_| OptionParseError { value: Self::String(s), desired }),
+            Err(mut ope) => {
+                ope.desired = desired;
+                Err(ope)
+            },
+        }
     }
 }
 

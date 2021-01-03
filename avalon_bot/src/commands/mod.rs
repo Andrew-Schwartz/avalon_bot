@@ -4,18 +4,14 @@ use std::sync::Arc;
 
 use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::{clone_trait_object, DynClone};
-use futures_util::StreamExt;
+use futures::StreamExt;
 use once_cell::sync::*;
 use serde::export::fmt::Debug;
 use serde::export::PhantomData;
 use strum::{AsStaticRef, AsStaticStr};
 
 pub use addme::*;
-use discorsd::{
-    anyhow,
-    BotState,
-    http::model::*,
-};
+use discorsd::{BotState, http::model::*};
 use discorsd::async_trait;
 use discorsd::http::{ClientError, DiscordClient};
 use discorsd::shard::dispatch::ReactionUpdate;
@@ -24,6 +20,7 @@ pub use info::*;
 use crate::Bot;
 use crate::commands::ping::PING_COMMAND;
 use crate::commands::uptime::UPTIME_COMMAND;
+use discorsd::errors::BotError;
 
 pub mod info;
 pub mod addme;
@@ -156,7 +153,7 @@ pub(crate) async fn create_guild_commands<State>(
 pub(crate) async fn run_global_commands(
     interaction: Interaction,
     state: Arc<BotState<Bot>>,
-) -> anyhow::Result<Result<(), Interaction>> {
+) -> Result<Result<(), Interaction>, BotError> {
     if let Some(command) = GLOBAL_IDS.get().unwrap().get(&interaction.data.id) {
         let (interaction, data) = InteractionUse::from(interaction);
         command.run(state, interaction, data).await?;
@@ -180,7 +177,7 @@ pub trait SlashCommand: Send + Sync + Debug + Downcast + DynClone {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<NotUsed>,
                  data: ApplicationCommandInteractionData,
-    ) -> anyhow::Result<InteractionUse<Used>>;
+    ) -> Result<InteractionUse<Used>, BotError>;
 }
 impl_downcast!(SlashCommand);
 clone_trait_object!(SlashCommand);
@@ -200,7 +197,7 @@ pub trait ReactionCommand: Send + Sync + Debug + Downcast + DynClone {
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  reaction: ReactionUpdate,
-    ) -> anyhow::Result<()>;
+    ) -> Result<(), BotError>;
 }
 impl_downcast!(ReactionCommand);
 clone_trait_object!(ReactionCommand);

@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use discorsd::{anyhow::Result, async_trait, BotState};
+use discorsd::{async_trait, BotState};
 use discorsd::http::interaction;
 use discorsd::http::model::{ApplicationCommandInteractionData, Color, Command, TopLevelOption};
 
 use crate::Bot;
 use crate::commands::{InteractionUse, NotUsed, SlashCommand, SlashCommandExt, Used};
+use discorsd::errors::BotError;
 
 #[derive(Clone, Debug)]
 pub struct InfoCommand;
@@ -24,7 +25,7 @@ impl SlashCommand for InfoCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<NotUsed>,
                  _data: ApplicationCommandInteractionData,
-    ) -> Result<InteractionUse<Used>> {
+    ) -> Result<InteractionUse<Used>, BotError> {
         let user = state.user().await;
         interaction.respond(
             &state.client,

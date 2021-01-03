@@ -118,23 +118,23 @@ impl Id for Message {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
-pub struct MessageRef {
+pub struct ChannelMessageId {
     pub channel: ChannelId,
     pub message: MessageId,
 }
 
-impl From<Message> for MessageRef {
+impl From<Message> for ChannelMessageId {
     fn from(m: Message) -> Self {
-        MessageRef {
+        ChannelMessageId {
             channel: m.channel_id,
             message: m.id,
         }
     }
 }
 
-impl From<&Message> for MessageRef {
+impl From<&Message> for ChannelMessageId {
     fn from(m: &Message) -> Self {
-        MessageRef {
+        ChannelMessageId {
             channel: m.channel_id,
             message: m.id,
         }

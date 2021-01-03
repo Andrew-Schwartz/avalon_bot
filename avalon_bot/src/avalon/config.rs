@@ -14,7 +14,7 @@ use crate::avalon::characters::Loyalty::Evil;
 use crate::avalon::roles::RolesCommand;
 use crate::avalon::SlashCommand;
 use crate::avalon::start::StartCommand;
-use crate::avalon::toggle_lotl::ToggleLady;
+use crate::avalon::lotl::ToggleLady;
 use crate::commands::{AddMeCommand, GameType, InteractionUse, NotUsed, Used};
 
 #[derive(Default, Debug)]
@@ -81,7 +81,7 @@ impl AvalonConfig {
                     fill(self.players.len(), max_evil)
                 }
                 None => {
-                    // unreachable to have more than 10 players
+                    // AvalonError::TooManyPlayers(self.players.len())?
                 }
             }
             e.add_inline_field("Roles", roles);
@@ -134,7 +134,6 @@ impl AvalonConfig {
             (Some((_id, start)), true) => {
                 if !start.0.contains(&GameType::Avalon) {
                     start.0.insert(GameType::Avalon);
-                    // todo is this fixed?
                     state.client.edit_guild_command(
                         state.application_id().await,
                         guild,
@@ -142,12 +141,7 @@ impl AvalonConfig {
                         None,
                         None,
                         Some(start.command().options())
-                    ).await.unwrap();
-                    // state.client.create_guild_command(
-                    //     state.application_id().await,
-                    //     guild,
-                    //     start.command(),
-                    // ).await?;
+                    ).await?;
                 }
             }
             // disable StartCommand

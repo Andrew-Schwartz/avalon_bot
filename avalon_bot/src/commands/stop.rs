@@ -5,8 +5,9 @@ use discorsd::http::channel::{ChannelExt, embed};
 use discorsd::http::model::{ApplicationCommandInteractionData, Color, Command, GuildId, Id, MessageId, TopLevelOption, UserId};
 use discorsd::shard::dispatch::{ReactionType, ReactionUpdate};
 
-use crate::{anyhow::Result, async_trait, Bot, create_command};
+use crate::{async_trait, Bot, create_command};
 use crate::commands::{GameType, InteractionUse, NotUsed, ReactionCommand, SlashCommand, SlashCommandExt, Used};
+use discorsd::errors::BotError;
 
 #[derive(Debug, Copy, Clone)]
 pub struct StopCommand(pub GameType);
@@ -31,7 +32,7 @@ impl SlashCommand for StopCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<NotUsed>,
                  _: ApplicationCommandInteractionData,
-    ) -> Result<InteractionUse<Used>> {
+    ) -> Result<InteractionUse<Used>, BotError> {
         let used = interaction.ack_source(&state).await?;
         let message = used.channel.send(&state, format!(
                 "React {} to confirm stopping the game or {} to cancel this.\
@@ -81,7 +82,7 @@ impl ReactionCommand for StopVoteCommand {
             self.2.contains(&reaction.user_id)
     }
 
-    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<()> {
+    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError> {
         let mut guard = state.bot.games.write().await;
         let avalon = guard.get_mut(&self.1).unwrap();
         let game = avalon.game_mut();
@@ -108,7 +109,7 @@ impl ReactionCommand for StopVoteCommand {
             let guard = state.bot.commands.read().await;
             let mut commands = guard.get(&self.1).unwrap()
                 .write().await;
-            // avalon.game_mut().players.clear();
+            state.client.delete_message(reaction.channel_id, self.0).await?;
             avalon.game_over(&state, self.1, &mut commands, embed(|e| {
                 e.title("Manually restarted");
                 e.color(Color::GOLD);

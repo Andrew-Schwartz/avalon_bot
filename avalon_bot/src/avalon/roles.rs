@@ -77,8 +77,7 @@ impl SlashCommand for RolesCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<NotUsed>,
                  data: ApplicationCommandInteractionData,
-    ) -> Result<InteractionUse<Used>> {
-        // let InteractionUse { command, guild, .. } = interaction;
+    ) -> Result<InteractionUse<Used>, BotError> {
         let mut guard = state.bot.games.write().await;
         let game = guard.get_mut(&interaction.guild).unwrap();
         let config = game.config_mut();

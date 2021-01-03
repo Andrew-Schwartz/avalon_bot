@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
-use discorsd::http::model::Color;
+use discorsd::errors::BotError;
+use discorsd::http::model::{Color, ChannelMessageId};
 use discorsd::http::user::UserExt;
 use discorsd::UserMarkupExt;
 
@@ -10,6 +11,7 @@ use crate::commands::GameType;
 use crate::commands::stop::StopCommand;
 
 use super::*;
+use downcast_rs::__std::time::Instant;
 
 #[derive(Clone, Debug)]
 pub struct StartCommand(pub HashSet<GameType>);
@@ -38,7 +40,7 @@ impl SlashCommand for StartCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<NotUsed>,
                  data: ApplicationCommandInteractionData,
-    ) -> Result<InteractionUse<Used>> {
+    ) -> Result<InteractionUse<Used>, BotError> {
         if !data.options.is_empty() {
             todo!("handle starting specific game")
         }
@@ -50,19 +52,23 @@ impl SlashCommand for StartCommand {
             AvalonConfig::is_setup_command,
         ).await?;
         let used = interaction.ack(&state).await?;
-        let game = {
-            let mut guard = state.bot.games.write().await;
-            let game = guard.get_mut(&used.guild).unwrap();
-            game.start(used.channel).clone()
-        };
+        // let game = {
+        let mut guard = state.bot.games.write().await;
+        let avalon = guard.get_mut(&used.guild).unwrap();
+        let game = avalon.start(used.channel);
+        // };
         state.client.trigger_typing(game.channel).await?;
-        let AvalonGame { channel, players, rounds, lotl, .. } = game;
+        let board = game.board_image();
+        let AvalonGame { channel, players, lotl, .. } = game.clone();
         let players = Arc::new(players);
+        let mut handles = Vec::new();
+        // todo probably don't need to clone players
         for player in Vec::clone(&*players) {
             let state = Arc::clone(&state);
             let players = Arc::clone(&players);
-            tokio::spawn(async move {
-                player.send_dm(&*state, embed(|e| {
+            // task should not panic
+            let handle = tokio::spawn(async move {
+                let message = player.send_dm(&state, embed(|e| {
                     let character = player.role;
                     e.title(character.name());
                     e.description(character.abilities());
@@ -88,10 +94,18 @@ impl SlashCommand for StartCommand {
                         );
                     }
                     e.image(player.role.image());
-                })).await.unwrap();
+                })).await?;
+                let _pin = message.pin(&state).await;
+                Ok(ChannelMessageId::from(message))
             });
+            handles.push(handle);
         }
+        let pinned = futures::future::join_all(handles).await.into_iter()
+            .map(|res| res.expect("character info tasks do not panic"))
+            .collect::<ClientResult<HashSet<_>>>()?;
+        game.pins.extend(pinned);
 
+        let start = Instant::now();
         channel.send(&state, embed(|e| {
             e.title(format!("Avalon game with {} players", players.len()));
             e.color(Color::GOLD);
@@ -101,7 +115,11 @@ impl SlashCommand for StartCommand {
                     .enumerate()
                     .map(|(i, player)| if i == 0 {
                         format!("{} - goes first", player.ping_nick())
-                    } else { player.ping_nick() })
+                    } else if lotl.filter(|lotl| *lotl == i).is_some() {
+                        format!("{} - has the Lady of the Lake", player.ping_nick())
+                    } else {
+                        player.ping_nick()
+                    })
                     .join("\n"),
             );
             e.add_blank_inline_field();
@@ -128,17 +146,23 @@ impl SlashCommand for StartCommand {
                 roles.push_str(&format!("{}x {}", mom, MinionOfMordred));
             }
             e.add_inline_field("The roles are", roles);
-            e.add_inline_field("Rounds", rounds);
+            // e.add_inline_field("Rounds", rounds);
+            // todo test this
             if let Some(idx) = lotl {
-                e.add_blank_inline_field();
-                e.add_inline_field("Lady of the Lake", players[idx].ping_nick());
+                // e.add_blank_inline_field();
+                e.footer(
+                    format!("{} has the Lady of the Lake", players[idx].member.nick_or_name()),
+                    "images/avalon/lotl.jpg",
+                );
             }
+            e.image(board);
         })).await?;
+        println!("start.elapsed() = {:?}", start.elapsed());
 
         let commands = state.bot.commands.read().await;
         let mut commands = commands.get(&used.guild).unwrap().write().await;
-        let mut guard = state.bot.games.write().await;
-        let game = guard.get_mut(&used.guild).unwrap().game_mut();
+        // let mut guard = state.bot.games.write().await;
+        // let game = guard.get_mut(&used.guild).unwrap().game_mut();
         create_command(&*state, used.guild, &mut commands, StopCommand(GameType::Avalon)).await?;
         game.start_round(
             &*state,

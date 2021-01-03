@@ -45,8 +45,8 @@ impl Character {
         match self {
             LoyalServant => "Sees no one.",
             MinionOfMordred => "Sees other minions of Mordred.",
-            Assassin => "Sees other minions of Mordred.
-                         Attempts to assassinate Merlin at the end of the game.",
+            Assassin => "Sees other minions of Mordred. \
+                         \nAttempts to assassinate Merlin at the end of the game.",
             Merlin => "Sees the Assassin, Morgana, and Minions of Mordred.",
             Mordred => "Sees his minions. Not seen my Merlin.",
             Morgana => "Sees other minions of Mordred. Appears as Merlin to Percival.",

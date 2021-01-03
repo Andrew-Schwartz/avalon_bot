@@ -36,9 +36,9 @@ pub struct BotGateway {
 // todo: thiserror? (make ClientError::Discord have #[from])
 #[derive(Deserialize, Debug)]
 pub struct DiscordError {
-    code: DiscordErrorType,
-    message: String,
-    errors: serde_json::Value,
+    pub code: DiscordErrorType,
+    pub message: String,
+    pub errors: serde_json::Value,
 }
 
 /// https://discord.com/developers/docs/topics/opcodes-and-status-codes#json-json-error-codes
