@@ -8,10 +8,10 @@ macro_rules! cdn {
 pub const API_VERSION: u8 = 8;
 macro_rules! api {
     ($fmt:literal) => {
-        concat!("https://discordapp.com/api/v8", $fmt).to_string()
+        concat!("https://discord.com/api/v8", $fmt).to_string()
     };
     ($fmt:literal, $($args:tt)+) => {
-        format!(concat!("https://discordapp.com/api/v8", $fmt), $($args)+)
+        format!(concat!("https://discord.com/api/v8", $fmt), $($args)+)
     };
 }
 

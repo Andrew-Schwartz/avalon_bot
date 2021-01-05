@@ -109,10 +109,8 @@ pub trait Bot: Send + Sync + Sized {
 #[async_trait]
 pub trait BotExt: Bot + 'static {
     async fn run(self) -> shard::Result<()> {
-        BotRunner::from(self)
-            .await?
-            .run()
-            .await
+        BotRunner::from(self)?
+            .run().await
     }
 }
 
@@ -124,14 +122,15 @@ struct BotRunner<B: Bot> {
 }
 
 impl<B: Bot + 'static> BotRunner<B> {
-    async fn from(bot: B) -> shard::Result<Self> {
+    // todo make this From<B> now that its not async
+    fn from(bot: B) -> shard::Result<Self> {
         let state = Arc::new(BotState {
             client: DiscordClient::single(bot.token().to_string()),
             cache: Default::default(),
             bot,
         });
         // todo more than one shard
-        let shard = Shard::new(Arc::clone(&state)).await?;
+        let shard = Shard::new(Arc::clone(&state))?;
         Ok(Self {
             // state,
             shards: vec![shard]

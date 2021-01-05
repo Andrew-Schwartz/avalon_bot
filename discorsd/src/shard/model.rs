@@ -1,3 +1,5 @@
+use std::fmt::{self, Display};
+
 use serde::{de, Deserialize, Serialize, Serializer};
 use serde::export::TryFrom;
 use serde::ser::{Error, SerializeMap};
@@ -157,6 +159,12 @@ impl From<Heartbeat> for Payload {
     }
 }
 
+impl Display for Heartbeat {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Heartbeat {{ {} }}", self.seq_num)
+    }
+}
+
 /// Used to trigger the initial handshake with the gateway.
 #[derive(Serialize, Debug, Clone)]
 pub struct Identify {
@@ -220,6 +228,30 @@ impl From<Identify> for Payload {
     }
 }
 
+impl Display for Identify {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut debug_struct = f.debug_struct("Identify");
+        debug_struct.field("properties", &self.properties);
+        if let Some(compress) = &self.compress {
+            debug_struct.field("compress", compress);
+        }
+        if let Some(large_threshold) = &self.large_threshold {
+			debug_struct.field("large_threshold", large_threshold);
+		}
+        if let Some(shard) = &self.shard {
+			debug_struct.field("shard", shard);
+		}
+        if let Some(presence) = &self.presence {
+			debug_struct.field("presence", presence);
+		}
+        if let Some(guild_subscriptions) = &self.guild_subscriptions {
+			debug_struct.field("guild_subscriptions", guild_subscriptions);
+		}
+        debug_struct.field("intents", &self.intents);
+        debug_struct.finish()
+    }
+}
+
 /// Use the impl of Default
 #[derive(Serialize, Debug, Clone)]
 pub struct ConnectionProperties {
@@ -255,6 +287,16 @@ pub struct Resume {
 impl From<Resume> for Payload {
     fn from(resume: Resume) -> Self {
         Self::Resume(resume)
+    }
+}
+
+/// Don't display the token, this impl is used in `Shard::send`
+impl Display for Resume {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Resume")
+            .field("session_id", &self.session_id)
+            .field("seq", &self.seq)
+            .finish()
     }
 }
 
@@ -425,13 +467,14 @@ impl Activity {
     /// bots are able to send
     pub fn for_bot<N, /*O, U*/>(name: N, activity_type: ActivityType) -> Self
         where N: Into<String>,
-              // O: Into<Option<U>>,
-              // U: Into<String>
+    // O: Into<Option<U>>,
+    // U: Into<String>
     {
         Self {
             name: name.into(),
             activity_type,
-            url: None, /*url.into().map(|u| u.into()),*/
+            url: None,
+            /*url.into().map(|u| u.into()),*/
             created_at: None,
             timestamps: None,
             application_id: None,
@@ -442,7 +485,7 @@ impl Activity {
             assets: None,
             secrets: None,
             instance: None,
-            flags: None
+            flags: None,
         }
     }
 }
