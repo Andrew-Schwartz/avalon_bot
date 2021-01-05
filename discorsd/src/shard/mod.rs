@@ -18,7 +18,7 @@ use model::{HelloPayload, Payload, Resume};
 
 use crate::Bot;
 use crate::bot::BotState;
-use crate::cache::update::Update;
+use crate::cache::Update;
 use crate::http::ClientError;
 use crate::macros::API_VERSION;
 use crate::serde_utils::nice_from_str;
@@ -301,7 +301,7 @@ impl<B: Bot + 'static> Shard<B> {
                 _ => Ok(())
             };
             if let Err(error) = result {
-                bot.bot.error(error).await;
+                bot.bot.error(error, Arc::clone(&bot)).await;
             }
         });
 

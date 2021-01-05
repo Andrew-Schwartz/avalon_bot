@@ -1,10 +1,11 @@
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 
 use crate::http::model::{Gif, Id, ImageFormat, Png};
 use crate::http::model::ids::{EmojiId, RoleId};
 use crate::http::model::user::User;
 use crate::serde_utils::BoolExt;
-use std::borrow::Cow;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -31,7 +32,8 @@ impl Emoji {
 
     pub fn as_reaction(&self) -> Cow<'_, str> {
         match self {
-            Emoji::Custom(CustomEmoji { id, name, .. }) => format!("{}:{}", name, id).into(),
+            Emoji::Custom(CustomEmoji { id, name, animated, .. }) =>
+                format!("<{}:{}:{}>", if *animated { "a" } else { "" }, name, id).into(),
             Emoji::Unicode { name } => name.into(),
         }
     }
@@ -107,7 +109,7 @@ impl CustomEmoji {
             require_colons: false,
             managed: false,
             animated: false,
-            available: false
+            available: false,
         }
     }
 

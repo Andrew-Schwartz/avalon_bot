@@ -1,10 +1,11 @@
 use std::borrow::Cow;
-use std::collections::hash_map::RandomState;
-use std::collections::HashMap;
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
+use reqwest::Url;
 use reqwest::multipart::{Form, Part};
 use serde::Serialize;
 
@@ -187,6 +188,125 @@ impl Message {
     }
 }
 
+// todo update this description
+/// An attachment (often an image) on a message.
+/// Instances of this struct come from its `impl`s of `From<P>, From<(String,P)> where P: AsRef<Path>`
+/// (for sending files, with an optionally specified name) and `From<(String, Vec<u8>)>` for sending
+/// arbitrary byte streams by name. There also exists `From<(String, AttachmentSource)>` if for some
+/// reason you have an [AttachmentSource](AttachmentSource) already.
+///
+/// [name](MessageAttachment::name) will have **any** whitespace removed, since Discord cannot handle
+/// file names with spaces.
+#[derive(Clone, Debug)]
+pub struct MessageAttachment {
+    name: String,
+    source: AttachmentSource,
+}
+
+// todo: this don't work
+// impl MessageAttachment {
+//     pub fn url<U: IntoUrl>(url: U) -> ClientResult<Self> {
+//         let url = url.into_url()?;
+//         Ok(Self { name: url.as_str().into(), source: AttachmentSource::Url(url) })
+//     }
+// }
+
+impl PartialEq for MessageAttachment {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Eq for MessageAttachment {}
+
+impl Hash for MessageAttachment {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+// todo consider making Bytes an Rc/Arc?
+#[derive(Clone, Debug)]
+pub enum AttachmentSource {
+    Path(PathBuf),
+    Bytes(Vec<u8>),
+    Url(Url),
+}
+
+impl AttachmentSource {
+    fn into_bytes(self) -> ClientResult<Vec<u8>> {
+        match self {
+            AttachmentSource::Path(path) => std::fs::read(path).map_err(ClientError::Io),
+            AttachmentSource::Bytes(bytes) => Ok(bytes),
+            // todo might have to make it return just Option<Vec<u8>>,
+            AttachmentSource::Url(_) => Ok(Vec::new())
+        }
+    }
+}
+
+macro_rules! att_from {
+    (ref $ty:ty) => {
+        impl<'a> From<&'a $ty> for MessageAttachment {
+            fn from(path: &'a $ty) -> Self {
+                att_from(path)
+            }
+        }
+    };
+    ($ty:ty) => {
+        impl From<$ty> for MessageAttachment {
+            fn from(path: $ty) -> Self {
+                att_from(path)
+            }
+        }
+        att_from!(ref $ty);
+    };
+}
+
+fn att_from<P: AsRef<Path>>(path: P) -> MessageAttachment {
+    let path = path.as_ref();
+    let name = path.file_name()
+        .expect("attachments must have a name")
+        .to_string_lossy()
+        .to_string();
+    (name, path).into()
+}
+
+// can't do `impl<P: AsRef<Path>> From<P> for MessageAttachment { ... }` because `(String, T)`
+// "could" implement `AsRef<Path>` in the future (even though it definitely never will).
+// Instead, just macro it up ig
+att_from!(ref Path);
+att_from!(PathBuf);
+att_from!(ref str);
+att_from!(String);
+att_from!(ref std::ffi::OsStr);
+att_from!(std::ffi::OsString);
+
+impl<'a, S: ToString> From<(S, &'a Path)> for MessageAttachment {
+    fn from((name, path): (S, &'a Path)) -> Self {
+        (name, AttachmentSource::Path(path.into())).into()
+    }
+}
+
+impl<S: ToString> From<(S, Vec<u8>)> for MessageAttachment {
+    fn from((name, bytes): (S, Vec<u8>)) -> Self {
+        (name, AttachmentSource::Bytes(bytes)).into()
+    }
+}
+
+impl<S: ToString> From<(S, Url)> for MessageAttachment {
+    fn from((name, url): (S, Url)) -> Self {
+        (name, AttachmentSource::Url(url)).into()
+    }
+}
+
+impl<S: ToString> From<(S, AttachmentSource)> for MessageAttachment {
+    fn from((name, source): (S, AttachmentSource)) -> Self {
+        let mut name = name.to_string();
+        name.retain(|c| !c.is_ascii_whitespace());
+        Self { name, source }
+    }
+}
+
 /// what is sent to Discord to create a message with [DiscordClient::create_message]
 #[derive(Serialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct CreateMessage {
@@ -199,7 +319,7 @@ pub struct CreateMessage {
     pub tts: bool,
     /// the contents of the file being sent
     #[serde(skip_serializing)]
-    pub files: HashMap<String, PathBuf>,
+    pub files: HashSet<MessageAttachment>,
     /// embedded rich content
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embed: Option<RichEmbed>,
@@ -212,7 +332,7 @@ pub struct CreateMessage {
 
 impl<S: ToString> From<S> for CreateMessage {
     fn from(s: S) -> Self {
-        let mut msg = CreateMessage::default();
+        let mut msg = Self::default();
         msg.content(s);
         msg
     }
@@ -220,11 +340,20 @@ impl<S: ToString> From<S> for CreateMessage {
 
 impl From<RichEmbed> for CreateMessage {
     fn from(e: RichEmbed) -> Self {
-        let mut msg = CreateMessage::default();
+        let mut msg = Self::default();
         msg.embed = Some(e);
         msg
     }
 }
+
+// todo figure this out so it doesn't conflict with ToString
+// impl<A: Into<MessageAttachment>> From<A> for CreateMessage {
+//     fn from(att: A) -> Self {
+//         let mut msg = Self::default();
+//         msg.files.insert(att.into());
+//         msg
+//     }
+// }
 
 pub fn create_message<F: FnOnce(&mut CreateMessage)>(builder: F) -> CreateMessage {
     CreateMessage::build(builder)
@@ -253,14 +382,18 @@ impl CreateMessage {
         self.embed_with(embed, builder);
     }
 
-    pub fn image<P: AsRef<Path>>(&mut self, image: P) {
-        let path = image.as_ref();
-        let mut name = path.file_name()
-            .expect("uploaded files must have a name")
-            .to_string_lossy()
-            .to_string();
-        name.retain(|c| !c.is_whitespace());
-        self.files.insert(name, path.to_path_buf());
+    // pub fn image<P: AsRef<Path>>(&mut self, image: P) {
+    //     let path = image.as_ref();
+    //     let mut name = path.file_name()
+    //         .expect("uploaded files must have a name")
+    //         .to_string_lossy()
+    //         .to_string();
+    //     name.retain(|c| !c.is_whitespace());
+    //     self.files.insert(name, MessageAttachment::Path(path.to_path_buf()));
+    // }
+
+    pub fn image<A: Into<MessageAttachment>>(&mut self, attachment: A) {
+        self.files.insert(attachment.into());
     }
 
     pub fn reply(&mut self, message: MessageId) {
@@ -302,10 +435,9 @@ pub struct RichEmbed {
     /// fields information
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     fields: Vec<EmbedField>,
-    /// files, passed off to message_create. the lifetimes (?) are to other things in `RichEmbed`
+    /// files, passed off to message_create.
     #[serde(skip_serializing)]
-    pub(crate) files: HashMap<String, PathBuf>,
-    // files: HashMap<String, PathBuf>,
+    pub(crate) files: HashSet<MessageAttachment>,
 }
 
 pub fn embed<F: FnOnce(&mut RichEmbed)>(f: F) -> RichEmbed {
@@ -354,34 +486,52 @@ impl RichEmbed {
         self.footer = Some(EmbedFooter::new(footer));
     }
 
-    pub fn footer<S: ToString, P: AsRef<Path>>(&mut self, text: S, icon_url: P) {
-        let path = icon_url.as_ref();
-        let name = path.file_name()
-            .expect("uploaded files must have a name")
-            .to_string_lossy();
-        self.footer = Some(EmbedFooter::with_icon(text, format!("attachment://{}", name)));
-        self.files.insert(name.to_string(), path.to_path_buf());
+    pub fn footer<S: ToString, A: Into<MessageAttachment>>(&mut self, text: S, icon: A) {
+        let attachment = icon.into();
+        self.footer = Some(EmbedFooter::with_icon(text, format!("attachment://{}", attachment.name)));
+        self.files.insert(attachment);
     }
 
-    pub fn image<P: AsRef<Path>>(&mut self, image: P) {
-        let path = image.as_ref();
-        let mut name = path.file_name()
-            .expect("uploaded files must have a name")
-            .to_string_lossy()
-            .to_string();
-        name.retain(|c| !c.is_whitespace());
-        self.image = Some(EmbedImage::new(format!("attachment://{}", name)));
-        self.files.insert(name, path.to_path_buf());
+    // pub fn footer<S: ToString, P: AsRef<Path>>(&mut self, text: S, icon_url: P) {
+    //     let path = icon_url.as_ref();
+    //     let name = path.file_name()
+    //         .expect("uploaded files must have a name")
+    //         .to_string_lossy();
+    //     self.footer = Some(EmbedFooter::with_icon(text, format!("attachment://{}", name)));
+    //     self.files.insert(name.to_string(), path.to_path_buf());
+    // }
+
+    pub fn image<A: Into<MessageAttachment>>(&mut self, image: A) {
+        let attachment = image.into();
+        self.image = Some(EmbedImage::new(format!("attachment://{}", attachment.name)));
+        self.files.insert(attachment);
     }
 
-    pub fn thumbnail<P: AsRef<Path>>(&mut self, image: P) {
-        let path = image.as_ref();
-        let name = path.file_name()
-            .expect("uploaded files must have a name")
-            .to_string_lossy();
-        self.thumbnail = Some(EmbedThumbnail::new(format!("attachment://{}", name)));
-        self.files.insert(name.to_string(), path.to_path_buf());
+    // pub fn image_bad<P: AsRef<Path>>(&mut self, image: P) {
+    //     let path = image.as_ref();
+    //     let mut name = path.file_name()
+    //         .expect("uploaded files must have a name")
+    //         .to_string_lossy()
+    //         .to_string();
+    //     name.retain(|c| !c.is_whitespace());
+    //     self.image = Some(EmbedImage::new(format!("attachment://{}", name)));
+    //     self.files.insert(name, path.to_path_buf());
+    // }
+
+    pub fn thumbnail<A: Into<MessageAttachment>>(&mut self, image: A) {
+        let attachment = image.into();
+        self.thumbnail = Some(EmbedThumbnail::new(format!("attachment://{}", attachment.name)));
+        self.files.insert(attachment);
     }
+
+    // pub fn thumbnail<P: AsRef<Path>>(&mut self, image: P) {
+    //     let path = image.as_ref();
+    //     let name = path.file_name()
+    //         .expect("uploaded files must have a name")
+    //         .to_string_lossy();
+    //     self.thumbnail = Some(EmbedThumbnail::new(format!("attachment://{}", name)));
+    //     self.files.insert(name.to_string(), path.to_path_buf());
+    // }
 
     pub fn authored_by(&mut self, user: &User) {
         self.author = Some(user.into());
@@ -517,7 +667,7 @@ impl EditMessage {
 
 pub(in super) trait MessageWithFiles: Serialize {
     /// yeet the files out of `self`
-    fn take_files(&mut self) -> HashMap<String, PathBuf>;
+    fn take_files(&mut self) -> HashSet<MessageAttachment>;
 
     /// true if content, embeds, etc are present
     fn has_other_content(&self) -> bool;
@@ -533,13 +683,11 @@ impl DiscordClient {
         if files.is_empty() {
             self.post(route, message).await
         } else {
-            let files: ClientResult<Vec<(String, Vec<u8>)>> = files.into_iter()
-                .map(|(name, file)| std::fs::read(file)
-                    .map(|contents| (name, contents))
-                    .map_err(ClientError::Io)
+            let files = files.into_iter()
+                .map(|MessageAttachment { name, source }|
+                    source.into_bytes().map(|contents| (name, contents))
                 )
-                .collect();
-            let files = files?;
+                .collect::<ClientResult<Vec<(String, Vec<u8>)>>>()?;
             let make_multipart = || {
                 let mut form = files
                     .clone()
@@ -558,7 +706,7 @@ impl DiscordClient {
 }
 
 impl MessageWithFiles for CreateMessage {
-    fn take_files(&mut self) -> HashMap<String, PathBuf, RandomState> {
+    fn take_files(&mut self) -> HashSet<MessageAttachment> {
         use std::mem;
         let mut files = mem::take(&mut self.files);
         if let Some(embed) = &mut self.embed {
@@ -573,7 +721,7 @@ impl MessageWithFiles for CreateMessage {
 }
 
 impl MessageWithFiles for WebhookMessage {
-    fn take_files(&mut self) -> HashMap<String, PathBuf, RandomState> {
+    fn take_files(&mut self) -> HashSet<MessageAttachment> {
         use std::mem;
         let mut files = mem::take(&mut self.files);
         files.extend(

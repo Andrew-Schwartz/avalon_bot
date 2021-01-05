@@ -31,7 +31,7 @@ impl<B> BotState<B> {
     ///
     /// panics if somehow used before [Ready](crate::shard::dispatch::Ready) is received
     pub async fn user(&self) -> User {
-        self.cache.user().await
+        self.cache.own_user().await
     }
 
     /// gets the bot's `ApplicationId`. The first time this is called, performs the
@@ -101,7 +101,7 @@ pub trait Bot: Send + Sync + Sized {
 
     async fn integration_update(&self, guild: GuildId, integration: Integration, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
 
-    async fn error(&self, error: Self::Error) {
+    async fn error(&self, error: Self::Error, state: Arc<BotState<Self>>) {
         error!("{}", error);
     }
 }

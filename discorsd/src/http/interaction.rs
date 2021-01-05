@@ -1,10 +1,9 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::HashSet;
 
 use serde::Serialize;
 
 use crate::http::{ClientResult, DiscordClient};
-use crate::http::channel::RichEmbed;
+use crate::http::channel::{RichEmbed, MessageAttachment};
 use crate::http::model::{AllowedMentions, ApplicationCommand, ApplicationId, Command, CommandId, GuildId, InteractionId, InteractionMessage, InteractionResponse, Message, MessageId, TopLevelOption};
 use crate::http::routes::Route::*;
 
@@ -200,7 +199,8 @@ pub struct WebhookMessage {
     /// true if this is a TTS message
     pub tts: bool,
     /// the contents of the file being sent
-    pub files: HashMap<String, PathBuf>,
+    #[serde(skip)]
+    pub files: HashSet<MessageAttachment>,
     /// embedded rich content, up to 10
     pub embeds: Vec<RichEmbed>,
     /// allowed mentions for the message

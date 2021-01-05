@@ -1,5 +1,8 @@
+use std::fmt::{self, Display};
+
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
+use thiserror::Error;
 
 pub use channel::*;
 pub use emoji::*;
@@ -34,11 +37,17 @@ pub struct BotGateway {
 }
 
 // todo: thiserror? (make ClientError::Discord have #[from])
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Error)]
 pub struct DiscordError {
     pub code: DiscordErrorType,
     pub message: String,
     pub errors: serde_json::Value,
+}
+
+impl Display for DiscordError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 /// https://discord.com/developers/docs/topics/opcodes-and-status-codes#json-json-error-codes

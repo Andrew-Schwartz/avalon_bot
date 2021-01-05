@@ -8,8 +8,7 @@ use futures::StreamExt;
 use log::info;
 use serde::{Deserialize, Serialize};
 
-use crate::cache::{Cache, IdMap};
-use crate::cache::update::Update;
+use crate::cache::{Cache, IdMap, Update};
 use crate::http::model::*;
 use crate::http::model::channel::Channel;
 use crate::http::model::emoji::Emoji;
@@ -87,7 +86,7 @@ pub(crate) enum DispatchPayload {
 
 #[async_trait]
 impl Update for DispatchPayload {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         use DispatchPayload::*;
         match self {
             Ready(ready) => ready.update(cache).await,
@@ -163,9 +162,10 @@ pub struct Ready {
 
 #[async_trait]
 impl Update for Ready {
-    async fn update(self, cache: &Cache) {
-        *cache.user.write().await = Some(self.user);
-        cache.unavailable_guilds.write().await.extend(self.guilds)
+    async fn update(&self, cache: &Cache) {
+        *cache.user.write().await = Some(self.user.clone());
+        cache.users.write().await.insert(self.user.clone());
+        cache.unavailable_guilds.write().await.extend(self.guilds.clone())
     }
 }
 
@@ -178,7 +178,7 @@ pub struct Resumed {
 
 #[async_trait]
 impl Update for Resumed {
-    async fn update(self, _cache: &Cache) {
+    async fn update(&self, _cache: &Cache) {
         // don't think we need to update anything here
     }
 }
@@ -193,9 +193,9 @@ pub struct ChannelCreate {
 
 #[async_trait]
 impl Update for ChannelCreate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         info!("create = {:?}", &self);
-        let channel = self.channel;
+        let channel = &self.channel;
         if let Some(guild) = channel.guild_id() {
             cache.guilds.write().await
                 .entry(guild)
@@ -204,25 +204,25 @@ impl Update for ChannelCreate {
         cache.channel_types.write().await.insert(channel.id(), channel.channel_type());
         match channel {
             Channel::Text(text) => {
-                cache.channels.write().await.insert(text);
+                cache.channels.write().await.insert(text.clone());
             }
             Channel::Dm(dm) => {
                 let (by_user, by_id) = &mut *cache.dms.write().await;
                 by_user.insert(dm.recipient.id, dm.id);
-                by_id.insert(dm);
+                by_id.insert(dm.clone());
             }
             Channel::Voice(_) => {
                 // voice not implemented yet (ever)
             }
             Channel::GroupDm(_) => unreachable!("Bots cannot be in GroupDm channels"),
             Channel::Category(category) => {
-                cache.categories.write().await.insert(category);
+                cache.categories.write().await.insert(category.clone());
             }
             Channel::News(news) => {
-                cache.news.write().await.insert(news);
+                cache.news.write().await.insert(news.clone());
             }
             Channel::Store(store) => {
-                cache.stores.write().await.insert(store)
+                cache.stores.write().await.insert(store.clone())
             }
         };
     }
@@ -236,8 +236,8 @@ pub struct ChannelUpdate {
 
 #[async_trait]
 impl Update for ChannelUpdate {
-    async fn update(self, cache: &Cache) {
-        let channel = self.channel;
+    async fn update(&self, cache: &Cache) {
+        let channel = &self.channel;
         if let Some(guild) = channel.guild_id() {
             cache.guilds.write().await
                 .entry(guild)
@@ -249,13 +249,13 @@ impl Update for ChannelUpdate {
         match channel {
             Channel::Text(channel) => {
                 if let Some(text) = cache.channels.write().await.get_mut(&channel) {
-                    *text = channel;
+                    *text = channel.clone();
                 }
             }
             Channel::Dm(channel) => {
                 let (_, by_channel) = &mut *cache.dms.write().await;
                 if let Some(dm) = by_channel.get_mut(&channel) {
-                    *dm = channel;
+                    *dm = channel.clone();
                 }
             }
             Channel::Voice(_) => {
@@ -264,17 +264,17 @@ impl Update for ChannelUpdate {
             Channel::GroupDm(_) => unreachable!("Bots cannot be in GroupDm channels"),
             Channel::Category(channel) => {
                 if let Some(category) = cache.categories.write().await.get_mut(&channel) {
-                    *category = channel;
+                    *category = channel.clone();
                 }
             }
             Channel::News(channel) => {
                 if let Some(news) = cache.news.write().await.get_mut(&channel) {
-                    *news = channel;
+                    *news = channel.clone();
                 }
             }
             Channel::Store(channel) => {
                 if let Some(store) = cache.stores.write().await.get_mut(&channel) {
-                    *store = channel;
+                    *store = channel.clone();
                 }
             }
         };
@@ -290,9 +290,9 @@ pub struct ChannelDelete {
 
 #[async_trait]
 impl Update for ChannelDelete {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         cache.channel_types.write().await.remove(&self.channel.id());
-        match self.channel {
+        match &self.channel {
             Channel::Text(text) => cache.channels.write().await.remove(text),
             Channel::Dm(dm) => {
                 let (by_user, by_channel) = &mut *cache.dms.write().await;
@@ -319,9 +319,10 @@ pub struct ChannelPinsUpdate {
 
 #[async_trait]
 impl Update for ChannelPinsUpdate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         use ChannelType::*;
-        let Self { guild_id, channel_id, last_pin_timestamp } = self;
+        let Self { guild_id, channel_id, last_pin_timestamp } = &self;
+        let last_pin_timestamp = *last_pin_timestamp;
         match cache.channel_types.read().await.get(&channel_id) {
             Some(GuildText) => {
                 cache.channels.write().await.entry(&channel_id)
@@ -380,7 +381,7 @@ pub struct GuildCreate {
 
 #[async_trait]
 impl Update for GuildCreate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         let (mut t, mut c, mut n, mut s) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         {
             let mut guard = cache.channel_types.write().await;
@@ -411,11 +412,13 @@ impl Update for GuildCreate {
             let user_id = member.user.id;
             members.entry(user_id)
                 .or_default()
-                .insert(self.guild.id, member);
+                .insert(self.guild.id, member.clone());
+            // only an `or_insert` because this is only a partial user
+            cache.users.write().await.entry(user_id).or_insert(member.user);
         }
         cache.unavailable_guilds.write().await.remove(&self.guild);
 
-        cache.guilds.write().await.insert(self.guild);
+        cache.guilds.write().await.insert(self.guild.clone());
     }
 }
 
@@ -463,44 +466,45 @@ pub struct GuildUpdate {
 
 #[async_trait]
 impl Update for GuildUpdate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         cache.guilds.write().await.entry(self.id).and_modify(|guild| {
-            guild.id = self.id;
-            guild.name = self.name;
-            guild.icon = self.icon;
-            guild.splash = self.splash;
-            guild.discovery_splash = self.discovery_splash;
-            guild.owner = self.owner.unwrap_or(guild.owner);
-            guild.owner_id = self.owner_id;
-            guild.permissions = self.permissions;
-            guild.region = self.region;
-            guild.afk_channel_id = self.afk_channel_id;
-            guild.afk_timeout = self.afk_timeout;
-            guild.widget_enabled = self.widget_enabled;
-            guild.widget_channel_id = self.widget_channel_id;
-            guild.verification_level = self.verification_level;
-            guild.default_message_notifications = self.default_message_notifications;
-            guild.explicit_content_filter = self.explicit_content_filter;
-            guild.roles = self.roles;
-            guild.emojis = self.emojis;
-            guild.features = self.features;
-            guild.mfa_level = self.mfa_level;
-            guild.application_id = self.application_id;
-            guild.system_channel_id = self.system_channel_id;
-            guild.system_channel_flags = self.system_channel_flags;
-            guild.rules_channel_id = self.rules_channel_id;
-            guild.max_presences = self.max_presences;
-            guild.max_members = self.max_members;
-            guild.vanity_url_code = self.vanity_url_code;
-            guild.description = self.description;
-            guild.banner = self.banner;
-            guild.premium_tier = self.premium_tier;
-            guild.premium_subscription_count = self.premium_subscription_count;
-            guild.preferred_locale = self.preferred_locale;
-            guild.public_updates_id_channel = self.public_updates_id_channel;
-            guild.max_video_channel_users = self.max_video_channel_users;
-            guild.approximate_member_count = self.approximate_member_count;
-            guild.approximate_presence_count = self.approximate_presence_count;
+            let s = self.clone();
+            guild.id = s.id;
+            guild.name = s.name;
+            guild.icon = s.icon;
+            guild.splash = s.splash;
+            guild.discovery_splash = s.discovery_splash;
+            guild.owner = s.owner.unwrap_or(guild.owner);
+            guild.owner_id = s.owner_id;
+            guild.permissions = s.permissions;
+            guild.region = s.region;
+            guild.afk_channel_id = s.afk_channel_id;
+            guild.afk_timeout = s.afk_timeout;
+            guild.widget_enabled = s.widget_enabled;
+            guild.widget_channel_id = s.widget_channel_id;
+            guild.verification_level = s.verification_level;
+            guild.default_message_notifications = s.default_message_notifications;
+            guild.explicit_content_filter = s.explicit_content_filter;
+            guild.roles = s.roles;
+            guild.emojis = s.emojis;
+            guild.features = s.features;
+            guild.mfa_level = s.mfa_level;
+            guild.application_id = s.application_id;
+            guild.system_channel_id = s.system_channel_id;
+            guild.system_channel_flags = s.system_channel_flags;
+            guild.rules_channel_id = s.rules_channel_id;
+            guild.max_presences = s.max_presences;
+            guild.max_members = s.max_members;
+            guild.vanity_url_code = s.vanity_url_code;
+            guild.description = s.description;
+            guild.banner = s.banner;
+            guild.premium_tier = s.premium_tier;
+            guild.premium_subscription_count = s.premium_subscription_count;
+            guild.preferred_locale = s.preferred_locale;
+            guild.public_updates_id_channel = s.public_updates_id_channel;
+            guild.max_video_channel_users = s.max_video_channel_users;
+            guild.approximate_member_count = s.approximate_member_count;
+            guild.approximate_presence_count = s.approximate_presence_count;
         });
     }
 }
@@ -516,7 +520,7 @@ pub struct GuildDelete {
 
 #[async_trait]
 impl Update for GuildDelete {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         if let Some(guild) = cache.guilds.read().await.get(&self.guild) {
             {
                 let mut guard = cache.channel_types.write().await;
@@ -549,7 +553,7 @@ pub struct BanAdd {
 
 #[async_trait]
 impl Update for BanAdd {
-    async fn update(self, _cache: &Cache) {
+    async fn update(&self, _cache: &Cache) {
         // todo: cache bans?
     }
 }
@@ -564,7 +568,7 @@ pub struct BanRemove {
 
 #[async_trait]
 impl Update for BanRemove {
-    async fn update(self, _cache: &Cache) {
+    async fn update(&self, _cache: &Cache) {
         // todo: cache bans?
     }
 }
@@ -579,10 +583,11 @@ pub struct EmojiUpdate {
 
 #[async_trait]
 impl Update for EmojiUpdate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         println!("self = {:#?}", self);
         cache.guilds.write().await.entry(self.guild_id)
-            .and_modify(|guild| self.emojis.into_iter()
+            .and_modify(|guild| self.emojis.iter()
+                .cloned()
                 .for_each(|emoji| guild.emojis.insert(emoji))
             );
     }
@@ -598,7 +603,7 @@ pub struct IntegrationUpdate {
 
 #[async_trait]
 impl Update for IntegrationUpdate {
-    async fn update(self, _cache: &Cache) {}
+    async fn update(&self, _cache: &Cache) {}
 }
 
 /// Sent when a guild integration is updated.
@@ -610,7 +615,7 @@ pub struct IntegrationsUpdate {
 
 #[async_trait]
 impl Update for IntegrationsUpdate {
-    async fn update(self, _cache: &Cache) {
+    async fn update(&self, _cache: &Cache) {
         // nothing has to happen here
     }
 }
@@ -628,13 +633,14 @@ pub struct GuildMemberAdd {
 
 #[async_trait]
 impl Update for GuildMemberAdd {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         cache.members.write().await.entry(self.member.user.id)
             .and_modify(|map| {
                 map.insert(self.guild_id, self.member.clone());
             });
         cache.guilds.write().await.entry(self.guild_id)
             .and_modify(|guild| guild.members.insert(self.member.clone()));
+        cache.users.write().await.entry(&self.member).or_insert(self.member.user.clone());
     }
 }
 
@@ -651,13 +657,14 @@ pub struct GuildMemberRemove {
 
 #[async_trait]
 impl Update for GuildMemberRemove {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         cache.members.write().await.entry(self.user.id)
             .and_modify(|map| {
                 map.remove(&self.guild_id);
             });
         cache.guilds.write().await.entry(self.guild_id)
-            .and_modify(|guild| guild.members.remove(self.user));
+            .and_modify(|guild| guild.members.remove(self.user.clone()));
+        // don't remove from `cache.users` because they could be in other guilds too or have a dm or w/e
     }
 }
 
@@ -682,7 +689,7 @@ pub struct GuildMemberUpdate {
 
 #[async_trait]
 impl Update for GuildMemberUpdate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         println!("self = {:?}", self);
         let mut guard = cache.members.write().await;
         let option = guard.get_mut(&self.user.id)
@@ -698,11 +705,12 @@ impl Update for GuildMemberUpdate {
 
         if let Some(guild) = cache.guilds.write().await.get_mut(self.guild_id) {
             if let Some(member) = guild.members.get_mut(&self.user) {
-                member.user = self.user;
-                member.nick = self.nick;
-                member.roles = self.roles;
-                member.joined_at = self.joined_at;
-                member.premium_since = self.premium_since;
+                let s = self.clone();
+                member.user = s.user;
+                member.nick = s.nick;
+                member.roles = s.roles;
+                member.joined_at = s.joined_at;
+                member.premium_since = s.premium_since;
             }
         }
     }
@@ -733,7 +741,7 @@ pub struct GuildMembersChunk {
 
 #[async_trait]
 impl Update for GuildMembersChunk {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         let mut guard = cache.members.write().await;
         for member in &self.members {
             let cached = guard.get_mut(&member.user.id)
@@ -741,10 +749,11 @@ impl Update for GuildMembersChunk {
             if let Some(cached) = cached {
                 *cached = member.clone();
             }
+            cache.users.write().await.entry(member).or_insert(member.user.clone());
         }
         if let Some(guild) = cache.guilds.write().await.get_mut(self.guild_id) {
-            guild.members.extend(self.members);
-            guild.presences.extend(self.presences);
+            guild.members.extend(self.members.clone());
+            guild.presences.extend(self.presences.clone());
         }
     }
 }
@@ -759,9 +768,9 @@ pub struct GuildRoleCreate {
 
 #[async_trait]
 impl Update for GuildRoleCreate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         if let Some(guild) = cache.guilds.write().await.get_mut(self.guild_id) {
-            guild.roles.insert(self.role);
+            guild.roles.insert(self.role.clone());
         }
     }
 }
@@ -776,9 +785,9 @@ pub struct GuildRoleUpdate {
 
 #[async_trait]
 impl Update for GuildRoleUpdate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         if let Some(guild) = cache.guilds.write().await.get_mut(self.guild_id) {
-            guild.roles.insert(self.role);
+            guild.roles.insert(self.role.clone());
         }
     }
 }
@@ -793,7 +802,7 @@ pub struct GuildRoleDelete {
 
 #[async_trait]
 impl Update for GuildRoleDelete {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         if let Some(guild) = cache.guilds.write().await.get_mut(self.guild_id) {
             guild.roles.remove(self.role_id);
         }
@@ -832,7 +841,7 @@ pub struct InviteCreate {
 
 #[async_trait]
 impl Update for InviteCreate {
-    async fn update(self, _cache: &Cache) {}
+    async fn update(&self, _cache: &Cache) {}
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -847,7 +856,7 @@ pub struct InviteDelete {
 
 #[async_trait]
 impl Update for InviteDelete {
-    async fn update(self, _cache: &Cache) {}
+    async fn update(&self, _cache: &Cache) {}
 }
 
 // Message Events
@@ -860,24 +869,24 @@ pub struct MessageCreate {
 
 #[async_trait]
 impl Update for MessageCreate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         let channel_type = cache.channel_types.read().await
-            .get(&self.message.channel_id)
+            .get(&self.message.channel)
             .copied();
         match channel_type {
             Some(ChannelType::GuildText) => {
                 // todo should this just unwrap?
-                if let Some(channel) = cache.channels.write().await.get_mut(&self.message.channel_id) {
+                if let Some(channel) = cache.channels.write().await.get_mut(&self.message.channel) {
                     channel.last_message_id = Some(self.message.id);
                 }
             }
             Some(ChannelType::Dm) => {
-                if let Some(dm) = cache.dms.write().await.1.get_mut(&self.message.channel_id) {
+                if let Some(dm) = cache.dms.write().await.1.get_mut(&self.message.channel) {
                     dm.last_message_id = Some(self.message.id);
                 }
             }
             Some(ChannelType::GuildNews) => {
-                if let Some(news) = cache.news.write().await.get_mut(&self.message.channel_id) {
+                if let Some(news) = cache.news.write().await.get_mut(&self.message.channel) {
                     news.last_message_id = Some(self.message.id);
                 }
             }
@@ -887,7 +896,8 @@ impl Update for MessageCreate {
             | Some(ChannelType::GuildCategory)
             | None => {}
         }
-        cache.messages.write().await.insert(self.message);
+        cache.users.write().await.insert(self.message.author.clone());
+        cache.messages.write().await.insert(self.message.clone());
     }
 }
 
@@ -927,10 +937,11 @@ impl TryFrom<MessageUpdate> for Message {
     type Error = ();
 
     fn try_from(update: MessageUpdate) -> Result<Self, Self::Error> {
+        // todo look at this again, looks a bit wrong
         fn option(update: MessageUpdate) -> Option<Message> {
             Some(Message {
                 id: update.id,
-                channel_id: update.channel_id,
+                channel: update.channel_id,
                 guild_id: update.guild_id.unwrap_or_default(),
                 author: update.author?,
                 member: update.member.unwrap_or_default(),
@@ -963,7 +974,10 @@ impl TryFrom<MessageUpdate> for Message {
 
 #[async_trait]
 impl Update for MessageUpdate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
+        if let Some(author) = self.author.clone() {
+            cache.users.write().await.insert(author);
+        }
         let mut guard = cache.messages.write().await;
         match guard.entry(self.id) {
             Entry::Occupied(mut e) => {
@@ -971,34 +985,35 @@ impl Update for MessageUpdate {
                 fn update<T>(original: &mut T, new: Option<T>) {
                     if let Some(new) = new { *original = new; }
                 }
-                update(&mut message.guild_id, self.guild_id);
-                update(&mut message.author, self.author);
-                update(&mut message.member, self.member);
-                update(&mut message.content, self.content);
-                update(&mut message.edited_timestamp, self.edited_timestamp);
-                update(&mut message.tts, self.tts);
-                update(&mut message.mention_everyone, self.mention_everyone);
-                update(&mut message.mentions, self.mentions);
-                update(&mut message.mention_roles, self.mention_roles);
-                update(&mut message.mention_channels, self.mention_channels);
-                update(&mut message.attachments, self.attachments);
-                update(&mut message.embeds, self.embeds);
-                update(&mut message.reactions, self.reactions);
-                update(&mut message.nonce, self.nonce);
-                update(&mut message.pinned, self.pinned);
-                update(&mut message.webhook_id, self.webhook_id);
-                update(&mut message.message_type, self.message_type);
-                update(&mut message.activity, self.activity);
-                update(&mut message.application, self.application);
-                update(&mut message.message_reference, self.message_reference);
-                update(&mut message.flags, self.flags);
-                update(&mut message.stickers, self.stickers);
-                if let Some(referenced) = self.referenced_message {
+                let s = self.clone();
+                update(&mut message.guild_id, s.guild_id);
+                update(&mut message.author, s.author);
+                update(&mut message.member, s.member);
+                update(&mut message.content, s.content);
+                update(&mut message.edited_timestamp, s.edited_timestamp);
+                update(&mut message.tts, s.tts);
+                update(&mut message.mention_everyone, s.mention_everyone);
+                update(&mut message.mentions, s.mentions);
+                update(&mut message.mention_roles, s.mention_roles);
+                update(&mut message.mention_channels, s.mention_channels);
+                update(&mut message.attachments, s.attachments);
+                update(&mut message.embeds, s.embeds);
+                update(&mut message.reactions, s.reactions);
+                update(&mut message.nonce, s.nonce);
+                update(&mut message.pinned, s.pinned);
+                update(&mut message.webhook_id, s.webhook_id);
+                update(&mut message.message_type, s.message_type);
+                update(&mut message.activity, s.activity);
+                update(&mut message.application, s.application);
+                update(&mut message.message_reference, s.message_reference);
+                update(&mut message.flags, s.flags);
+                update(&mut message.stickers, s.stickers);
+                if let Some(referenced) = s.referenced_message {
                     message.referenced_message = referenced.map(Box::new);
                 }
             }
             Entry::Vacant(e) => {
-                if let Ok(message) = self.try_into() {
+                if let Ok(message) = self.clone().try_into() {
                     e.insert(message);
                 }
             }
@@ -1018,7 +1033,7 @@ pub struct MessageDelete {
 
 #[async_trait]
 impl Update for MessageDelete {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         use ChannelType::*;
         cache.messages.write().await.remove(self.id);
         match cache.channel_types.read().await.get(&self.channel_id) {
@@ -1070,12 +1085,12 @@ pub struct MessageDeleteBulk {
 
 #[async_trait]
 impl Update for MessageDeleteBulk {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         let Self { ids, channel_id, guild_id } = self;
-        let update = |delete: MessageDelete| delete.update(cache);
-        tokio::stream::iter(ids)
+        let (channel_id, guild_id) = (*channel_id, *guild_id);
+        tokio::stream::iter(ids.into_iter().copied())
             .map(|id| MessageDelete { id, channel_id, guild_id })
-            .for_each(update)
+            .for_each(|delete| async move { delete.update(cache).await })
             .await;
     }
 }
@@ -1096,10 +1111,9 @@ pub struct ReactionAdd {
     pub emoji: Emoji,
 }
 
-
 #[async_trait]
 impl Update for ReactionAdd {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         if let Some(message) = cache.messages.write().await.get_mut(self.message_id) {
             let idx = message.reactions.iter()
                 .position(|reaction| reaction.emoji == self.emoji);
@@ -1137,7 +1151,7 @@ pub struct ReactionRemove {
 
 #[async_trait]
 impl Update for ReactionRemove {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         if let Some(message) = cache.messages.write().await.get_mut(self.message_id) {
             let idx = message.reactions.iter()
                 .position(|reaction| reaction.emoji == self.emoji);
@@ -1211,7 +1225,7 @@ pub struct ReactionRemoveAll {
 
 #[async_trait]
 impl Update for ReactionRemoveAll {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         if let Some(message) = cache.messages.write().await.get_mut(self.message_id) {
             message.reactions.clear();
         }
@@ -1233,9 +1247,9 @@ pub struct ReactionRemoveEmoji {
 
 #[async_trait]
 impl Update for ReactionRemoveEmoji {
-    async fn update(self, cache: &Cache) {
-        if let Some(messsage) = cache.messages.write().await.get_mut(self.message_id) {
-            messsage.reactions.retain(|f| f.emoji != self.emoji);
+    async fn update(&self, cache: &Cache) {
+        if let Some(message) = cache.messages.write().await.get_mut(self.message_id) {
+            message.reactions.retain(|f| f.emoji != self.emoji);
         }
     }
 }
@@ -1293,9 +1307,10 @@ pub struct ClientStatus {
 
 #[async_trait]
 impl Update for PresenceUpdate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
+        cache.users.write().await.insert(self.user.clone());
         if let Some(guild) = cache.guilds.write().await.get_mut(self.guild_id) {
-            guild.presences.insert(self);
+            guild.presences.insert(self.clone());
         }
     }
 }
@@ -1317,7 +1332,7 @@ pub struct TypingStart {
 
 #[async_trait]
 impl Update for TypingStart {
-    async fn update(self, _cache: &Cache) {
+    async fn update(&self, _cache: &Cache) {
         // don't think we need to update anything here?
     }
 }
@@ -1330,10 +1345,11 @@ pub struct UserUpdate {
 
 #[async_trait]
 impl Update for UserUpdate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         // todo make sure this does mean current user
         log::warn!("{:?}", &self);
-        *cache.user.write().await = Some(self.user);
+        *cache.user.write().await = Some(self.user.clone());
+        cache.users.write().await.insert(self.user.clone());
     }
 }
 
@@ -1347,7 +1363,7 @@ pub struct VoiceStateUpdate {
 
 #[async_trait]
 impl Update for VoiceStateUpdate {
-    async fn update(self, cache: &Cache) {
+    async fn update(&self, cache: &Cache) {
         if let Some(guild_id) = self.state.guild_id {
             if let Some(map) = cache.members.write().await.get_mut(&self.state.user_id) {
                 if let Some(member) = map.get_mut(&guild_id) {
@@ -1356,7 +1372,7 @@ impl Update for VoiceStateUpdate {
                 }
             }
             if let Some(guild) = cache.guilds.write().await.get_mut(guild_id) {
-                guild.voice_states.insert(self.state);
+                guild.voice_states.insert(self.state.clone());
             }
         }
     }
@@ -1374,7 +1390,7 @@ pub struct VoiceServerUpdate {
 
 #[async_trait]
 impl Update for VoiceServerUpdate {
-    async fn update(self, _cache: &Cache) {}
+    async fn update(&self, _cache: &Cache) {}
 }
 
 // Webhook Updates
@@ -1389,7 +1405,7 @@ pub struct WebhookUpdate {
 
 #[async_trait]
 impl Update for WebhookUpdate {
-    async fn update(self, _cache: &Cache) {}
+    async fn update(&self, _cache: &Cache) {}
 }
 
 // Slash Command Updates
@@ -1402,7 +1418,7 @@ pub struct InteractionCreate {
 
 #[async_trait]
 impl Update for InteractionCreate {
-    async fn update(self, _cache: &Cache) {}
+    async fn update(&self, _cache: &Cache) {}
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -1414,7 +1430,7 @@ pub struct ApplicationCommandCreate {
 
 #[async_trait]
 impl Update for ApplicationCommandCreate {
-    async fn update(self, _cache: &Cache) {}
+    async fn update(&self, _cache: &Cache) {}
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -1426,9 +1442,8 @@ pub struct ApplicationCommandUpdate {
 
 #[async_trait]
 impl Update for ApplicationCommandUpdate {
-    async fn update(self, _cache: &Cache) {}
+    async fn update(&self, _cache: &Cache) {}
 }
-
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ApplicationCommandDelete {
@@ -1439,5 +1454,5 @@ pub struct ApplicationCommandDelete {
 
 #[async_trait]
 impl Update for ApplicationCommandDelete {
-    async fn update(self, _cache: &Cache) {}
+    async fn update(&self, _cache: &Cache) {}
 }

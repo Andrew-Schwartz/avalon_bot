@@ -359,13 +359,13 @@ pub struct CategoryChannel {
     pub guild_id: Option<GuildId>,
     /// sorting position of the channel
     pub position: u32,
-    /// explicit permission overwrites for members and roles
-    pub permission_overwrites: Vec<Overwrite>,
+    // /// explicit permission overwrites for members and roles
+    // pub permission_overwrites: Vec<Overwrite>,
     /// the name of the channel (2-100 characters)
-    pub name: Option<String>,
-    /// whether the channel is nsfw
-    #[serde(default)]
-    pub nsfw: bool,
+    pub name: String,
+    // /// whether the channel is nsfw
+    // #[serde(default)]
+    // pub nsfw: bool,
 }
 
 id_eq!(CategoryChannel);

@@ -1,6 +1,7 @@
 /target
 Cargo.lock
 config.json
+config-dev.json
 /english_channel.jpg
 /av_bot_dev.png
 /images/avalon/board/composed/

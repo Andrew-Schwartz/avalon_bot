@@ -19,7 +19,8 @@ pub struct Message {
     /// id of the message
     pub id: MessageId,
     /// id of the channel the message was sent in
-    pub channel_id: ChannelId,
+    #[serde(rename = "channel_id")]
+    pub channel: ChannelId,
     /// id of the guild the message was sent in
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guild_id: Option<GuildId>,
@@ -126,7 +127,7 @@ pub struct ChannelMessageId {
 impl From<Message> for ChannelMessageId {
     fn from(m: Message) -> Self {
         ChannelMessageId {
-            channel: m.channel_id,
+            channel: m.channel,
             message: m.id,
         }
     }
@@ -135,7 +136,7 @@ impl From<Message> for ChannelMessageId {
 impl From<&Message> for ChannelMessageId {
     fn from(m: &Message) -> Self {
         ChannelMessageId {
-            channel: m.channel_id,
+            channel: m.channel,
             message: m.id,
         }
     }

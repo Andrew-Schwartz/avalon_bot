@@ -16,6 +16,7 @@ use super::quest::QuestCommand;
 use super::rounds::{Round, Rounds};
 use super::stop::*;
 use super::vote::*;
+use crate::avalon::board::Board;
 
 #[derive(Debug, Clone)]
 pub struct AvalonGame {
@@ -23,6 +24,7 @@ pub struct AvalonGame {
     pub channel: ChannelId,
     pub players: Vec<AvalonPlayer>,
     pub rounds: Rounds,
+    pub board: Board,
     pub lotl: Option<usize>,
     pub leader: usize,
     pub round: usize,
@@ -36,14 +38,16 @@ pub struct AvalonGame {
 impl AvalonGame {
     pub fn new(channel: ChannelId,
                players: Vec<AvalonPlayer>,
-               rounds: Rounds,
                lotl: Option<usize>,
     ) -> Self {
+        let rounds = Rounds(players.len());
+        let board = Board::new(players.len());
         Self {
             state: AvalonState::GameStart,
             channel,
             players,
             rounds,
+            board,
             lotl,
             leader: 0,
             round: 1,
@@ -77,15 +81,16 @@ impl AvalonGame {
         self.rounds[self.round]
     }
 
-    pub fn board_image(&self) -> String {
-        format!(
-            "images/avalon/board/composed/{}{}.jpg",
-            self.players.len(),
-            self.good_won.iter()
-                .map(|&gw| if gw { 'G' } else { 'E' })
-                .chain((0..self.rejected_quests).map(|_| 'R'))
-                .collect::<String>()
-        )
+    pub fn board_image(&self) -> (&'static str, Vec<u8>) {
+        ("board.jpg", self.board.image(&self.good_won, self.rejected_quests))
+        // format!(
+        //     "images/avalon/board/composed/{}{}.jpg",
+        //     self.players.len(),
+        //     self.good_won.iter()
+        //         .map(|&gw| if gw { 'G' } else { 'E' })
+        //         .chain((0..self.rejected_quests).map(|_| 'R'))
+        //         .collect::<String>()
+        // )
     }
 
     pub fn is_command(command: &dyn SlashCommand) -> bool {

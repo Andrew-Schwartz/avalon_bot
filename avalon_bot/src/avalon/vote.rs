@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use discorsd::http::model::{Color, EmbedField, Emoji, GuildId};
+use tokio::sync::Mutex;
+
+use discorsd::http::model::{Color, EmbedField, Emoji, GuildId, ChannelMessageId};
 use discorsd::shard::dispatch::{ReactionType::*, ReactionUpdate};
 use discorsd::UserMarkupExt;
 
@@ -8,6 +10,7 @@ use crate::create_command;
 use crate::utils::IterExt;
 
 use super::*;
+use discorsd::errors::AvalonError;
 
 #[derive(Clone, Debug)]
 pub struct PartyVote {
@@ -37,7 +40,8 @@ impl ReactionCommand for PartyVote {
                 Remove => -1,
             };
             let mut guard = state.bot.games.write().await;
-            let avalon = guard.get_mut(&self.guild).unwrap();
+            let guild = self.guild;
+            let avalon = guard.get_mut(&guild).unwrap();
             let game = avalon.game_mut();
             // we only show the board here if the quest is rejected
             let AvalonGame { state: avalon_state, players, .. } = game;
@@ -67,9 +71,9 @@ impl ReactionCommand for PartyVote {
                         match game.rejected_quests {
                             5 => {
                                 let guard = state.bot.commands.read().await;
-                                let mut commands = guard.get(&self.guild).unwrap()
+                                let mut commands = guard.get(&guild).unwrap()
                                     .write().await;
-                                return avalon.game_over(&state, self.guild, &mut commands, embed(|e| {
+                                return avalon.game_over(&state, guild, &mut commands, embed(|e| {
                                     e.color(Color::RED);
                                     e.title("With 5 rejected parties in a row, the bad guys win");
                                     e.image(board);
@@ -85,9 +89,9 @@ impl ReactionCommand for PartyVote {
                                     e.image(board);
                                 })).await?;
                                 let guard = state.bot.commands.read().await;
-                                let mut commands = guard.get(&self.guild).unwrap()
+                                let mut commands = guard.get(&guild).unwrap()
                                     .write().await;
-                                game.start_round(&state, self.guild, &mut commands).await?;
+                                game.start_round(&state, guild, &mut commands).await?;
                                 AvalonState::RoundStart
                             }
                         }
@@ -97,43 +101,78 @@ impl ReactionCommand for PartyVote {
                             e.title("The party has been accepted!");
                             e.fields(vote_summary);
                         })).await?;
-                        let mut votes = HashMap::new();
-                        for user in &*party {
+                        // let mut votes = HashMap::new();
+
+                        let mut handles = Vec::new();
+                        let command_idx: Arc<Mutex<Option<usize>>> = Arc::new(Mutex::new(None));
+                        for &user in &*party {
                             let loyalty = players.iter()
-                                .find(|p| p.id() == *user)
+                                .find(|p| p.id() == user)
                                 .unwrap()
                                 .role
                                 .loyalty();
-                            // let loyalty = game.player(user).unwrap().role.loyalty();
-                            let msg = user.send_dm(&*state, format!(
-                                "React {} to succeed the quest{}",
-                                QuestVote::SUCCEED,
-                                if loyalty == Evil {
-                                    format!(", or {} to fail it", QuestVote::FAIL)
-                                } else {
-                                    "".into()
-                                }
-                            )).await?;
-                            votes.insert((msg.id, *user), 0);
                             let state = Arc::clone(&state);
-                            tokio::spawn(async move {
-                                msg.react(&state.client, QuestVote::SUCCEED).await?;
-                                if loyalty == Evil {
-                                    msg.react(&state.client, QuestVote::FAIL).await?;
+                            let command_idx = Arc::clone(&command_idx);
+                            let handle = tokio::spawn(async move {
+                                let msg = user.send_dm(&*state, format!(
+                                    "React {} to succeed the quest{}",
+                                    QuestVote::SUCCEED,
+                                    if loyalty == Evil {
+                                        format!(", or {} to fail it", QuestVote::FAIL)
+                                    } else {
+                                        "".into()
+                                    }
+                                )).await?;
+                                let msg = ChannelMessageId::from(msg);
+
+                                // build the vote command as we go so we don't miss any reactions
+                                {
+                                    let mut idx_guard = command_idx.lock().await;
+                                    let mut rxn_commands = state.bot.reaction_commands.write().await;
+                                    if let Some(idx) = *idx_guard {
+                                        let cmd = rxn_commands.get_mut(idx)
+                                            .ok_or(AvalonError::Stopped)?;
+                                        let qv = cmd.downcast_mut::<QuestVote>().unwrap();
+                                        qv.messages.insert((msg.message, user));
+                                    } else {
+                                        let idx = rxn_commands.len();
+                                        let vote = QuestVote { guild, messages: set!((msg.message, user)) };
+                                        rxn_commands.push(Box::new(vote));
+                                        *idx_guard = Some(idx);
+                                    }
                                 }
-                                ClientResult::Ok(())
+
+                                // votes.insert((msg.id, *user), 0);
+
+                                let state = Arc::clone(&state);
+                                tokio::spawn(async move {
+                                    msg.react(&state.client, QuestVote::SUCCEED).await?;
+                                    if loyalty == Evil {
+                                        msg.react(&state.client, QuestVote::FAIL).await?;
+                                    }
+                                    ClientResult::Ok(())
+                                });
+
+                                Result::<_, BotError>::Ok((msg.message, user))
                             });
+                            handles.push(handle);
                         }
-                        let quest_vote = QuestVote {
-                            guild: self.guild,
-                            messages: votes.keys().copied().collect(),
-                        };
-                        state.bot.reaction_commands.write().await
-                            .push(Box::new(quest_vote));
+                        let mut votes = HashMap::new();
+                        for res in futures::future::join_all(handles).await {
+                            let msg = res.expect("quote votes tasks do not panic")?;
+                            votes.insert(msg, 0);
+                        }
+
+                        // let quest_vote = QuestVote {
+                        //     guild: self.guild,
+                        //     messages: votes.keys().copied().collect(),
+                        // };
+                        // state.bot.reaction_commands.write().await
+                        //     .push(Box::new(quest_vote));
                         let guard = state.bot.commands.read().await;
-                        let mut commands = guard.get(&self.guild).unwrap()
+                        let mut commands = guard.get(&guild).unwrap()
                             .write().await;
-                        create_command(&*state, self.guild, &mut commands, VoteStatus).await?;
+                        create_command(&*state, guild, &mut commands, VoteStatus).await?;
                         AvalonState::Questing(votes)
                     };
                     state.bot.reaction_commands.write().await

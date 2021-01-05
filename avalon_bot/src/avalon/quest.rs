@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+use tokio::sync::Mutex;
+
+use discorsd::errors::AvalonError;
 use discorsd::http::channel::create_message;
 use discorsd::UserMarkupExt;
 
@@ -66,15 +69,20 @@ impl SlashCommand for QuestCommand {
                             e.description(party.iter().list_grammatically(|u| u.ping_nick()));
                         })).with_source(),
                     ).await;
+
                     // I think this we should only move on if this works?
                     if let Ok(interaction) = &result {
+                        let guild = interaction.guild;
                         let list_party = party.iter().list_grammatically(|u| u.ping_nick());
-                        let mut votes = HashMap::new();
+                        // let mut votes = HashMap::new();
                         let mut handles = Vec::new();
+                        let command_idx: Arc<Mutex<Option<usize>>> = Arc::new(Mutex::new(None));
                         for player in &game.players {
                             let state = Arc::clone(&state);
+                            // todo this can just be a ref?
                             let list_party = list_party.clone();
                             let player = player.clone();
+                            let command_idx = Arc::clone(&command_idx);
                             let handle = tokio::spawn(async move {
                                 let msg = player.send_dm(&state, create_message(|m|
                                     m.content(format!(
@@ -84,6 +92,24 @@ impl SlashCommand for QuestCommand {
                                     ))
                                 )).await?;
                                 let msg = ChannelMessageId::from(msg);
+
+                                // build the vote command as we go so we don't miss any reactions
+                                {
+                                    let mut idx_guard = command_idx.lock().await;
+                                    let mut rxn_commands = state.bot.reaction_commands.write().await;
+                                    if let Some(idx) = *idx_guard {
+                                        let cmd = rxn_commands.get_mut(idx)
+                                            .ok_or(AvalonError::Stopped)?;
+                                        let pv = cmd.downcast_mut::<PartyVote>().unwrap();
+                                        pv.messages.insert((msg.message, player.id()));
+                                    } else {
+                                        let idx = rxn_commands.len();
+                                        let vote = PartyVote { guild, messages: set!((msg.message, player.id())) };
+                                        rxn_commands.push(Box::new(vote));
+                                        *idx_guard = Some(idx);
+                                    }
+                                }
+
                                 // votes.insert((msg.id, player.id()), 0);
                                 let state = Arc::clone(&state);
                                 tokio::spawn(async move {
@@ -91,24 +117,25 @@ impl SlashCommand for QuestCommand {
                                     msg.react(&state.client, PartyVote::REJECT).await?;
                                     ClientResult::Ok(())
                                 }).await.expect("reaction task does not panic")?;
-                                ClientResult::Ok((msg.message, player.id()))
+
+                                Result::<_, BotError>::Ok((msg.message, player.id()))
                             });
                             handles.push(handle);
                         }
+                        let mut votes = HashMap::new();
                         for res in futures::future::join_all(handles).await {
                             let msg = res.expect("vote tasks do not panic")?;
                             votes.insert(msg, 0);
                         }
 
                         let guard = state.bot.commands.read().await;
-                        let guild = interaction.guild;
                         let mut commands = guard.get(&guild).unwrap().write().await;
-                        let party_vote = PartyVote {
-                            guild,
-                            messages: votes.keys().copied().collect(),
-                        };
-                        state.bot.reaction_commands.write().await
-                            .push(Box::new(party_vote));
+                        // let party_vote = PartyVote {
+                        //     guild,
+                        //     messages: votes.keys().copied().collect(),
+                        // };
+                        // state.bot.reaction_commands.write().await
+                        //     .push(Box::new(party_vote));
                         create_command(&*state, guild, &mut commands, VoteStatus).await?;
                         delete_command(
                             &*state, guild, &mut commands,

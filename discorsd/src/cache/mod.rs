@@ -1,6 +1,6 @@
 use std::collections::hash_map::{self, Entry, HashMap};
 use std::fmt;
-use std::iter::{Map, FromIterator};
+use std::iter::{FromIterator, Map};
 use std::marker::PhantomData;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -11,15 +11,12 @@ use tokio::sync::{RwLock, RwLockReadGuard};
 use crate::http::model::*;
 use crate::http::model::Application;
 
-pub(crate) mod update;
-
 #[derive(Default, Debug)]
 pub struct Cache {
     pub(crate) user: RwLock<Option<User>>,
     pub(crate) application: RwLock<Option<Application>>,
 
-    // todo?
-    // pub(crate) users: RwLock<IdMap<User>>,
+    pub(crate) users: RwLock<IdMap<User>>,
 
     pub(crate) unavailable_guilds: RwLock<IdMap<UnavailableGuild>>,
     pub(crate) guilds: RwLock<IdMap<Guild>>,
@@ -34,18 +31,41 @@ pub struct Cache {
     pub(crate) stores: RwLock<IdMap<StoreChannel>>,
 
     pub(crate) messages: RwLock<IdMap<Message>>,
+
+    pub(crate) commands: RwLock<IdMap<ApplicationCommand>>
 }
 
 impl Cache {
     /// gets the current user
     ///
     /// panics if somehow used before [Ready](crate::shard::dispatch::Ready) is received
-    pub async fn user(&self) -> User {
+    pub async fn own_user(&self) -> User {
         self.user.read().await.clone().expect("should not get `bot.user` before `Ready` fires")
     }
 
-    pub async fn channel<C: Id<Id=ChannelId>>(&self, id: C) -> Option<TextChannel> {
+    pub async fn user<U: Id<Id=UserId>>(&self, id: U) -> Option<User> {
+        self.users.read().await.get(id).cloned()
+    }
+
+    pub async fn channel<C: Id<Id=ChannelId>>(&self, id: C) -> Option<Channel> {
+        let id = id.id();
+        let channel_type = self.channel_types.read().await.get(&id).copied();
+        match channel_type {
+            Some(ChannelType::GuildText) => self.channels.read().await.get(&id).cloned().map(Channel::Text),
+            Some(ChannelType::Dm) => self.dms.read().await.1.get(&id).cloned().map(Channel::Dm),
+            Some(ChannelType::GuildCategory) => self.categories.read().await.get(&id).cloned().map(Channel::Category),
+            Some(ChannelType::GuildNews) => self.news.read().await.get(&id).cloned().map(Channel::News),
+            Some(ChannelType::GuildStore) => self.stores.read().await.get(&id).cloned().map(Channel::Store),
+            Some(ChannelType::GroupDm) | Some(ChannelType::GuildVoice) | None => None,
+        }
+    }
+
+    pub async fn text_channel<C: Id<Id=ChannelId>>(&self, id: C) -> Option<TextChannel> {
         self.channels.read().await.get(id).cloned()
+    }
+
+    pub async fn guild<G: Id<Id=GuildId>>(&self, id: G) -> Option<Guild> {
+        self.guilds.read().await.get(id).cloned()
     }
 
     pub async fn message<M: Id<Id=MessageId>>(&self, id: M) -> Option<Message> {
@@ -69,16 +89,20 @@ impl Cache {
             .cloned()
             .collect()
     }
+
+    pub async fn command<C: Id<Id=CommandId>>(&self, id: C) -> Option<ApplicationCommand> {
+        self.commands.read().await.get(id).cloned()
+    }
 }
 
 impl Cache {
     pub async fn debug(&self) -> DebugCache<'_> {
-        let Self { user, application, unavailable_guilds, guilds, members, channel_types, dms, channels, categories, news, stores, messages } = self;
+        let Self { user, application, users, unavailable_guilds, guilds, members, channel_types, dms, channels, categories, news, stores, messages, commands } = self;
         #[allow(clippy::eval_order_dependence)]
         DebugCache {
             user: user.read().await,
             application: application.read().await,
-            // users: users.read().await,
+            users: users.read().await,
             unavailable_guilds: unavailable_guilds.read().await,
             guilds: guilds.read().await,
             members: members.read().await,
@@ -89,6 +113,7 @@ impl Cache {
             news: news.read().await,
             stores: stores.read().await,
             messages: messages.read().await,
+            commands: commands.read().await,
         }
     }
 }
@@ -97,7 +122,7 @@ impl Cache {
 pub struct DebugCache<'a> {
     user: RwLockReadGuard<'a, Option<User>>,
     application: RwLockReadGuard<'a, Option<Application>>,
-    // users: RwLockReadGuard<'a, IdMap<User>>,
+    users: RwLockReadGuard<'a, IdMap<User>>,
     unavailable_guilds: RwLockReadGuard<'a, IdMap<UnavailableGuild>>,
     guilds: RwLockReadGuard<'a, IdMap<Guild>>,
     members: RwLockReadGuard<'a, HashMap<UserId, HashMap<GuildId, GuildMember>>>,
@@ -108,6 +133,7 @@ pub struct DebugCache<'a> {
     news: RwLockReadGuard<'a, IdMap<NewsChannel>>,
     stores: RwLockReadGuard<'a, IdMap<StoreChannel>>,
     messages: RwLockReadGuard<'a, IdMap<Message>>,
+    commands: RwLockReadGuard<'a, IdMap<ApplicationCommand>>,
 }
 
 #[derive(Debug, Clone)]
@@ -232,4 +258,10 @@ impl<'de, I: Id + Deserialize<'de>> Deserialize<'de> for IdMap<I> {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         d.deserialize_seq(IdMapVisitor(PhantomData))
     }
+}
+
+// BIG OL TODO: take self by ref, that way we only clone when necessary in `update`
+#[async_trait::async_trait]
+pub(crate) trait Update {
+    async fn update(&self, cache: &Cache);
 }

@@ -788,6 +788,15 @@ pub struct ApplicationCommand {
     pub options: Vec<ApplicationCommandOption>,
 }
 
+id_eq!(ApplicationCommand);
+impl Id for ApplicationCommand {
+    type Id = CommandId;
+
+    fn id(&self) -> Self::Id {
+        self.id
+    }
+}
+
 /// You can specify a maximum of 10 choices per option.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ApplicationCommandOption {

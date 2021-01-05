@@ -1,7 +1,8 @@
 use std::collections::HashSet;
+use std::time::Instant;
 
 use discorsd::errors::BotError;
-use discorsd::http::model::{Color, ChannelMessageId};
+use discorsd::http::model::{ChannelMessageId, Color};
 use discorsd::http::user::UserExt;
 use discorsd::UserMarkupExt;
 
@@ -11,7 +12,6 @@ use crate::commands::GameType;
 use crate::commands::stop::StopCommand;
 
 use super::*;
-use downcast_rs::__std::time::Instant;
 
 #[derive(Clone, Debug)]
 pub struct StartCommand(pub HashSet<GameType>);
@@ -44,13 +44,6 @@ impl SlashCommand for StartCommand {
         if !data.options.is_empty() {
             todo!("handle starting specific game")
         }
-        delete_command(
-            &*state, interaction.guild,
-            &mut *state.bot.commands.read().await
-                .get(&interaction.guild).unwrap()
-                .write().await,
-            AvalonConfig::is_setup_command,
-        ).await?;
         let used = interaction.ack(&state).await?;
         // let game = {
         let mut guard = state.bot.games.write().await;
@@ -93,7 +86,8 @@ impl SlashCommand for StartCommand {
                                 .join("\n"),
                         );
                     }
-                    e.image(player.role.image());
+                    let image = player.role.image();
+                    e.image(image);
                 })).await?;
                 let _pin = message.pin(&state).await;
                 Ok(ChannelMessageId::from(message))
@@ -157,13 +151,16 @@ impl SlashCommand for StartCommand {
             }
             e.image(board);
         })).await?;
-        println!("start.elapsed() = {:?}", start.elapsed());
+        println!("message = {:?}", start.elapsed());
 
         let commands = state.bot.commands.read().await;
         let mut commands = commands.get(&used.guild).unwrap().write().await;
-        // let mut guard = state.bot.games.write().await;
-        // let game = guard.get_mut(&used.guild).unwrap().game_mut();
         create_command(&*state, used.guild, &mut commands, StopCommand(GameType::Avalon)).await?;
+        delete_command(
+            &*state, used.guild,
+            &mut commands,
+            AvalonConfig::is_setup_command,
+        ).await?;
         game.start_round(
             &*state,
             used.guild,

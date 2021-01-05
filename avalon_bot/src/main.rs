@@ -16,8 +16,9 @@ use avalon::lotl::ToggleLady;
 use avalon::roles::RolesCommand;
 use discorsd::{BotExt, BotState, shard};
 use discorsd::async_trait;
+use discorsd::errors::{BotError, GameError};
+use discorsd::http::{ClientError, ClientResult};
 use discorsd::http::channel::{ChannelExt, create_message, CreateMessage, embed};
-use discorsd::http::ClientResult;
 use discorsd::http::model::*;
 use discorsd::shard::dispatch::ReactionUpdate;
 use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, UpdateStatus};
@@ -25,7 +26,6 @@ use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, Updat
 use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
 use crate::commands::{AddMeCommand, InteractionUse, ReactionCommand, SlashCommand};
-use discorsd::errors::BotError;
 
 #[macro_use]
 mod macros;
@@ -107,8 +107,15 @@ async fn main() -> shard::Result<()> {
         }
     });
 
-    let config = std::fs::read_to_string("config.json").expect("Could not find config.json");
-    let config: Config = serde_json::from_str(&config).expect("Could not read config.json file");
+    let path = if std::env::args()
+        .filter(|arg| arg == "--dev")
+        .next()
+        .is_some() {
+        "config-dev.json"
+    } else { "config.json" };
+
+    let config = std::fs::read_to_string(path).expect("Could not find config file");
+    let config: Config = serde_json::from_str(&config).expect("Could not read config file");
     Bot::new(config).run().await
 }
 
@@ -178,7 +185,7 @@ impl discorsd::Bot for Bot {
     async fn message_create(&self, message: Message, state: Arc<BotState<Self>>) -> Result<()> {
         match message.content.as_ref() {
             "!ping" => {
-                let mut resp = state.client.create_message(message.channel_id, CreateMessage::build(|m| {
+                let mut resp = state.client.create_message(message.channel, CreateMessage::build(|m| {
                     m.embed(|e| {
                         e.title("Pong");
                     });
@@ -193,14 +200,14 @@ impl discorsd::Bot for Bot {
                 })).await?;
             }
             "!timestamp" => {
-                message.channel_id.send(
+                message.channel.send(
                     &state,
                     format!("You created your account at {}", message.author.id.timestamp()),
                 ).await?;
             }
             "!lots" => {
                 let user = state.user().await;
-                message.channel_id.send(&state, embed(|e| {
+                message.channel.send(&state, embed(|e| {
                     e.image("english_channel.jpg");
                     e.thumbnail("av_bot_dev.png");
                     e.authored_by(&user);
@@ -218,11 +225,11 @@ impl discorsd::Bot for Bot {
             }
             "!log" => {
                 info!("{:#?}", self.debug().await);
-                message.channel_id.send(&state, "logged!").await?;
+                message.channel.send(&state, "logged!").await?;
             }
             "!cache" => {
                 info!("{:#?}", state.cache.debug().await);
-                message.channel_id.send(&state, "logged!").await?;
+                message.channel.send(&state, "logged!").await?;
             }
             _ => {}
         }
@@ -274,8 +281,49 @@ impl discorsd::Bot for Bot {
         Ok(())
     }
 
-    async fn error(&self, error: Self::Error) {
-        panic!("{}", error)
+    async fn error(&self, error: Self::Error, state: Arc<BotState<Self>>) {
+        match error {
+            BotError::Client(ce) => match ce {
+                ClientError::Request(e) => error!("{}", e),
+                ClientError::Http(status, route) => {
+                    error!("`{}` on {}", status, route.debug_with_cache(&state.cache).await)
+                }
+                ClientError::Json(j) => error!("{}", j),
+                ClientError::Io(io) => error!("{}", io),
+                ClientError::Discord(de) => error!("{}", de),
+            },
+            BotError::Game(ge) => match ge {
+                GameError::Avalon(ae) => error!("{}", ae)
+            },
+            BotError::CommandParse(cpe) => {
+                let guild = if let Some(guild) = state.cache.guild(cpe.guild).await {
+                    format!("guild `{}` ({})", guild.name.as_ref().map(|s| s.as_str()).unwrap_or("null"), guild.id)
+                } else {
+                    format!("unknown guild `{}`", cpe.guild)
+                };
+                let guard = self.commands.read().await;
+                if let Some(guild_lock) = guard.get(&cpe.guild) {
+                    let guard = guild_lock.read().await;
+                    if let Some(command) = guard.get(&cpe.id).cloned() {
+                        error!(
+                            "Failed to parse command `{}` ({}) in {}: {:?}",
+                            command.name(), cpe.id, guild, cpe.kind
+                        );
+                    } else {
+                        error!(
+                            "Failed to parse unknown command `{}` in {}: {:?}",
+                            cpe.id, guild, cpe.kind,
+                        );
+                    }
+                } else {
+                    error!(
+                        "Failed to parse command `{}` in {}, which has no commands: {:?}",
+                        cpe.id, guild, cpe.kind,
+                    );
+                }
+            }
+            BotError::Chrono => error!("{}", BotError::Chrono)
+        }
     }
 }
 

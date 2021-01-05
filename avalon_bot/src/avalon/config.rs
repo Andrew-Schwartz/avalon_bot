@@ -96,8 +96,8 @@ impl AvalonConfig {
     ) -> http::ClientResult<InteractionUse<Used>> {
         let embed = self.embed();
         match &mut self.message {
-            Some(message) if message.channel_id == interaction.channel => {
-                let is_last_message = state.cache.channel(interaction.channel).await
+            Some(message) if message.channel == interaction.channel => {
+                let is_last_message = state.cache.text_channel(interaction.channel).await
                     .and_then(|c| c.last_message_id.map(|id| id == message.id))
                     .unwrap_or(false);
                 if is_last_message {

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{self, Debug};
 use std::sync::Arc;
 
 use itertools::Itertools;
@@ -17,7 +18,6 @@ pub use crate::{Bot, commands::*};
 use crate::avalon::characters::Character::{self, LoyalServant, Merlin, MinionOfMordred};
 use crate::avalon::characters::Loyalty::Evil;
 use crate::avalon::config::AvalonConfig;
-use crate::avalon::rounds::Rounds;
 
 pub mod characters;
 pub mod quest;
@@ -29,6 +29,7 @@ pub mod vote;
 pub mod assassinate;
 pub mod lotl;
 pub mod game;
+pub mod board;
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
@@ -72,7 +73,6 @@ impl Avalon {
         let config = std::mem::take(self.config_mut());
         let max_evil = config.max_evil().unwrap();
         let AvalonConfig { mut players, mut roles, lotl, .. } = config;
-        let rounds = Rounds(players.len());
         let num_evil = roles.iter()
             .filter(|c| c.loyalty() == Evil)
             .count();
@@ -88,15 +88,43 @@ impl Avalon {
             .map(|user| AvalonPlayer { member: user, role: roles.remove(0) })
             .collect_vec();
         let lotl = if lotl { Some(players.len() - 1) } else { None };
-        *self = Self::Game(AvalonGame::new(channel, players, rounds, lotl /*interaction.unwrap()*/));
+        *self = Self::Game(AvalonGame::new(channel, players, lotl));
         self.game_mut()
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct AvalonPlayer {
     pub member: GuildMember,
     pub role: Character,
+}
+
+impl Debug for AvalonPlayer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        #[derive(Debug)]
+        struct Member<'a> {
+            user: User<'a>,
+            nick: &'a Option<String>,
+        }
+        #[derive(Debug)]
+        struct User<'a> {
+            id: &'a UserId,
+            username: &'a String,
+            discriminator: &'a String,
+        }
+        let member = Member {
+            user: User {
+                id: &self.member.id(),
+                username: &self.member.user.username,
+                discriminator: &self.member.user.discriminator,
+            },
+            nick: &self.member.nick,
+        };
+        f.debug_struct("AvalonPlayer")
+            .field("member", &member)
+            .field("role", &self.role)
+            .finish()
+    }
 }
 
 impl Id for AvalonPlayer {
