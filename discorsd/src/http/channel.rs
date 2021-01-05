@@ -114,7 +114,7 @@ impl DiscordClient {
 
 #[async_trait]
 pub trait ChannelExt: Id<Id=ChannelId> {
-    // todo: take cache too and make sure we have permissions to post messages
+    // todo: take cache too and make sure we have permissions to post messages (esp for inteactions)
     async fn send<Client, Msg>(&self, client: Client, message: Msg) -> ClientResult<Message>
         where Client: AsRef<DiscordClient> + Sync + Send,
               Msg: Into<CreateMessage> + Sync + Send,

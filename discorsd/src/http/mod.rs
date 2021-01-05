@@ -39,7 +39,7 @@ pub enum ClientError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Discord error: {0:?}")]
-    Discord(/*#[from]*/ DiscordError),
+    Discord(#[from] DiscordError),
 }
 
 pub type ClientResult<T> = std::result::Result<T, ClientError>;

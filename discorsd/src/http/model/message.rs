@@ -332,7 +332,6 @@ pub struct Embed {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     /// type of embed (always "rich" for webhook embeds), deprecated
-    // todo make private since always rich
     #[serde(rename = "type")]
     #[serde(skip_serializing_if = "Option::is_none")]
     embed_type: Option<String>,

@@ -83,7 +83,7 @@ impl<B: Bot + 'static> Shard<B> {
 
     async fn close(&mut self, close_frame: CloseFrame<'_>, delay: impl Into<Option<Duration>>) -> Result<()> {
         info!("closing: {:?}", close_frame);
-        if let Some(stream) = &mut self.stream {
+        if let Some(mut stream) = self.stream.take() {
             stream.close(Some(close_frame)).await?;
             info!("stream closed");
         } else {
@@ -295,7 +295,7 @@ impl<B: Bot + 'static> Shard<B> {
             self.session_id = Some(ready.session_id.clone());
         }
         let bot = Arc::clone(&self.state);
-        // todo panic if this panicked?
+        // todo panic if this panicked? (make a field in self for handlers, try_join them?)
         let _handle = tokio::spawn(async move {
             let result = match event {
                 Ready(_ready) => bot.bot.ready(Arc::clone(&bot)).await,

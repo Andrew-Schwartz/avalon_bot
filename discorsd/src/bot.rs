@@ -122,7 +122,6 @@ struct BotRunner<B: Bot> {
 }
 
 impl<B: Bot + 'static> BotRunner<B> {
-    // todo make this From<B> now that its not async
     fn from(bot: B) -> shard::Result<Self> {
         let state = Arc::new(BotState {
             client: DiscordClient::single(bot.token().to_string()),

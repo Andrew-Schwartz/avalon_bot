@@ -55,7 +55,6 @@ impl SlashCommand for StartCommand {
         let AvalonGame { channel, players, lotl, .. } = game.clone();
         let players = Arc::new(players);
         let mut handles = Vec::new();
-        // todo probably don't need to clone players
         for player in Vec::clone(&*players) {
             let state = Arc::clone(&state);
             let players = Arc::clone(&players);
@@ -140,10 +139,7 @@ impl SlashCommand for StartCommand {
                 roles.push_str(&format!("{}x {}", mom, MinionOfMordred));
             }
             e.add_inline_field("The roles are", roles);
-            // e.add_inline_field("Rounds", rounds);
-            // todo test this
             if let Some(idx) = lotl {
-                // e.add_blank_inline_field();
                 e.footer(
                     format!("{} has the Lady of the Lake", players[idx].member.nick_or_name()),
                     "images/avalon/lotl.jpg",

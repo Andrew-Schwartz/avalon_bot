@@ -260,8 +260,9 @@ impl<'de, I: Id + Deserialize<'de>> Deserialize<'de> for IdMap<I> {
     }
 }
 
-// BIG OL TODO: take self by ref, that way we only clone when necessary in `update`
+/// Dispatch events need to update the cache when recieved
 #[async_trait::async_trait]
 pub(crate) trait Update {
+    /// update the cache, lazily cloning whatever is needed out of `self`
     async fn update(&self, cache: &Cache);
 }

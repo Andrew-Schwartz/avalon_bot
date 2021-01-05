@@ -74,15 +74,14 @@ impl SlashCommand for QuestCommand {
                     if let Ok(interaction) = &result {
                         let guild = interaction.guild;
                         let list_party = party.iter().list_grammatically(|u| u.ping_nick());
-                        // let mut votes = HashMap::new();
+                        let list_party = Arc::new(list_party);
                         let mut handles = Vec::new();
                         let command_idx: Arc<Mutex<Option<usize>>> = Arc::new(Mutex::new(None));
                         for player in &game.players {
                             let state = Arc::clone(&state);
-                            // todo this can just be a ref?
-                            let list_party = list_party.clone();
-                            let player = player.clone();
+                            let list_party = Arc::clone(&list_party);
                             let command_idx = Arc::clone(&command_idx);
+                            let player = player.clone();
                             let handle = tokio::spawn(async move {
                                 let msg = player.send_dm(&state, create_message(|m|
                                     m.content(format!(
@@ -110,7 +109,6 @@ impl SlashCommand for QuestCommand {
                                     }
                                 }
 
-                                // votes.insert((msg.id, player.id()), 0);
                                 let state = Arc::clone(&state);
                                 tokio::spawn(async move {
                                     msg.react(&state.client, PartyVote::APPROVE).await?;

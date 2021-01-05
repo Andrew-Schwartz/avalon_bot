@@ -36,7 +36,6 @@ pub struct BotGateway {
     // session_start_limit: session_start_limit,
 }
 
-// todo: thiserror? (make ClientError::Discord have #[from])
 #[derive(Deserialize, Debug, Error)]
 pub struct DiscordError {
     pub code: DiscordErrorType,
