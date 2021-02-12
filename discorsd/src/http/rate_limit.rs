@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use reqwest::header::HeaderMap;
 
-use crate::http::model::{ChannelId, GuildId};
+use crate::model::ids::*;
 use crate::http::routes::Route;
 
 #[derive(Debug, Default)]

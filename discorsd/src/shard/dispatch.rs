@@ -9,19 +9,20 @@ use log::info;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::{Cache, IdMap, Update};
-use crate::http::model::*;
-use crate::http::model::channel::Channel;
-use crate::http::model::emoji::Emoji;
-use crate::http::model::guild::{Guild, GuildMember, UnavailableGuild};
-use crate::http::model::ids::{ChannelId, GuildId, MessageId, RoleId, UserId, WebhookId};
-use crate::http::model::permissions::Role;
-use crate::http::model::user::User;
-use crate::http::model::voice::VoiceState;
+use crate::model::channel::{Channel, ChannelType};
+use crate::model::emoji::{Emoji, CustomEmoji};
+use crate::model::guild::{Guild, GuildMember, UnavailableGuild, VerificationLevel, NotificationLevel, ExplicitFilterLevel, GuildFeature, MfaLevel, SystemChannelFlags, PremiumTier, Integration, GuildMemberUserless};
+use crate::model::ids::*;
+use crate::model::permissions::Role;
+use crate::model::user::User;
+use crate::model::voice::VoiceState;
 use crate::shard::model::{Activity, StatusType};
+use crate::model::message::{Message, ChannelMention, Attachment, Embed, Reaction, MessageType, MessageActivity, MessageApplication, MessageReference, MessageFlags, Sticker};
+use crate::model::interaction::{Interaction, ApplicationCommand};
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Deserialize, Debug, Clone)]
-#[serde(tag = "t", content = "d")]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(tag = "t", content = "d", rename_all = "SCREAMING_SNAKE_CASE")]
 pub(crate) enum DispatchPayload {
     // Connection
     Ready(Ready),
@@ -85,7 +86,7 @@ pub(crate) enum DispatchPayload {
 }
 
 #[async_trait]
-impl Update for DispatchPayload {
+impl<'a> Update for DispatchPayload {
     async fn update(&self, cache: &Cache) {
         use DispatchPayload::*;
         match self {
@@ -143,8 +144,8 @@ impl Update for DispatchPayload {
 ///
 /// `guilds` are the guilds of which your bot is a member. They start out as unavailable when you
 /// connect to the gateway. As they become available, your bot will be notified via
-/// [DispatchPayload::GuildCreate] events. `private_channels` will be an empty array. As bots
-/// receive private messages, they will be notified via [DispatchPayload::ChannelCreate] events.
+/// [`DispatchPayload::GuildCreate`] events. `private_channels` will be an empty array. As bots
+/// receive private messages, they will be notified via [`DispatchPayload::ChannelCreate`] events.
 #[derive(Deserialize, Debug, Clone)]
 #[non_exhaustive]
 pub struct Ready {
@@ -158,11 +159,22 @@ pub struct Ready {
     pub session_id: String,
     /// the shard information associated with this session, if sent when identifying
     pub shard: Option<(u64, u64)>,
+    /// partial application information
+    pub application: PartialApplication,
+}
+
+#[derive(Copy, Clone, Deserialize, Debug)]
+pub struct PartialApplication {
+    /// the id of the app
+    pub id: ApplicationId,
+    /// the application's public flags
+    pub flags: Option<u32>,
 }
 
 #[async_trait]
 impl Update for Ready {
     async fn update(&self, cache: &Cache) {
+        *cache.application.write().await = Some(self.application);
         *cache.user.write().await = Some(self.user.clone());
         cache.users.write().await.insert(self.user.clone());
         cache.unavailable_guilds.write().await.extend(self.guilds.clone())
@@ -323,7 +335,7 @@ impl Update for ChannelPinsUpdate {
         use ChannelType::*;
         let Self { guild_id, channel_id, last_pin_timestamp } = &self;
         let last_pin_timestamp = *last_pin_timestamp;
-        match cache.channel_types.read().await.get(&channel_id) {
+        match cache.channel_types.read().await.get(channel_id) {
             Some(GuildText) => {
                 cache.channels.write().await.entry(&channel_id)
                     .and_modify(|channel| {
@@ -622,7 +634,7 @@ impl Update for IntegrationsUpdate {
 
 /// Sent when a new user joins a guild.
 ///
-/// [GUILD_MEMBERS](crate::shard::intents::Intents::GUILD_MEMBERS) is required to receive this.
+/// [`GUILD_MEMBERS`](crate::shard::intents::Intents::GUILD_MEMBERS) is required to receive this.
 #[derive(Deserialize, Debug, Clone)]
 pub struct GuildMemberAdd {
     /// id of the guild
@@ -640,13 +652,13 @@ impl Update for GuildMemberAdd {
             });
         cache.guilds.write().await.entry(self.guild_id)
             .and_modify(|guild| guild.members.insert(self.member.clone()));
-        cache.users.write().await.entry(&self.member).or_insert(self.member.user.clone());
+        cache.users.write().await.entry(&self.member).or_insert_with(|| self.member.user.clone());
     }
 }
 
 /// Sent when a user is removed from a guild (leave/kick/ban).
 ///
-/// [GUILD_MEMBERS](crate::shard::intents::Intents::GUILD_MEMBERS) is required to receive this.
+/// [`GUILD_MEMBERS`](crate::shard::intents::Intents::GUILD_MEMBERS) is required to receive this.
 #[derive(Deserialize, Debug, Clone)]
 pub struct GuildMemberRemove {
     /// the id of the guild
@@ -670,7 +682,7 @@ impl Update for GuildMemberRemove {
 
 /// Sent when a guild member is updated. This will also fire when the user of a guild member changes.
 ///
-/// [GUILD_MEMBERS](crate::shard::intents::Intents::GUILD_MEMBERS) is required to receive this.
+/// [`GUILD_MEMBERS`](crate::shard::intents::Intents::GUILD_MEMBERS) is required to receive this.
 #[derive(Deserialize, Debug, Clone)]
 pub struct GuildMemberUpdate {
     /// the id of the guild
@@ -749,7 +761,7 @@ impl Update for GuildMembersChunk {
             if let Some(cached) = cached {
                 *cached = member.clone();
             }
-            cache.users.write().await.entry(member).or_insert(member.user.clone());
+            cache.users.write().await.entry(member).or_insert_with(|| member.user.clone());
         }
         if let Some(guild) = cache.guilds.write().await.get_mut(self.guild_id) {
             guild.members.extend(self.members.clone());
@@ -981,10 +993,10 @@ impl Update for MessageUpdate {
         let mut guard = cache.messages.write().await;
         match guard.entry(self.id) {
             Entry::Occupied(mut e) => {
-                let message = e.get_mut();
                 fn update<T>(original: &mut T, new: Option<T>) {
                     if let Some(new) = new { *original = new; }
                 }
+                let message = e.get_mut();
                 let s = self.clone();
                 update(&mut message.guild_id, s.guild_id);
                 update(&mut message.author, s.author);
@@ -1088,7 +1100,7 @@ impl Update for MessageDeleteBulk {
     async fn update(&self, cache: &Cache) {
         let Self { ids, channel_id, guild_id } = self;
         let (channel_id, guild_id) = (*channel_id, *guild_id);
-        tokio::stream::iter(ids.into_iter().copied())
+        tokio::stream::iter(ids.iter().copied())
             .map(|id| MessageDelete { id, channel_id, guild_id })
             .for_each(|delete| async move { delete.update(cache).await })
             .await;
@@ -1117,9 +1129,9 @@ impl Update for ReactionAdd {
         if let Some(message) = cache.messages.write().await.get_mut(self.message_id) {
             let idx = message.reactions.iter()
                 .position(|reaction| reaction.emoji == self.emoji);
-            let me = cache.user.read().await.as_ref()
-                .map(|me| me.id == self.user_id)
-                .unwrap_or(false);
+            let me = cache.user.read().await
+                .as_ref()
+                .map_or(false, |me| me.id == self.user_id);
             if let Some(idx) = idx {
                 let reaction = &mut message.reactions[idx];
                 reaction.count += 1;
@@ -1155,9 +1167,9 @@ impl Update for ReactionRemove {
         if let Some(message) = cache.messages.write().await.get_mut(self.message_id) {
             let idx = message.reactions.iter()
                 .position(|reaction| reaction.emoji == self.emoji);
-            let me = cache.user.read().await.as_ref()
-                .map(|me| me.id == self.user_id)
-                .unwrap_or(false);
+            let me = cache.user.read().await
+                .as_ref()
+                .map_or(false, |me| me.id == self.user_id);
             if let Some(idx) = idx {
                 let reaction = &mut message.reactions[idx];
                 reaction.count -= 1;
@@ -1259,7 +1271,7 @@ impl Update for ReactionRemoveEmoji {
 /// A user's presence is their current state on a guild. This event is sent when a user's presence
 /// or info, such as name or avatar, is updated.
 ///
-/// [GUILD_PRESENCES](crate::shard::intents::Intents::GUILD_PRESENCES) is required to receive this.
+/// [`GUILD_PRESENCES`](crate::shard::intents::Intents::GUILD_PRESENCES) is required to receive this.
 ///
 /// The user object within this event can be partial, the only field which must be sent is the `id`
 /// field, everything else is optional. Along with this limitation, no fields are required, and the

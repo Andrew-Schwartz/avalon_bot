@@ -3,11 +3,8 @@ use std::collections::HashSet;
 use itertools::Itertools;
 use strum::{EnumCount, IntoEnumIterator};
 
-use discorsd::http::model::interaction::*;
-
-use crate::Bot;
 use crate::avalon::characters::Character;
-use crate::commands::{InteractionUse, NotUsed, SlashCommand, Used};
+use crate::Bot;
 
 use super::*;
 
@@ -15,7 +12,7 @@ use super::*;
 pub struct RolesCommand(pub Vec<Character>);
 
 #[async_trait]
-impl SlashCommand for RolesCommand {
+impl SlashCommand<Bot> for RolesCommand {
     fn name(&self) -> &'static str { "roles" }
 
     fn command(&self) -> Command {
@@ -24,8 +21,8 @@ impl SlashCommand for RolesCommand {
             let choices = Character::iter()
                 .skip(2)
                 .filter(|c| roles.contains(c) == already_present)
-                .map(|c| c.name())
-                .map(|name| CommandChoice::new_str(name))
+                .map(Character::name)
+                .map(CommandChoice::new_str)
                 .collect_vec();
             let num_choices = if already_present {
                 roles.len()
@@ -34,12 +31,12 @@ impl SlashCommand for RolesCommand {
             };
             (0..num_choices).map(|i| {
                 match i {
-                    0 => CommandDataOption::new_str("role", first).required(),
-                    1 => CommandDataOption::new_str("role1", addl),
-                    2 => CommandDataOption::new_str("role2", addl),
-                    3 => CommandDataOption::new_str("role3", addl),
-                    4 => CommandDataOption::new_str("role4", addl),
-                    5 => CommandDataOption::new_str("role5", addl),
+                    0 => CommandDataOption::new_str("role1", first).required(),
+                    1 => CommandDataOption::new_str("role2", addl),
+                    2 => CommandDataOption::new_str("role3", addl),
+                    3 => CommandDataOption::new_str("role4", addl),
+                    4 => CommandDataOption::new_str("role5", addl),
+                    5 => CommandDataOption::new_str("role6", addl),
                     _ => unreachable!("harumph"),
                 }
             })
@@ -69,20 +66,20 @@ impl SlashCommand for RolesCommand {
         }
         self.make(
             "Pick which roles will be available in the next game of Avalon.",
-            TopLevelOption::Commands(commands)
+            TopLevelOption::Commands(commands),
         )
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<NotUsed>,
+                 interaction: InteractionUse<Unused>,
                  data: ApplicationCommandInteractionData,
     ) -> Result<InteractionUse<Used>, BotError> {
         let mut guard = state.bot.games.write().await;
         let game = guard.get_mut(&interaction.guild).unwrap();
         let config = game.config_mut();
         let roles = &mut config.roles;
-        let changed = match RoleData::from(data) {
+        let changed = match RoleData::from_data(data, interaction.guild)? {
             RoleData::Add(add) => {
                 let new = add.into_iter()
                     .filter(|c| !roles.contains(c))
@@ -106,7 +103,7 @@ impl SlashCommand for RolesCommand {
             }
         };
         if changed {
-            let guard = state.bot.commands.read().await;
+            let guard = state.commands.read().await;
             let mut commands = guard.get(&interaction.guild).unwrap().write().await;
             let roles_cmd = commands.get_mut(&interaction.command)
                 .unwrap()
@@ -124,32 +121,9 @@ impl SlashCommand for RolesCommand {
     }
 }
 
-#[derive(Debug)]
+#[derive(CommandData)]
 enum RoleData {
-    Add(HashSet<Character>),
-    Remove(HashSet<Character>),
+    Add(#[command(vararg = "role", default = "HashSet::new")] HashSet<Character>),
+    Remove(#[command(vararg = "role", default = "HashSet::new")] HashSet<Character>),
     Clear,
-}
-
-impl From<ApplicationCommandInteractionData> for RoleData {
-    fn from(mut data: ApplicationCommandInteractionData) -> Self {
-        let ApplicationCommandInteractionDataOption {
-            name,
-            value: _value,
-            options
-        } = data.options.remove(0);
-        let get_roles = || options.into_iter()
-            .map(|data| data.value
-                .unwrap()
-                .unwrap_string()
-                .parse()
-                .unwrap()
-            ).collect();
-        match name.as_str() {
-            "clear" => Self::Clear,
-            "add" => Self::Add(get_roles()),
-            "remove" => Self::Remove(get_roles()),
-            bad => unreachable!("should not receive {}", bad)
-        }
-    }
 }

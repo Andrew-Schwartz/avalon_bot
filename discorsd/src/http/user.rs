@@ -4,16 +4,28 @@ use serde_json::json;
 use crate::BotState;
 use crate::http::{ClientResult, DiscordClient};
 use crate::http::channel::{ChannelExt, CreateMessage};
-use crate::http::model::{DmChannel, Id, Message, User, UserId};
 use crate::http::routes::Route::*;
+
+pub use crate::model::ids::*;
+use crate::model::user::User;
+use crate::model::channel::DmChannel;
+use crate::model::message::Message;
 
 impl DiscordClient {
     /// Returns a user object for a given user ID
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `User`
     pub async fn get_user(&self, user: UserId) -> ClientResult<User> {
         self.get(GetUser(user)).await
     }
 
     /// Create a new DM channel with a user
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `DmChannel`
     pub async fn create_dm(&self, user: UserId) -> ClientResult<DmChannel> {
         self.post(CreateDm, json!({ "recipient_id": user })).await
     }
@@ -22,7 +34,7 @@ impl DiscordClient {
 #[async_trait]
 pub trait UserExt: Id<Id=UserId> + Sized {
     async fn dm<B, State>(&self, state: State) -> ClientResult<DmChannel>
-        where B: Send + Sync,
+        where B: Send + Sync + 'static,
               State: AsRef<BotState<B>> + Send,
     {
         let state = state.as_ref();
@@ -48,7 +60,7 @@ pub trait UserExt: Id<Id=UserId> + Sized {
         state: State,
         message: Msg,
     ) -> ClientResult<Message> where
-        B: Send + Sync,
+        B: Send + Sync + 'static,
         State: AsRef<BotState<B>> + Send + Sync,
     Msg: Into<CreateMessage> + Send + Sync,
     {

@@ -27,7 +27,7 @@ macro_rules! serde_bitflag {
         impl<'de> serde::de::Deserialize<'de> for $bitflag {
             fn deserialize<D: serde::de::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
                 let bits = <$repr>::deserialize(d)?;
-                <$bitflag>::from_bits(bits)
+                Self::from_bits(bits)
                     .ok_or(serde::de::Error::custom(format!("Unexpected flags value: {}", bits)))
             }
         }

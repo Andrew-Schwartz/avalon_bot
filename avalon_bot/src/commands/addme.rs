@@ -1,65 +1,60 @@
 use std::sync::Arc;
 
+use command_data_derive::CommandData;
 use discorsd::{async_trait, BotState};
+use discorsd::commands::*;
+use discorsd::commands::SlashCommandExt;
+use discorsd::errors::BotError;
 use discorsd::http::ClientResult;
-use discorsd::http::model::Id;
-use discorsd::http::model::interaction::{self, *};
+use discorsd::model::ids::*;
 
 use crate::Bot;
-use crate::commands::{InteractionUse, NotUsed, SlashCommand, SlashCommandExt, Used};
-
-use super::GameType;
-use discorsd::errors::BotError;
+use crate::games::GameType;
 
 #[derive(Clone, Debug)]
 pub struct AddMeCommand;
 
 #[async_trait]
-impl SlashCommand for AddMeCommand {
+impl SlashCommand<Bot> for AddMeCommand {
     fn name(&self) -> &'static str { "addme" }
 
     fn command(&self) -> Command {
         self.make(
             "Add yourself to a game",
-            TopLevelOption::Data(vec![
-                DataOption::String(CommandDataOption::new_str(
-                    "game",
-                    "The game to add you to, or Avalon if not specified",
-                ).choices(vec![
-                    CommandChoice::new_str("Avalon"),
-                    CommandChoice::new_str("Hangman"),
-                    CommandChoice::new("Exploding Kittens", "Kittens"),
-                ]))
-            ]),
+            AddMeData::args(),
         )
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<NotUsed>,
+                 interaction: InteractionUse<Unused>,
                  data: ApplicationCommandInteractionData,
     ) -> Result<InteractionUse<Used>, BotError> {
-        let game = GameType::from(data);
-        match game {
-            GameType::Avalon => avalon(&*state, interaction).await,
+        let data = AddMeData::from_data(data, interaction.guild)?;
+        let id = data.player.unwrap_or_else(|| interaction.member.id());
+        match data.game {
+            GameType::Avalon => avalon(&*state, interaction, id).await,
             _ => {
-                interaction.respond(
-                    &state.client,
-                    interaction::message(|m|
-                        m.content(format!(r#""added" to {:?}"#, game))
-                    ).with_source(),
-                ).await
+                interaction.respond_source(&state.client, format!(r#""added" to {:?}"#, data.game)).await
             }
         }.map_err(|e| e.into())
     }
 }
 
+#[derive(CommandData)]
+struct AddMeData {
+    #[command(default, choices, desc = "The game to add you to, or Avalon if not specified")]
+    game: GameType,
+    #[command(desc = "Forcibly add someone else to the game")]
+    player: Option<UserId>,
+}
+
 async fn avalon(
     state: &BotState<Bot>,
-    interaction: InteractionUse<NotUsed>,
+    interaction: InteractionUse<Unused>,
+    user: UserId,
 ) -> ClientResult<InteractionUse<Used>> {
     let guild = interaction.guild;
-    let user = interaction.member.id();
 
     let mut games = state.bot.games.write().await;
     let game = games.entry(guild).or_default();
@@ -76,13 +71,13 @@ async fn avalon(
         } else {
             // add player
             if config.players.len() == 10 {
-                return interaction.respond(&state.client, interaction::message(|m| {
+                return interaction.respond(&state.client, message(|m| {
                     m.content("There can be a maximum of 10 people playing Avalon");
                     m.ephemeral();
-                }).without_source()).await;
+                })).await;
             } else {
                 if interaction.channel == state.bot.config.channel && user == state.bot.config.owner {
-                    for _ in 0..(5usize.saturating_sub(config.players.len())) {
+                    for _ in 0..(5_usize.saturating_sub(config.players.len())) {
                         config.players.push(interaction.member.clone());
                     };
                 } else {
@@ -93,7 +88,7 @@ async fn avalon(
         }
     }
 
-    let guard = state.bot.commands.read().await;
+    let guard = state.commands.read().await;
     let mut commands = guard.get(&interaction.guild).unwrap().write().await;
     config.start_command(state, &mut commands, config.startable(), guild).await?;
     config.update_embed(state, interaction).await

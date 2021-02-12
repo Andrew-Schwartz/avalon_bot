@@ -2,15 +2,22 @@ use std::collections::HashSet;
 
 use serde::Serialize;
 
+use crate::model::ids::*;
 use crate::http::{ClientResult, DiscordClient};
 use crate::http::channel::{RichEmbed, MessageAttachment};
-use crate::http::model::{AllowedMentions, ApplicationCommand, ApplicationId, Command, CommandId, GuildId, InteractionId, InteractionMessage, InteractionResponse, Message, MessageId, TopLevelOption};
 use crate::http::routes::Route::*;
 
-pub use super::model::interaction::message;
+pub use crate::model::interaction::message;
+use std::borrow::Cow;
+use crate::model::message::{AllowedMentions, Message};
+use crate::model::interaction::{ApplicationCommand, Command, TopLevelOption, InteractionResponse, InteractionMessage};
 
 impl DiscordClient {
     /// Fetch all of the global commands for your application.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `Vec<ApplicationCommand>`
     pub async fn get_global_commands(&self, application: ApplicationId) -> ClientResult<Vec<ApplicationCommand>> {
         self.get(GetGlobalCommands(application)).await
     }
@@ -19,6 +26,10 @@ impl DiscordClient {
     ///
     /// Creating a command with the same name as an existing command for your application will
     /// overwrite the old command.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `ApplicationCommand`
     pub async fn create_global_command(
         &self,
         application: ApplicationId,
@@ -28,6 +39,10 @@ impl DiscordClient {
     }
 
     /// Edit a global command. Updates will be available in all guilds after 1 hour.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `ApplicationCommand`
     pub async fn edit_global_command<'a>(
         &self,
         application: ApplicationId,
@@ -47,6 +62,10 @@ impl DiscordClient {
     }
 
     /// Deletes a global command.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
     pub async fn delete_global_command(
         &self,
         application: ApplicationId,
@@ -56,6 +75,10 @@ impl DiscordClient {
     }
 
     /// Fetch all of the guild commands for your application for a specific guild.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `Vec<ApplicationCommand>`
     pub async fn get_guild_commands(&self, application: ApplicationId, guild: GuildId) -> ClientResult<Vec<ApplicationCommand>> {
         self.get(GetGuildCommands(application, guild)).await
     }
@@ -64,6 +87,10 @@ impl DiscordClient {
     ///
     /// Creating a command with the same name as an existing command for your application will
     /// overwrite the old command.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `ApplicationCommand`
     pub async fn create_guild_command(
         &self,
         application: ApplicationId,
@@ -74,6 +101,10 @@ impl DiscordClient {
     }
 
     /// Edit a guild command. Updates for guild commands will be available immediately.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `ApplicationCommand`
     pub async fn edit_guild_command<'a>(
         &self,
         application: ApplicationId,
@@ -94,6 +125,10 @@ impl DiscordClient {
     }
 
     /// Delete a guild command.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
     pub async fn delete_guild_command(
         &self,
         application: ApplicationId,
@@ -104,6 +139,10 @@ impl DiscordClient {
     }
 
     /// Create a response to an Interaction from the gateway.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
     pub async fn create_interaction_response(
         &self,
         interaction: InteractionId,
@@ -118,6 +157,10 @@ impl DiscordClient {
 
     // todo link to EditWebhookMessage?
     /// Edits the initial Interaction response. Functions the same as Edit Webhook Message.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
     pub async fn edit_interaction_response(
         &self,
         application: ApplicationId,
@@ -131,6 +174,10 @@ impl DiscordClient {
     }
 
     /// Deletes the initial Interaction response.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
     pub async fn delete_interaction_response(
         &self,
         application: ApplicationId,
@@ -141,6 +188,10 @@ impl DiscordClient {
 
     // todo link
     /// Create a followup message for an Interaction. Functions the same as Execute Webhook
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `Message`
     pub async fn create_followup_message(
         &self,
         application: ApplicationId,
@@ -152,6 +203,10 @@ impl DiscordClient {
 
     // todo link
     /// Edits a followup message for an Interaction. Functions the same as Edit Webhook Message.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
     pub async fn edit_followup_message(
         &self,
         application: ApplicationId,
@@ -166,6 +221,10 @@ impl DiscordClient {
     }
 
     /// Deletes a followup message for an Interaction.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
     pub async fn delete_followup_message(
         &self,
         application: ApplicationId,
@@ -191,11 +250,11 @@ struct Edit<'a> {
 #[non_exhaustive]
 pub struct WebhookMessage {
     /// the message contents (up to 2000 characters)
-    pub content: String,
+    pub content: Cow<'static, str>,
     /// override the default username of the webhook
-    pub username: Option<String>,
+    pub username: Option<Cow<'static, str>>,
     /// override the default avatar of the webhook
-    pub avatar_url: Option<String>,
+    pub avatar_url: Option<Cow<'static, str>>,
     /// true if this is a TTS message
     pub tts: bool,
     /// the contents of the file being sent
@@ -218,21 +277,28 @@ impl WebhookMessage {
         message
     }
 
-    pub fn content<S: ToString>(&mut self, content: S) -> &mut Self {
-        self.content = content.to_string();
+    pub fn content<S: Into<Cow<'static, str>>>(&mut self, content: S) -> &mut Self {
+        self.content = content.into();
         self
     }
 
-    pub fn username<S: ToString>(&mut self, username: S) -> &mut Self {
-        self.username = Some(username.to_string());
+    pub fn username<S: Into<Cow<'static, str>>>(&mut self, username: S) -> &mut Self {
+        self.username = Some(username.into());
         self
     }
 
-    pub fn avatar_url<S: ToString>(&mut self, avatar_url: S) -> &mut Self {
-        self.avatar_url = Some(avatar_url.to_string());
+    pub fn avatar_url<S: Into<Cow<'static, str>>>(&mut self, avatar_url: S) -> &mut Self {
+        self.avatar_url = Some(avatar_url.into());
         self
     }
 
+    // todo error, don't panic
+    /// add [n](n) embed to the [WebhookMessage](WebhookMessage)
+    ///
+    /// # Panics
+    ///
+    /// Panics if adding [n](n) embeds will result in this [WebhookMessage](WebhookMessage) having
+    /// more than 10 embeds.
     pub fn embeds<F: FnMut(usize, &mut RichEmbed)>(&mut self, n: usize, mut builder: F) -> &mut Self {
         if self.embeds.len() + n > 10 {
             panic!("can't send more than 10 embeds");
@@ -246,7 +312,9 @@ impl WebhookMessage {
 
     /// add an embed to the [WebhookMessage](WebhookMessage)
     ///
-    /// panics if this message already has 10 or more embeds
+    /// # Panics
+    ///
+    /// Panics if this message already has 10 or more embeds
     pub fn embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) -> &mut Self {
         if self.embeds.len() >= 10 {
             panic!("can't send more than 10 embeds");
@@ -257,6 +325,8 @@ impl WebhookMessage {
     }
 
     /// add an embed to the [WebhookMessage](WebhookMessage)
+    ///
+    /// # Errors
     ///
     /// Returns `Err(builder)` if this message already has 10 or more embeds
     pub fn try_embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) -> std::result::Result<&mut Self, F> {

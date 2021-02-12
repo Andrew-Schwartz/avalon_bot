@@ -2,7 +2,10 @@ use std::collections::HashSet;
 
 use tokio::sync::Mutex;
 
-use discorsd::http::model::{Color, EmbedField, Emoji, GuildId, ChannelMessageId};
+use discorsd::errors::AvalonError;
+use discorsd::model::emoji::Emoji;
+use discorsd::model::ids::*;
+use discorsd::model::message::{ChannelMessageId, Color, EmbedField};
 use discorsd::shard::dispatch::{ReactionType::*, ReactionUpdate};
 use discorsd::UserMarkupExt;
 
@@ -10,7 +13,6 @@ use crate::create_command;
 use crate::utils::IterExt;
 
 use super::*;
-use discorsd::errors::AvalonError;
 
 #[derive(Clone, Debug)]
 pub struct PartyVote {
@@ -24,7 +26,7 @@ impl PartyVote {
 }
 
 #[async_trait]
-impl ReactionCommand for PartyVote {
+impl ReactionCommand<Bot> for PartyVote {
     fn applies(&self, reaction: &ReactionUpdate) -> bool {
         self.messages.contains(&(reaction.message_id, reaction.user_id))
     }
@@ -70,7 +72,7 @@ impl ReactionCommand for PartyVote {
                         let board = game.board_image();
                         match game.rejected_quests {
                             5 => {
-                                let guard = state.bot.commands.read().await;
+                                let guard = state.commands.read().await;
                                 let mut commands = guard.get(&guild).unwrap()
                                     .write().await;
                                 return avalon.game_over(&state, guild, &mut commands, embed(|e| {
@@ -88,7 +90,7 @@ impl ReactionCommand for PartyVote {
                                     e.fields(vote_summary);
                                     e.image(board);
                                 })).await?;
-                                let guard = state.bot.commands.read().await;
+                                let guard = state.commands.read().await;
                                 let mut commands = guard.get(&guild).unwrap()
                                     .write().await;
                                 game.start_round(&state, guild, &mut commands).await?;
@@ -128,7 +130,7 @@ impl ReactionCommand for PartyVote {
                                 // build the vote command as we go so we don't miss any reactions
                                 {
                                     let mut idx_guard = command_idx.lock().await;
-                                    let mut rxn_commands = state.bot.reaction_commands.write().await;
+                                    let mut rxn_commands = state.reaction_commands.write().await;
                                     if let Some(idx) = *idx_guard {
                                         let cmd = rxn_commands.get_mut(idx)
                                             .ok_or(AvalonError::Stopped)?;
@@ -167,15 +169,15 @@ impl ReactionCommand for PartyVote {
                         //     guild: self.guild,
                         //     messages: votes.keys().copied().collect(),
                         // };
-                        // state.bot.reaction_commands.write().await
+                        // state.reaction_commands.write().await
                         //     .push(Box::new(quest_vote));
-                        let guard = state.bot.commands.read().await;
+                        let guard = state.commands.read().await;
                         let mut commands = guard.get(&guild).unwrap()
                             .write().await;
                         create_command(&*state, guild, &mut commands, VoteStatus).await?;
                         AvalonState::Questing(votes)
                     };
-                    state.bot.reaction_commands.write().await
+                    state.reaction_commands.write().await
                         .retain(|rc|
                             !matches!(
                                 rc.downcast_ref::<PartyVote>(),
@@ -204,7 +206,7 @@ impl QuestVote {
 }
 
 #[async_trait]
-impl ReactionCommand for QuestVote {
+impl ReactionCommand<Bot> for QuestVote {
     fn applies(&self, reaction: &ReactionUpdate) -> bool {
         self.messages.contains(&(reaction.message_id, reaction.user_id))
     }
@@ -261,12 +263,12 @@ impl ReactionCommand for QuestVote {
                         })).await?
                     };
                     // let _ = game.pin(&state, msg).await;
-                    let guard = state.bot.commands.read().await;
+                    let guard = state.commands.read().await;
                     let mut commands = guard.get(&self.guild).unwrap()
                         .write().await;
                     avalon.end_round(&state, self.guild, &mut commands).await?;
 
-                    state.bot.reaction_commands.write().await
+                    state.reaction_commands.write().await
                         .retain(|rc|
                             !matches!(
                                 rc.downcast_ref::<QuestVote>(),
@@ -286,7 +288,7 @@ impl ReactionCommand for QuestVote {
 pub struct VoteStatus;
 
 #[async_trait]
-impl SlashCommand for VoteStatus {
+impl SlashCommand<Bot> for VoteStatus {
     fn name(&self) -> &'static str { "vote_status" }
 
     fn command(&self) -> Command {
@@ -295,7 +297,7 @@ impl SlashCommand for VoteStatus {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<NotUsed>,
+                 interaction: InteractionUse<Unused>,
                  _data: ApplicationCommandInteractionData,
     ) -> Result<InteractionUse<Used>, BotError> {
         let guard = state.bot.games.read().await;
@@ -308,13 +310,12 @@ impl SlashCommand for VoteStatus {
                     .collect_vec();
                 let list = not_voted.iter()
                     .list_grammatically(|((_, user), _)| user.ping_nick());
-                interaction.respond(&state.client, interaction::message(|m|
-                    match not_voted.len() {
-                        0 => m.content("no one"),
-                        1 => m.content(format!("{} has not voted", list)),
-                        _ => m.content(format!("{} have not voted", list)),
-                    }
-                ).with_source()).await.map_err(|e| e.into())
+                interaction.respond_source(&state.client, match not_voted.len() {
+                    0 => "no one".to_string(),
+                    1 => format!("{} has not voted", list),
+                    _ => format!("{} have not voted", list),
+                },
+                ).await.map_err(|e| e.into())
             }
             _ => {
                 unreachable!("state: {:?}", game.state)

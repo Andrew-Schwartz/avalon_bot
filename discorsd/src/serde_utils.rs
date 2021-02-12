@@ -68,8 +68,8 @@ impl std::error::Error for SpanError {}
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::Serde(serde) => write!(f, "{}", serde),
-            Error::Span(span) => write!(f, "{}", span),
+            Self::Serde(serde) => write!(f, "{}", serde),
+            Self::Span(span) => write!(f, "{}", span),
         }
     }
 }
@@ -95,8 +95,14 @@ impl serde::de::Error for Error {
 //     }
 // }
 
+/// A wrapper for [`serde_json::from_str`](serde_json::from_str) that wraps parsing errors with
+/// information showing where in [`s`](s) the error occurred.
+///
+/// # Errors
+///
+/// If [`serde_json::from_str`](serde_json::from_str) errors, and with more information
 pub fn nice_from_str<'a, T: Deserialize<'a>>(s: &'a str) -> Result<T, Error> {
-    match serde_json::from_str(&s) {
+    match serde_json::from_str(s) {
         Ok(t) => Ok(t),
         Err(e) => {
             match e.classify() {

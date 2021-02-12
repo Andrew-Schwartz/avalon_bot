@@ -2,5 +2,5 @@
 members = [
 	"discorsd",
 	"avalon_bot",
-	"make_boards"
+	"command_data_derive"
 ]

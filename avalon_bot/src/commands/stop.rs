@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
 use discorsd::{BotState, http::ClientResult};
+use discorsd::commands::*;
+use discorsd::errors::BotError;
 use discorsd::http::channel::{ChannelExt, embed};
-use discorsd::http::model::{ApplicationCommandInteractionData, Color, Command, GuildId, Id, MessageId, TopLevelOption, UserId};
+use discorsd::model::ids::*;
+use discorsd::model::message::Color;
 use discorsd::shard::dispatch::{ReactionType, ReactionUpdate};
 
 use crate::{async_trait, Bot, create_command};
-use crate::commands::{GameType, InteractionUse, NotUsed, ReactionCommand, SlashCommand, SlashCommandExt, Used};
-use discorsd::errors::BotError;
+use crate::avalon::AvalonPlayer;
+use crate::games::GameType;
 
 #[derive(Debug, Copy, Clone)]
 pub struct StopCommand(pub GameType);
@@ -18,7 +21,7 @@ impl StopCommand {
 }
 
 #[async_trait]
-impl SlashCommand for StopCommand {
+impl SlashCommand<Bot> for StopCommand {
     fn name(&self) -> &'static str { "stop" }
 
     fn command(&self) -> Command {
@@ -30,14 +33,14 @@ impl SlashCommand for StopCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<NotUsed>,
+                 interaction: InteractionUse<Unused>,
                  _: ApplicationCommandInteractionData,
     ) -> Result<InteractionUse<Used>, BotError> {
         let used = interaction.ack_source(&state).await?;
         let message = used.channel.send(&state, format!(
-                "React {} to confirm stopping the game or {} to cancel this.\
+            "React {} to confirm stopping the game or {} to cancel this.\
                 \nNote: 2 other players must confirm for the game to be stopped.",
-                Self::CONFIRM, Self::CANCEL
+            Self::CONFIRM, Self::CANCEL
         )).await?;
         let id = message.id;
         let s = Arc::clone(&state);
@@ -51,14 +54,14 @@ impl SlashCommand for StopCommand {
                 .get(&used.guild)
                 .unwrap().game_ref()
                 .players.iter()
-                .map(|p| p.id())
+                .map(AvalonPlayer::id)
                 .collect();
-            let mut reaction_commands = state.bot.reaction_commands.write().await;
+            let mut reaction_commands = state.reaction_commands.write().await;
             let vote = StopVoteCommand(id, used.guild, players, used.member.id(), self.0);
             reaction_commands.push(Box::new(vote));
         }
         {
-            let guard = state.bot.commands.read().await;
+            let guard = state.commands.read().await;
             let mut commands = guard.get(&used.guild).unwrap()
                 .write().await;
             state.client.delete_guild_command(
@@ -76,7 +79,7 @@ impl SlashCommand for StopCommand {
 pub struct StopVoteCommand(MessageId, pub GuildId, Vec<UserId>, UserId, GameType);
 
 #[async_trait]
-impl ReactionCommand for StopVoteCommand {
+impl ReactionCommand<Bot> for StopVoteCommand {
     fn applies(&self, reaction: &ReactionUpdate) -> bool {
         reaction.message_id == self.0 &&
             self.2.contains(&reaction.user_id)
@@ -106,7 +109,7 @@ impl ReactionCommand for StopVoteCommand {
             _ => {}
         }
         if *confirms >= 2 {
-            let guard = state.bot.commands.read().await;
+            let guard = state.commands.read().await;
             let mut commands = guard.get(&self.1).unwrap()
                 .write().await;
             state.client.delete_message(reaction.channel_id, self.0).await?;
@@ -118,13 +121,13 @@ impl ReactionCommand for StopVoteCommand {
             state.client.delete_message(reaction.channel_id, self.0).await?;
             game.stop_votes = (0, 0);
             {
-                let mut reaction_commands = state.bot.reaction_commands.write().await;
+                let mut reaction_commands = state.reaction_commands.write().await;
                 reaction_commands.retain(|rc|
                     !matches!(rc.downcast_ref::<StopVoteCommand>(), Some(also_self) if also_self == self)
                 );
             }
             {
-                let commands = state.bot.commands.read().await;
+                let commands = state.commands.read().await;
                 let mut commands = commands.get(&self.1).unwrap()
                     .write().await;
                 create_command(&*state, self.1, &mut commands, StopCommand(self.4)).await?;

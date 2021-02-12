@@ -3,21 +3,25 @@ use std::fmt::{self, Debug};
 use std::sync::Arc;
 
 use itertools::Itertools;
+use log::warn;
 use rand::prelude::SliceRandom;
 
+pub use command_data_derive::*;
 pub use discorsd::{async_trait, BotState, errors::BotError};
+pub use discorsd::commands::*;
 use discorsd::http::channel::{ChannelExt, embed, embed_with, RichEmbed};
 use discorsd::http::ClientResult;
-use discorsd::http::model::{ChannelId, Color, CommandId, GuildId, GuildMember, Id, MessageId, UserId};
-pub use discorsd::http::model::interaction::{self, *};
 use discorsd::http::user::UserExt;
+pub use discorsd::model::{commands::*, interaction::*};
+use discorsd::model::guild::GuildMember;
+use discorsd::model::ids::*;
 use discorsd::UserMarkupExt;
 use game::{AvalonGame, AvalonState};
 
-pub use crate::{Bot, commands::*};
 use crate::avalon::characters::Character::{self, LoyalServant, Merlin, MinionOfMordred};
 use crate::avalon::characters::Loyalty::Evil;
 use crate::avalon::config::AvalonConfig;
+pub use crate::Bot;
 
 pub mod characters;
 pub mod quest;
@@ -140,7 +144,7 @@ impl Avalon {
         &mut self,
         state: &BotState<Bot>,
         guild: GuildId,
-        commands: &mut HashMap<CommandId, Box<dyn SlashCommand>>,
+        commands: &mut HashMap<CommandId, Box<dyn SlashCommand<Bot>>>,
         embed: RichEmbed,
     ) -> ClientResult<()> {
         let game = self.game_ref();
@@ -163,12 +167,14 @@ impl Avalon {
             }
         }
         for pin in &game.pins {
-            let _ = pin.unpin(&state).await;
+            if let Err(e) = pin.unpin(&state).await {
+                warn!("Failed to unpin: {}", e.display_error(state).await)
+            }
         }
 
         *self = Self::default();
 
-        let rcs = state.bot.reaction_commands.write().await;
+        let rcs = state.reaction_commands.write().await;
         state.bot.reset_guild_commands(&*state, commands, rcs, guild).await;
         Ok(())
     }

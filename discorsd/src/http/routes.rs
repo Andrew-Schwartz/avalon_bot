@@ -1,8 +1,9 @@
 use Route::*;
 
 use crate::cache::Cache;
-use crate::http::model::{Channel, Emoji};
-use crate::http::model::ids::*;
+use crate::model::ids::*;
+use crate::model::emoji::Emoji;
+use crate::model::channel::Channel;
 
 #[derive(Debug, Clone)]
 pub enum Route {
@@ -112,14 +113,10 @@ impl Route {
             format!("{}{}", guild, channel)
         };
         let user = |user: UserId| async move {
-            cache.user(user).await
-                .map(|u| u.username)
-                .unwrap_or_else(|| user.to_string())
+            cache.user(user).await.map_or_else(|| user.to_string(), |u| u.username)
         };
         let command = |command: CommandId| async move {
-            cache.command(command).await
-                .map(|c| c.name)
-                .unwrap_or_else(|| command.to_string())
+            cache.command(command).await.map_or_else(|| command.to_string(), |c| c.name)
         };
         let guild = |guild: GuildId| async move {
             cache.guild(guild).await
@@ -127,54 +124,55 @@ impl Route {
                 .unwrap_or_else(|| guild.to_string())
         };
 
+        #[allow(clippy::useless_format)]
         match self {
-            GetGateway => String::from("Get Gateway"),
-            ApplicationInfo => String::from("Get Application Info"),
-            &GetChannel(c) => format!("Get Channel `{}`", channel(c).await),
-            &TriggerTyping(c) => format!("Trigger Typing `{}`", channel(c).await),
-            &GetPinnedMessages(c) => format!("Get Pinned Messages `{}`", channel(c).await),
-            &PinMessage(c, m) => format!("Pin Message `{}/{}`", channel(c).await, m),
-            &UnpinMessage(c, m) => format!("Unpin Message `{}/{}`", channel(c).await, m),
-            &GetMessage(c, m) => format!("Get Message `{}/{}`", channel(c).await, m),
-            &PostMessage(c) => format!("Post Message `{}`", channel(c).await),
-            &EditMessage(c, m) => format!("Edit Message `{}/{}`", channel(c).await, m),
-            &DeleteMessage(c, m) => format!("Delete Message `{}/{}`", channel(c).await, m),
+            GetGateway => String::from("GetGateway"),
+            ApplicationInfo => String::from("GetApplicationInfo"),
+            &GetChannel(c) => format!("GetChannel({})", channel(c).await),
+            &TriggerTyping(c) => format!("TriggerTyping({})", channel(c).await),
+            &GetPinnedMessages(c) => format!("GetPinnedMessages({})", channel(c).await),
+            &PinMessage(c, m) => format!("PinMessage({}/{})", channel(c).await, m),
+            &UnpinMessage(c, m) => format!("UnpinMessage({}/{})", channel(c).await, m),
+            &GetMessage(c, m) => format!("GetMessage({}/{})", channel(c).await, m),
+            &PostMessage(c) => format!("PostMessage({})", channel(c).await),
+            &EditMessage(c, m) => format!("EditMessage({}/{})", channel(c).await, m),
+            &DeleteMessage(c, m) => format!("DeleteMessage({}/{})", channel(c).await, m),
             CreateReaction(c, m, e) => format!(
-                "Create Reaction `{}/{}/{}`",
+                "CreateReaction({}/{}/{})",
                 channel(*c).await, m, e.as_reaction()
             ),
             DeleteOwnReaction(c, m, e) => format!(
-                "Delete Own Reaction `{}/{}/{}`",
+                "DeleteOwnReaction({}/{}/{})",
                 channel(*c).await, m, e.as_reaction()
             ),
             DeleteUserReaction(c, m, e, u) => format!(
-                "Delete User Reaction `{}/{}/{}/{}`",
+                "DeleteUserReaction({}/{}/{}/{})",
                 channel(*c).await, m, e.as_reaction(), user(*u).await
             ),
             // don't display ApplicationId because it'll always be the same
-            GetGlobalCommands(_) => format!("Get Global Commands"),
-            CreateGlobalCommand(_) => format!("Create Global Command"),
-            &EditGlobalCommand(_, c) => format!("Edit Global Command `{}`", command(c).await),
-            &DeleteGlobalCommand(_, c) => format!("Delete Global Command `{}`", command(c).await),
-            &GetGuildCommands(_, g) => format!("Get Guild Commands `{}`", guild(g).await),
-            &CreateGuildCommand(_, g) => format!("Create Guild Command `{}`", guild(g).await),
+            GetGlobalCommands(_) => format!("GetGlobalCommands"),
+            CreateGlobalCommand(_) => format!("CreateGlobalCommand"),
+            &EditGlobalCommand(_, c) => format!("EditGlobalCommand({})", command(c).await),
+            &DeleteGlobalCommand(_, c) => format!("DeleteGlobalCommand({})", command(c).await),
+            &GetGuildCommands(_, g) => format!("GetGuildCommands({})", guild(g).await),
+            &CreateGuildCommand(_, g) => format!("CreateGuildCommand({})", guild(g).await),
             &EditGuildCommand(_, g, c) => format!(
-                "Edit Guild Command `{}/{}`",
+                "EditGuildCommand({}/{})",
                 guild(g).await, command(c).await
             ),
             &DeleteGuildCommand(_, g, c) => format!(
-                "Delete Guild Command `{}/{}`",
+                "DeleteGuildCommand({}/{})",
                 guild(g).await, command(c).await
             ),
             // todo do I want to display the token too?
-            CreateInteractionResponse(_, _) => format!("Create Interaction Response"),
-            EditInteractionResponse(_, _) => format!("Edit Interaction Response"),
-            DeleteInteractionResponse(_, _) => format!("Delete Interaction Response"),
-            CreateFollowupMessage(_, _) => format!("Create Followup Message"),
-            EditFollowupMessage(_, _, m) => format!("Edit Followup Message `{}`", m),
-            DeleteFollowupMessage(_, _, m) => format!("Delete Followup Message `{}`", m),
-            &GetUser(u) => format!("Get User `{}`", user(u).await),
-            CreateDm => format!("Create Dm"),
+            CreateInteractionResponse(_, _) => format!("CreateInteractionResponse"),
+            EditInteractionResponse(_, _) => format!("EditInteractionResponse"),
+            DeleteInteractionResponse(_, _) => format!("DeleteInteractionResponse"),
+            CreateFollowupMessage(_, _) => format!("CreateFollowupMessage"),
+            EditFollowupMessage(_, _, m) => format!("EditFollowupMessage({})", m),
+            DeleteFollowupMessage(_, _, m) => format!("DeleteFollowupMessage({})", m),
+            &GetUser(u) => format!("GetUser({})", user(u).await),
+            CreateDm => format!("CreateDm"),
         }
     }
 }

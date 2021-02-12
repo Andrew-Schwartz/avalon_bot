@@ -6,16 +6,20 @@ use itertools::Itertools;
 use discorsd::{BotState, http, UserMarkupExt};
 use discorsd::http::channel::{ChannelExt, embed, RichEmbed};
 use discorsd::http::ClientResult;
-use discorsd::http::model::{CommandId, GuildId, GuildMember, Message};
+use discorsd::model::commands::*;
+use discorsd::model::guild::GuildMember;
+use discorsd::model::ids::*;
+use discorsd::model::message::Message;
 
 use crate::{avalon, Bot};
 use crate::avalon::characters::Character;
 use crate::avalon::characters::Loyalty::Evil;
+use crate::avalon::lotl::ToggleLady;
 use crate::avalon::roles::RolesCommand;
 use crate::avalon::SlashCommand;
 use crate::avalon::start::StartCommand;
-use crate::avalon::lotl::ToggleLady;
-use crate::commands::{AddMeCommand, GameType, InteractionUse, NotUsed, Used};
+use crate::games::GameType;
+use crate::commands::addme::AddMeCommand;
 
 #[derive(Default, Debug)]
 pub struct AvalonConfig {
@@ -55,9 +59,11 @@ impl AvalonConfig {
             );
             e.add_blank_inline_field();
             let mut roles = self.roles.iter()
+                .copied()
                 .map(Character::name)
                 .join("\n");
-            let mut fill = |num_players, max_evil| {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                let mut fill = |num_players, max_evil| {
                 let num_evil = self.roles.iter()
                     .filter(|c| c.loyalty() == Evil)
                     .count();
@@ -92,7 +98,7 @@ impl AvalonConfig {
     pub async fn update_embed(
         &mut self,
         state: &BotState<Bot>,
-        interaction: InteractionUse<NotUsed>,
+        interaction: InteractionUse<Unused>,
     ) -> http::ClientResult<InteractionUse<Used>> {
         let embed = self.embed();
         match &mut self.message {
@@ -119,7 +125,7 @@ impl AvalonConfig {
     pub async fn start_command(
         &mut self,
         state: &BotState<Bot>,
-        commands: &mut HashMap<CommandId, Box<dyn SlashCommand>>,
+        commands: &mut HashMap<CommandId, Box<dyn SlashCommand<Bot>>>,
         enabled: bool,
         guild: GuildId,
     ) -> ClientResult<()> {
@@ -131,16 +137,16 @@ impl AvalonConfig {
             });
         match (start, enabled) {
             // update list of startable games
-            (Some((_id, start)), true) => {
+            (Some((id, start)), true) => {
                 if !start.0.contains(&GameType::Avalon) {
                     start.0.insert(GameType::Avalon);
                     state.client.edit_guild_command(
                         state.application_id().await,
                         guild,
-                        _id,
+                        id,
                         None,
                         None,
-                        Some(start.command().options())
+                        Some(start.command().options()),
                     ).await?;
                 }
             }
@@ -174,7 +180,7 @@ impl AvalonConfig {
         avalon::max_evil(self.players.len())
     }
 
-    pub fn is_setup_command(command: &dyn SlashCommand) -> bool {
+    pub fn is_setup_command(command: &dyn SlashCommand<Bot>) -> bool {
         command.is::<StartCommand>() ||
             command.is::<AddMeCommand>() ||
             command.is::<RolesCommand>() ||

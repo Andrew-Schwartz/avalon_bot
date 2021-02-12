@@ -8,13 +8,18 @@ use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use tokio::sync::{RwLock, RwLockReadGuard};
 
-use crate::http::model::*;
-use crate::http::model::Application;
+use crate::model::ids::*;
+use crate::shard::dispatch::PartialApplication;
+use crate::model::user::User;
+use crate::model::guild::{UnavailableGuild, Guild, GuildMember};
+use crate::model::channel::{ChannelType, TextChannel, DmChannel, CategoryChannel, NewsChannel, StoreChannel, Channel};
+use crate::model::message::{Message, Reaction};
+use crate::model::interaction::ApplicationCommand;
 
 #[derive(Default, Debug)]
 pub struct Cache {
     pub(crate) user: RwLock<Option<User>>,
-    pub(crate) application: RwLock<Option<Application>>,
+    pub(crate) application: RwLock<Option<PartialApplication>>,
 
     pub(crate) users: RwLock<IdMap<User>>,
 
@@ -36,6 +41,10 @@ pub struct Cache {
 }
 
 impl Cache {
+    pub async fn application_id(&self) -> ApplicationId {
+        self.application.read().await.unwrap().id
+    }
+
     /// gets the current user
     ///
     /// panics if somehow used before [Ready](crate::shard::dispatch::Ready) is received
@@ -43,11 +52,11 @@ impl Cache {
         self.user.read().await.clone().expect("should not get `bot.user` before `Ready` fires")
     }
 
-    pub async fn user<U: Id<Id=UserId>>(&self, id: U) -> Option<User> {
+    pub async fn user<U: Id<Id=UserId> + Send>(&self, id: U) -> Option<User> {
         self.users.read().await.get(id).cloned()
     }
 
-    pub async fn channel<C: Id<Id=ChannelId>>(&self, id: C) -> Option<Channel> {
+    pub async fn channel<C: Id<Id=ChannelId> + Send>(&self, id: C) -> Option<Channel> {
         let id = id.id();
         let channel_type = self.channel_types.read().await.get(&id).copied();
         match channel_type {
@@ -60,28 +69,28 @@ impl Cache {
         }
     }
 
-    pub async fn text_channel<C: Id<Id=ChannelId>>(&self, id: C) -> Option<TextChannel> {
+    pub async fn text_channel<C: Id<Id=ChannelId> + Send>(&self, id: C) -> Option<TextChannel> {
         self.channels.read().await.get(id).cloned()
     }
 
-    pub async fn guild<G: Id<Id=GuildId>>(&self, id: G) -> Option<Guild> {
+    pub async fn guild<G: Id<Id=GuildId> + Send>(&self, id: G) -> Option<Guild> {
         self.guilds.read().await.get(id).cloned()
     }
 
-    pub async fn message<M: Id<Id=MessageId>>(&self, id: M) -> Option<Message> {
+    pub async fn message<M: Id<Id=MessageId> + Send>(&self, id: M) -> Option<Message> {
         self.messages.read().await.get(id).cloned()
     }
 
-    pub async fn reactions<M: Id<Id=MessageId>>(&self, id: M) -> Vec<Reaction> {
+    pub async fn reactions<M: Id<Id=MessageId> + Send>(&self, id: M) -> Vec<Reaction> {
         self.messages.read().await.get(id)
             .map(|m| m.reactions.clone())
             .unwrap_or_default()
     }
 
     pub async fn guild_channels<G, F, C>(&self, id: G, filter_map: F) -> IdMap<C> where
-        G: Id<Id=GuildId>,
+        G: Id<Id=GuildId> + Send,
         C: Into<Channel> + Clone + Id<Id=ChannelId>,
-        F: FnMut(&Channel) -> Option<&C>,
+        F: FnMut(&Channel) -> Option<&C> + Send,
     {
         self.guilds.read().await.get(id).iter()
             .flat_map(|g| &g.channels)
@@ -90,7 +99,7 @@ impl Cache {
             .collect()
     }
 
-    pub async fn command<C: Id<Id=CommandId>>(&self, id: C) -> Option<ApplicationCommand> {
+    pub async fn command<C: Id<Id=CommandId> + Send>(&self, id: C) -> Option<ApplicationCommand> {
         self.commands.read().await.get(id).cloned()
     }
 }
@@ -121,7 +130,7 @@ impl Cache {
 #[derive(Debug)]
 pub struct DebugCache<'a> {
     user: RwLockReadGuard<'a, Option<User>>,
-    application: RwLockReadGuard<'a, Option<Application>>,
+    application: RwLockReadGuard<'a, Option<PartialApplication>>,
     users: RwLockReadGuard<'a, IdMap<User>>,
     unavailable_guilds: RwLockReadGuard<'a, IdMap<UnavailableGuild>>,
     guilds: RwLockReadGuard<'a, IdMap<Guild>>,
@@ -139,6 +148,7 @@ pub struct DebugCache<'a> {
 #[derive(Debug, Clone)]
 pub struct IdMap<T: Id>(HashMap<T::Id, T>);
 
+#[allow(clippy::needless_pass_by_value)]
 impl<T: Id> IdMap<T> {
     pub fn get<I: Id<Id=T::Id>>(&self, id: I) -> Option<&T> {
         self.0.get(&id.id())
@@ -186,7 +196,7 @@ impl<T: Id> IdMap<T> {
 
 impl<T: Id> Default for IdMap<T> {
     fn default() -> Self {
-        Self(Default::default())
+        Self(HashMap::default())
     }
 }
 
@@ -260,9 +270,9 @@ impl<'de, I: Id + Deserialize<'de>> Deserialize<'de> for IdMap<I> {
     }
 }
 
-/// Dispatch events need to update the cache when recieved
+/// Dispatch events need to update the cache when received
 #[async_trait::async_trait]
-pub(crate) trait Update {
+pub trait Update {
     /// update the cache, lazily cloning whatever is needed out of `self`
     async fn update(&self, cache: &Cache);
 }

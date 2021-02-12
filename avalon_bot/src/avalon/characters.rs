@@ -4,11 +4,12 @@ use std::path::PathBuf;
 
 use once_cell::sync::Lazy;
 use strum::{EnumCount, EnumIter, EnumString};
+use command_data_derive::CommandDataOption;
 
 use Character::*;
-use discorsd::http::model::Color;
+use discorsd::model::message::Color;
 
-#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, EnumIter, EnumString, EnumCount)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, EnumIter, EnumString, EnumCount, CommandDataOption)]
 pub enum Character {
     LoyalServant,
     MinionOfMordred,
@@ -21,7 +22,7 @@ pub enum Character {
 }
 
 impl Character {
-    pub const fn name(&self) -> &'static str {
+    pub const fn name(self) -> &'static str {
         match self {
             LoyalServant => "Loyal Servant",
             MinionOfMordred => "Minion of Mordred",
@@ -34,14 +35,14 @@ impl Character {
         }
     }
 
-    pub const fn loyalty(&self) -> Loyalty {
+    pub const fn loyalty(self) -> Loyalty {
         match self {
             LoyalServant | Merlin | Percival => Loyalty::Good,
             MinionOfMordred | Assassin | Mordred | Morgana | Oberon => Loyalty::Evil,
         }
     }
 
-    pub const fn abilities(&self) -> &'static str {
+    pub const fn abilities(self) -> &'static str {
         match self {
             LoyalServant => "Sees no one.",
             MinionOfMordred => "Sees other minions of Mordred.",
@@ -55,11 +56,11 @@ impl Character {
         }
     }
 
-    pub fn sees(&self) -> &HashSet<Character> {
+    pub fn sees(&self) -> &HashSet<Self> {
         SEES.get(self).unwrap()
     }
 
-    pub fn image(&self) -> PathBuf {
+    pub fn image(self) -> PathBuf {
         PathBuf::from(format!("images/avalon/characters/{}.jpg", self.name()))
     }
 }
@@ -74,14 +75,14 @@ impl fmt::Display for Character {
 pub enum Loyalty { Good, Evil }
 
 impl Loyalty {
-    pub const fn color(&self) -> Color {
+    pub const fn color(self) -> Color {
         match self {
-            Loyalty::Good => Color::BLUE,
-            Loyalty::Evil => Color::RED,
+            Self::Good => Color::BLUE,
+            Self::Evil => Color::RED,
         }
     }
 
-    pub fn image(&self) -> PathBuf {
+    pub fn image(self) -> PathBuf {
         PathBuf::from(format!("images/avalon/loyalty{}.jpg", self))
     }
 }
@@ -89,8 +90,8 @@ impl Loyalty {
 impl fmt::Display for Loyalty {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
-            Loyalty::Good => "Good",
-            Loyalty::Evil => "Evil",
+            Self::Good => "Good",
+            Self::Evil => "Evil",
         })
     }
 }

@@ -5,25 +5,28 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
-use reqwest::Url;
 use reqwest::multipart::{Form, Part};
+use reqwest::Url;
 use serde::Serialize;
 
 use crate::http::{ClientError, DiscordClient};
 use crate::http::ClientResult;
 use crate::http::interaction::WebhookMessage;
-use crate::http::model::channel::Channel;
-use crate::http::model::emoji::Emoji;
-use crate::http::model::Id;
-use crate::http::model::ids::{ChannelId, MessageId, UserId};
-use crate::http::model::message::*;
-use crate::http::model::user::User;
 use crate::http::routes::Route::*;
 use crate::http::routes::Route;
+use crate::model::channel::Channel;
+use crate::model::emoji::Emoji;
+use crate::model::ids::*;
+use crate::model::message::*;
+use crate::model::user::User;
 
 /// Channel related http requests
 impl DiscordClient {
     /// Get a channel by ID. Returns a [channel](Channel) object.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `Channel`
     pub async fn get_channel(&self, id: ChannelId) -> ClientResult<Channel> {
         self.get(GetChannel(id)).await
     }
@@ -38,12 +41,20 @@ impl DiscordClient {
     // }
 
     /// Returns a specific message in the channel. If operating on a guild channel, this endpoint
-    /// requires the 'READ_MESSAGE_HISTORY' permission to be present on the current user.
+    /// requires the `READ_MESSAGE_HISTORY` permission to be present on the current user.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `Message`
     pub async fn get_message(&self, channel: ChannelId, message: MessageId) -> ClientResult<Message> {
         self.get(GetMessage(channel, message)).await
     }
 
     /// Post a message in the specified channel
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `Message`
     pub async fn create_message(&self, channel: ChannelId, message: CreateMessage) -> ClientResult<Message> {
         self.send_message_with_files(PostMessage(channel), message).await
     }
@@ -53,6 +64,10 @@ impl DiscordClient {
     /// [embed](embed): embedded rich content
     ///
     /// [flags](flags): edit the flags of a message (only `SUPPRESS_EMBEDS` can currently be set/unset)
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `Message`
     pub async fn edit_message(&self, channel: ChannelId, message: MessageId, edit: EditMessage) -> ClientResult<Message> {
         // not an error to send other flags
         // let flags = flags & MessageFlags::SUPPRESS_EMBEDS;
@@ -61,27 +76,44 @@ impl DiscordClient {
 
     /// Delete a message. If operating on a guild channel and trying to delete a message that was
     /// not sent by the current user, this endpoint requires the `MANAGE_MESSAGES` permission.
-    /// Fires a [MessageDelete](crate::shard::dispatch::DispatchPayload::MessageDelete) event.
+    ///
+    /// Fires a [`MessageDelete`](crate::shard::dispatch::DispatchPayload::MessageDelete) event.
+
+    /// # Errors
+    ///
+    /// If the http request fails
     pub async fn delete_message(&self, channel: ChannelId, message: MessageId) -> ClientResult<()> {
         self.delete(DeleteMessage(channel, message)).await
     }
 
-    /// Create a reaction for the message. This endpoint requires the 'READ_MESSAGE_HISTORY'
+    /// Create a reaction for the message. This endpoint requires the `READ_MESSAGE_HISTORY`
     /// permission to be present on the current user. Additionally, if nobody else has reacted to
-    /// the message using this emoji, this endpoint requires the 'ADD_REACTIONS' permission to be
+    /// the message using this emoji, this endpoint requires the `ADD_REACTIONS` permission to be
     /// present on the current user.
-    pub async fn create_reaction(&self, channel: ChannelId, message: MessageId, emoji: impl Into<Emoji>) -> ClientResult<()> {
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
+    pub async fn create_reaction<E: Into<Emoji> + Send>(&self, channel: ChannelId, message: MessageId, emoji: E) -> ClientResult<()> {
         self.put_unit(CreateReaction(channel, message, emoji.into())).await
     }
 
     /// Delete a reaction the current user has made for the message.
-    pub async fn delete_own_reaction(&self, channel: ChannelId, message: MessageId, emoji: impl Into<Emoji>) -> ClientResult<()> {
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
+    pub async fn delete_own_reaction<E: Into<Emoji> + Send>(&self, channel: ChannelId, message: MessageId, emoji: E) -> ClientResult<()> {
         self.delete(DeleteOwnReaction(channel, message, emoji.into())).await
     }
 
-    /// Deletes another user's reaction. This endpoint requires the 'MANAGE_MESSAGES' permission to
+    /// Deletes another user's reaction. This endpoint requires the `MANAGE_MESSAGES` permission to
     /// be present on the current user.
-    pub async fn delete_user_reaction(&self, channel: ChannelId, message: MessageId, user: UserId, emoji: impl Into<Emoji>) -> ClientResult<()> {
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
+    pub async fn delete_user_reaction<E: Into<Emoji> + Send>(&self, channel: ChannelId, message: MessageId, user: UserId, emoji: E) -> ClientResult<()> {
         self.delete(DeleteUserReaction(channel, message, emoji.into(), user)).await
     }
 
@@ -89,12 +121,20 @@ impl DiscordClient {
     /// route. However, if a bot is responding to a command and expects the computation to take a
     /// few seconds, this endpoint may be called to let the user know that the bot is processing
     /// their message. Returns a 204 empty response on success. Fires a
-    /// [TypingStart](crate::shard::dispatch::DispatchPayload::TypingStart) event.
+    /// [`TypingStart`](crate::shard::dispatch::DispatchPayload::TypingStart) event.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
     pub async fn trigger_typing(&self, channel: ChannelId) -> ClientResult<()> {
         self.post_unit(TriggerTyping(channel), "").await
     }
 
     /// Returns all pinned messages in the channel
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `Vec<Message>`
     pub async fn get_pinned_messages(&self, channel: ChannelId) -> ClientResult<Vec<Message>> {
         self.get(GetPinnedMessages(channel)).await
     }
@@ -102,11 +142,19 @@ impl DiscordClient {
     /// Pin a message in a channel. Requires the `MANAGE_MESSAGES` permission.
     ///
     /// The max pinned messages is 50.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
     pub async fn add_pinned_message(&self, channel: ChannelId, message: MessageId) -> ClientResult<()> {
         self.put_unit(PinMessage(channel, message)).await
     }
 
     /// Delete a pinned message in a channel. Requires the `MANAGE_MESSAGES` permission.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails
     pub async fn delete_pinned_message(&self, channel: ChannelId, message: MessageId) -> ClientResult<()> {
         self.delete(UnpinMessage(channel, message)).await
     }
@@ -127,63 +175,113 @@ impl<C: Id<Id=ChannelId>> ChannelExt for C {}
 
 impl ChannelMessageId {
     /// Edit this message
+    ///
+    /// # Errors
+    ///
+    /// See [`DiscordClient::edit_message`](DiscordClient)
     pub async fn edit<Client, Msg>(&self, client: Client, edit: Msg) -> ClientResult<Message>
-        where Client: AsRef<DiscordClient>,
-              Msg: Into<EditMessage>,
+        where Client: AsRef<DiscordClient> + Send,
+              Msg: Into<EditMessage> + Send,
     {
-        client.as_ref().edit_message(self.channel, self.message, edit.into()).await
+        let client = client.as_ref();
+        client.edit_message(self.channel, self.message, edit.into()).await
     }
 
     /// Delete this message.
-    pub async fn delete<Client: AsRef<DiscordClient>>(&self, client: Client) -> ClientResult<()> {
-        client.as_ref().delete_message(self.channel, self.message).await
+    ///
+    /// # Errors
+    ///
+    /// See [`DiscordClient::delete_message`](crate::http::DiscordClient)
+    pub async fn delete<Client: AsRef<DiscordClient> + Send>(&self, client: Client) -> ClientResult<()> {
+        let client = client.as_ref();
+        client.delete_message(self.channel, self.message).await
     }
 
+
+    /// React to this message
+    ///
+    /// # Errors
+    ///
+    /// See [`DiscordClient::create_reaction`](crate::http::DiscordClient)
     pub async fn react<E, Client>(&self, client: Client, emoji: E) -> ClientResult<()>
-        where E: Into<Emoji>,
-              Client: AsRef<DiscordClient>,
+        where E: Into<Emoji> + Send,
+              Client: AsRef<DiscordClient> + Send,
     {
-        client.as_ref()
-            .create_reaction(self.channel, self.message, emoji)
-            .await
+        let client = client.as_ref();
+        client.create_reaction(self.channel, self.message, emoji).await
     }
 
-    pub async fn pin<Client: AsRef<DiscordClient>>(&self, client: Client) -> ClientResult<()> {
-        client.as_ref().add_pinned_message(self.channel, self.message).await
+    /// Pin this message
+    ///
+    /// # Errors
+    ///
+    /// See [`DiscordClient::add_pinned_message`](crate::http::DiscordClient)
+    pub async fn pin<Client: AsRef<DiscordClient> + Send>(&self, client: Client) -> ClientResult<()> {
+        let client = client.as_ref();
+        client.add_pinned_message(self.channel, self.message).await
     }
 
-    pub async fn unpin<Client: AsRef<DiscordClient>>(&self, client: Client) -> ClientResult<()> {
-        client.as_ref().delete_pinned_message(self.channel, self.message).await
+    /// Unpin this message
+    ///
+    /// # Errors
+    ///
+    /// See [`DiscordClient::delete_pinned_message`](crate::http::DiscordClient)
+    pub async fn unpin<Client: AsRef<DiscordClient> + Send>(&self, client: Client) -> ClientResult<()> {
+        let client = client.as_ref();
+        client.delete_pinned_message(self.channel, self.message).await
     }
 }
 
 impl Message {
-    /// Edit this message. The value of `self` is updated to the new message as shown in Discord
+    /// Edit this message. The value of `self` is updated to the new message as shown in Discord.
+    ///
+    /// # Errors
+    ///
+    /// See [`ChannelMessageId::edit`](ChannelMessageId)
     pub async fn edit<Client, Msg>(&mut self, client: Client, edit: Msg) -> ClientResult<()>
-        where Client: AsRef<DiscordClient>,
-              Msg: Into<EditMessage>,
+        where Client: AsRef<DiscordClient> + Send,
+              Msg: Into<EditMessage> + Send,
     {
         *self = ChannelMessageId::from(&*self).edit(client, edit).await?;
         Ok(())
     }
 
     /// Delete this message.
-    pub async fn delete<Client: AsRef<DiscordClient>>(self, client: Client) -> ClientResult<()> {
+    ///
+    /// # Errors
+    ///
+    /// See [`ChannelMessageId::delete`](ChannelMessageId)
+    pub async fn delete<Client: AsRef<DiscordClient> + Send>(self, client: Client) -> ClientResult<()> {
         ChannelMessageId::from(self).delete(client).await
     }
 
+    /// React to this message
+    ///
+    /// # Errors
+    ///
+    /// See [`ChannelMessageId::react`](ChannelMessageId)
     pub async fn react<E, Client>(&self, client: Client, emoji: E) -> ClientResult<()>
-        where E: Into<Emoji>,
-              Client: AsRef<DiscordClient>,
+        where E: Into<Emoji> + Send,
+              Client: AsRef<DiscordClient> + Send,
     {
         ChannelMessageId::from(self).react(client, emoji).await
     }
 
-    pub async fn pin<Client: AsRef<DiscordClient>>(&self, client: Client) -> ClientResult<()> {
+    /// Pin this message
+    ///
+    /// # Errors
+    ///
+    /// See [`ChannelMessageId::pin`](ChannelMessageId)
+    pub async fn pin<Client: AsRef<DiscordClient> + Send>(&self, client: Client) -> ClientResult<()> {
         ChannelMessageId::from(self).pin(client).await
     }
 
-    pub async fn unpin<Client: AsRef<DiscordClient>>(&self, client: Client) -> ClientResult<()> {
+    /// Unpin this message
+    ///
+    /// # Errors
+    ///
+    /// See [`ChannelMessageId::unpin`](ChannelMessageId)
+    pub async fn unpin<Client: AsRef<DiscordClient> + Send>(&self, client: Client) -> ClientResult<()> {
         ChannelMessageId::from(self).unpin(client).await
     }
 }
@@ -202,6 +300,12 @@ pub struct MessageAttachment {
     name: String,
     source: AttachmentSource,
 }
+
+// pub trait IntoUrl: reqwest::IntoUrl {
+//     fn into_url(self) -> reqwest::Result<Url> {
+//         reqwest::IntoUrl::into_url(self)
+//     }
+// }
 
 // todo: this don't work
 // impl MessageAttachment {
@@ -236,10 +340,10 @@ pub enum AttachmentSource {
 impl AttachmentSource {
     fn into_bytes(self) -> ClientResult<Vec<u8>> {
         match self {
-            AttachmentSource::Path(path) => std::fs::read(path).map_err(ClientError::Io),
-            AttachmentSource::Bytes(bytes) => Ok(bytes),
+            Self::Path(path) => std::fs::read(path).map_err(ClientError::Io),
+            Self::Bytes(bytes) => Ok(bytes),
             // todo might have to make it return just Option<Vec<u8>>,
-            AttachmentSource::Url(_) => Ok(Vec::new())
+            Self::Url(_) => Ok(Vec::new())
         }
     }
 }
@@ -307,11 +411,11 @@ impl<S: ToString> From<(S, AttachmentSource)> for MessageAttachment {
     }
 }
 
-/// what is sent to Discord to create a message with [DiscordClient::create_message]
+/// what is sent to Discord to create a message with [`DiscordClient::create_message`]
 #[derive(Serialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct CreateMessage {
     /// the message contents (up to 2000 characters)
-    pub content: String,
+    pub content: Cow<'static, str>,
     /// a nonce that can be used for optimistic message sending
     #[serde(skip_serializing_if = "Option::is_none")]
     nonce: Option<u64>,
@@ -330,7 +434,7 @@ pub struct CreateMessage {
     pub message_reference: Option<MessageReference>,
 }
 
-impl<S: ToString> From<S> for CreateMessage {
+impl<S: Into<Cow<'static, str>>> From<S> for CreateMessage {
     fn from(s: S) -> Self {
         let mut msg = Self::default();
         msg.content(s);
@@ -360,17 +464,17 @@ pub fn create_message<F: FnOnce(&mut CreateMessage)>(builder: F) -> CreateMessag
 }
 
 impl CreateMessage {
-    pub fn build<F: FnOnce(&mut CreateMessage)>(builder: F) -> Self {
+    pub fn build<F: FnOnce(&mut Self)>(builder: F) -> Self {
         Self::build_with(Self::default(), builder)
     }
 
-    pub fn build_with<F: FnOnce(&mut CreateMessage)>(mut message: Self, builder: F) -> Self {
+    pub fn build_with<F: FnOnce(&mut Self)>(mut message: Self, builder: F) -> Self {
         builder(&mut message);
         message
     }
 
-    pub fn content<S: ToString>(&mut self, content: S) {
-        self.content = content.to_string();
+    pub fn content<S: Into<Cow<'static, str>>>(&mut self, content: S) {
+        self.content = content.into();
     }
 
     pub fn embed_with<F: FnOnce(&mut RichEmbed)>(&mut self, embed: RichEmbed, builder: F) {
@@ -407,13 +511,13 @@ impl CreateMessage {
 pub struct RichEmbed {
     /// title of embed
     #[serde(skip_serializing_if = "Option::is_none")]
-    title: Option<String>,
+    title: Option<Cow<'static, str>>,
     /// description of embed
     #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
+    description: Option<Cow<'static, str>>,
     /// url of embed
     #[serde(skip_serializing_if = "Option::is_none")]
-    url: Option<String>,
+    url: Option<Cow<'static, str>>,
     /// timestamp of embed content
     #[serde(skip_serializing_if = "Option::is_none")]
     timestamp: Option<DateTime<Utc>>,
@@ -449,28 +553,28 @@ pub fn embed_with<F: FnOnce(&mut RichEmbed)>(embed: RichEmbed, f: F) -> RichEmbe
 }
 
 impl RichEmbed {
-    pub fn build<F: FnOnce(&mut Self)>(builder: F) -> RichEmbed {
+    pub fn build<F: FnOnce(&mut Self)>(builder: F) -> Self {
         Self::build_with(Self::default(), builder)
     }
 
-    pub fn build_with<F: FnOnce(&mut Self)>(mut embed: Self, builder: F) -> RichEmbed {
+    pub fn build_with<F: FnOnce(&mut Self)>(mut embed: Self, builder: F) -> Self {
         builder(&mut embed);
         embed
     }
 
-    pub fn title<S: ToString>(&mut self, title: S) {
-        self.title = Some(title.to_string());
+    pub fn title<S: Into<Cow<'static, str>>>(&mut self, title: S) {
+        self.title = Some(title.into());
     }
 
-    pub fn description<S: ToString>(&mut self, description: S) {
-        self.description = Some(description.to_string());
+    pub fn description<S: Into<Cow<'static, str>>>(&mut self, description: S) {
+        self.description = Some(description.into());
     }
 
-    pub fn url<S: ToString>(&mut self, url: S) {
-        self.url = Some(url.to_string());
+    pub fn url<S: Into<Cow<'static, str>>>(&mut self, url: S) {
+        self.url = Some(url.into());
     }
 
-    pub fn timestamp<Tz: TimeZone>(&mut self, timestamp: DateTime<Tz>) {
+    pub fn timestamp<Tz: TimeZone>(&mut self, timestamp: &DateTime<Tz>) {
         self.timestamp = Some(timestamp.with_timezone(&Utc));
     }
 
@@ -583,9 +687,9 @@ impl Embed {
     pub fn build<F: FnOnce(&mut RichEmbed)>(self, builder: F) -> RichEmbed {
         let Self { title, description, url, timestamp, color, footer, image, thumbnail, author, fields, .. } = self;
         let mut rich = RichEmbed {
-            title,
-            description,
-            url,
+            title: title.map(|t| t.into()),
+            description: description.map(|d| d.into()),
+            url: url.map(|u| u.into()),
             timestamp,
             color,
             footer,
@@ -621,7 +725,7 @@ pub struct EditMessage {
 
 impl<S: Into<Cow<'static, str>>> From<S> for EditMessage {
     fn from(s: S) -> Self {
-        let mut msg = EditMessage::default();
+        let mut msg = Self::default();
         msg.content(s);
         msg
     }
@@ -629,18 +733,18 @@ impl<S: Into<Cow<'static, str>>> From<S> for EditMessage {
 
 impl From<RichEmbed> for EditMessage {
     fn from(e: RichEmbed) -> Self {
-        let mut msg = EditMessage::default();
+        let mut msg = Self::default();
         msg.embed = Some(Some(e));
         msg
     }
 }
 
 impl EditMessage {
-    pub fn build<F: FnOnce(&mut EditMessage)>(f: F) -> Self {
+    pub fn build<F: FnOnce(&mut Self)>(f: F) -> Self {
         Self::build_with(Self::default(), f)
     }
 
-    pub fn build_with<F: FnOnce(&mut EditMessage)>(mut edit: Self, f: F) -> Self {
+    pub fn build_with<F: FnOnce(&mut Self)>(mut edit: Self, f: F) -> Self {
         f(&mut edit);
         edit
     }
@@ -655,7 +759,7 @@ impl EditMessage {
 
     pub fn embed<F: FnOnce(&mut RichEmbed)>(&mut self, f: F) {
         let embed = self.embed.as_mut()
-            .and_then(|opt| opt.take())
+            .and_then(Option::take)
             .unwrap_or_default();
         self.embed = Some(Some(RichEmbed::build_with(embed, f)));
     }
@@ -674,7 +778,7 @@ pub(in super) trait MessageWithFiles: Serialize {
 }
 
 impl DiscordClient {
-    pub(in super) async fn send_message_with_files<M: MessageWithFiles>(
+    pub(in super) async fn send_message_with_files<M: MessageWithFiles + Send + Sync>(
         &self,
         route: Route,
         mut message: M,

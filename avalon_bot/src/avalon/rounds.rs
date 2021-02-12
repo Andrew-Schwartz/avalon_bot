@@ -5,7 +5,7 @@ use std::ops::Index;
 pub struct Rounds(pub usize);
 
 impl Rounds {
-    pub fn rounds(&self) -> [Round; 5] {
+    pub fn rounds(self) -> [Round; 5] {
         MAP[self.0.saturating_sub(5)]
     }
 }

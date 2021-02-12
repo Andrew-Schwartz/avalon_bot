@@ -1,49 +1,42 @@
 use super::*;
+use discorsd::model::message::Color;
 
 #[derive(Clone, Debug)]
 pub struct Assassinate(pub UserId);
 
 #[async_trait]
-impl SlashCommand for Assassinate {
+impl SlashCommand<Bot> for Assassinate {
     fn name(&self) -> &'static str { "assassinate" }
 
     fn command(&self) -> Command {
         self.make(
             "Assassinate who you think is Merlin",
-            TopLevelOption::Data(vec![
-                DataOption::User(CommandDataOption::new(
-                    "target",
-                    "Your guess of who is Merlin",
-                ).required())
-            ]),
+            AssassinateData::args()
         )
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<NotUsed>,
-                 mut data: ApplicationCommandInteractionData,
+                 interaction: InteractionUse<Unused>,
+                 data: ApplicationCommandInteractionData,
     ) -> Result<InteractionUse<Used>, BotError> {
         let result = if interaction.member.id() == self.0 {
-            let target = data.options.remove(0)
-                .value
-                .unwrap()
-                .unwrap_user();
+            let target = AssassinateData::from_data(data, interaction.guild)?.target;
             let mut guard = state.bot.games.write().await;
             let avalon = guard.get_mut(&interaction.guild).unwrap();
             let game = avalon.game_mut();
             match game.player_ref(target) {
                 None => {
-                    interaction.respond(&state.client, interaction::message(|m| {
+                    interaction.respond(&state.client, message(|m| {
                         m.content(format!("{} is not playing Avalon", target.ping_nick()));
                         m.ephemeral();
-                    }).without_source()).await
+                    })).await
                 }
                 Some(evil) if evil.role.loyalty() == Evil => {
-                    interaction.respond(&state.client, interaction::message(|m| {
+                    interaction.respond(&state.client, message(|m| {
                         m.content(format!("{} is evil, you can't assassinate them!", target.ping_nick()));
                         m.ephemeral();
-                    }).without_source()).await
+                    })).await
                 }
                 Some(guess) => {
                     let interaction = interaction.ack_source(&state.client).await?;
@@ -62,7 +55,7 @@ impl SlashCommand for Assassinate {
                             ))
                         }
                     });
-                    let guard = state.bot.commands.read().await;
+                    let guard = state.commands.read().await;
                     let mut commands = guard.get(&interaction.guild).unwrap()
                         .write().await;
                     avalon.game_over(&*state, interaction.guild, &mut commands, game_over).await?;
@@ -70,11 +63,17 @@ impl SlashCommand for Assassinate {
                 }
             }
         } else {
-            interaction.respond(&state.client, interaction::message(|m| {
+            interaction.respond(&state.client, message(|m| {
                 m.content(format!("Only the assassin ({}) can assassinate someone", self.0.ping_nick()));
                 m.ephemeral();
-            }).without_source()).await
+            })).await
         };
         result.map_err(|e| e.into())
     }
+}
+
+#[derive(CommandData)]
+struct AssassinateData {
+    #[command(desc = "Your guess of who is Merlin")]
+    target: UserId,
 }

@@ -1,11 +1,11 @@
 use discorsd::{async_trait, BotState};
-use crate::commands::{SlashCommand, NotUsed, InteractionUse, SlashCommandExt, Used};
 use std::sync::Arc;
-use discorsd::http::model::{ApplicationCommandInteractionData, Command, TopLevelOption};
+use discorsd::model::interaction::{ApplicationCommandInteractionData, Command, TopLevelOption};
 use crate::Bot;
 use discorsd::http::channel::{ChannelExt, embed};
 use std::time::Instant;
 use discorsd::errors::BotError;
+use discorsd::commands::*;
 
 #[derive(Copy, Clone, Debug)]
 pub struct PingCommand;
@@ -13,7 +13,7 @@ pub struct PingCommand;
 pub const PING_COMMAND: PingCommand = PingCommand;
 
 #[async_trait]
-impl SlashCommand for PingCommand {
+impl SlashCommand<Bot> for PingCommand {
     fn name(&self) -> &'static str { "ping" }
 
     fn command(&self) -> Command {
@@ -25,7 +25,7 @@ impl SlashCommand for PingCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<NotUsed>,
+                 interaction: InteractionUse<Unused>,
                  _: ApplicationCommandInteractionData
     ) -> Result<InteractionUse<Used>, BotError> {
         let start = Instant::now();

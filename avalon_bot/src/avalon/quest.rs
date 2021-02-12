@@ -4,6 +4,7 @@ use tokio::sync::Mutex;
 
 use discorsd::errors::AvalonError;
 use discorsd::http::channel::create_message;
+use discorsd::model::message::ChannelMessageId;
 use discorsd::UserMarkupExt;
 
 use crate::{create_command, delete_command};
@@ -12,30 +13,24 @@ use crate::avalon::vote::{PartyVote, VoteStatus};
 use crate::utils::IterExt;
 
 use super::*;
-use discorsd::http::model::ChannelMessageId;
 
 #[derive(Clone, Debug)]
 pub struct QuestCommand(pub usize);
 
 #[async_trait]
-impl SlashCommand for QuestCommand {
+impl SlashCommand<Bot> for QuestCommand {
     fn name(&self) -> &'static str { "quest" }
 
     fn command(&self) -> Command {
-        let options = (1..=self.0).map(|i| {
-            CommandDataOption::<UserId>::new(
-                format!("player{}", i),
-                format!("{} player", match i {
-                    1 => "First",
-                    2 => "Second",
-                    3 => "Third",
-                    4 => "Fourth",
-                    5 => "Fifth",
-                    6 => "Sixth",
-                    _ => unreachable!(),
-                }),
-            ).required()
-        }).map(DataOption::User).collect();
+        let options = ["First", "Second", "Third", "Fourth", "Fifth"].iter()
+            .take(self.0)
+            .enumerate()
+            .map(|(i, s)| CommandDataOption::<UserId>::new(
+                format!("player{}", i + 1), *s,
+            ))
+            .map(CommandDataOption::required)
+            .map(DataOption::User)
+            .collect();
         self.make(
             "Choose who will go on the quest! Only the current leader can use this.",
             TopLevelOption::Data(options),
@@ -44,36 +39,28 @@ impl SlashCommand for QuestCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<NotUsed>,
+                 interaction: InteractionUse<Unused>,
                  data: ApplicationCommandInteractionData,
     ) -> Result<InteractionUse<Used>, BotError> {
-        let data = QuestData::from(data);
+        let data = QuestData::from_data(data, interaction.guild)?;
         let mut guard = state.bot.games.write().await;
         let game = guard.get_mut(&interaction.guild).unwrap().game_mut();
         let leader = game.leader();
-        let result = if interaction.member.id() != leader.member.id() {
-            interaction.respond(
-                &state.client,
-                interaction::message(|m| {
-                    m.ephemeral();
-                    m.content(format!("Only the current leader ({}) can choose who goes on the quest", leader.ping_nick()));
-                }).without_source(),
-            ).await
-        } else {
+        let result = if interaction.member.id() == leader.member.id() {
             match data.validate(&game.players) {
                 Ok(party) => {
-                    let result = interaction.respond(
+                    let result = interaction.respond_source(
                         &state.client,
-                        interaction::message(|m| m.embed(|e| {
+                        embed(|e| {
                             e.title(format!("{} has proposed a party to go on this quest", leader.member.nick_or_name()));
-                            e.description(party.iter().list_grammatically(|u| u.ping_nick()));
-                        })).with_source(),
+                            e.description(party.iter().list_grammatically(UserId::ping_nick));
+                        }),
                     ).await;
 
                     // I think this we should only move on if this works?
                     if let Ok(interaction) = &result {
                         let guild = interaction.guild;
-                        let list_party = party.iter().list_grammatically(|u| u.ping_nick());
+                        let list_party = party.iter().list_grammatically(UserId::ping_nick);
                         let list_party = Arc::new(list_party);
                         let mut handles = Vec::new();
                         let command_idx: Arc<Mutex<Option<usize>>> = Arc::new(Mutex::new(None));
@@ -95,7 +82,7 @@ impl SlashCommand for QuestCommand {
                                 // build the vote command as we go so we don't miss any reactions
                                 {
                                     let mut idx_guard = command_idx.lock().await;
-                                    let mut rxn_commands = state.bot.reaction_commands.write().await;
+                                    let mut rxn_commands = state.reaction_commands.write().await;
                                     if let Some(idx) = *idx_guard {
                                         let cmd = rxn_commands.get_mut(idx)
                                             .ok_or(AvalonError::Stopped)?;
@@ -126,13 +113,13 @@ impl SlashCommand for QuestCommand {
                             votes.insert(msg, 0);
                         }
 
-                        let guard = state.bot.commands.read().await;
+                        let guard = state.commands.read().await;
                         let mut commands = guard.get(&guild).unwrap().write().await;
                         // let party_vote = PartyVote {
                         //     guild,
                         //     messages: votes.keys().copied().collect(),
                         // };
-                        // state.bot.reaction_commands.write().await
+                        // state.reaction_commands.write().await
                         //     .push(Box::new(party_vote));
                         create_command(&*state, guild, &mut commands, VoteStatus).await?;
                         delete_command(
@@ -145,8 +132,7 @@ impl SlashCommand for QuestCommand {
                 }
                 Err(errors) => {
                     interaction.respond(
-                        &state.client,
-                        interaction::message(|m| {
+                        &state.client, message(|m| {
                             m.ephemeral();
                             m.content(format!(
                                 "__You must choose {} different people__\n{}",
@@ -161,10 +147,17 @@ impl SlashCommand for QuestCommand {
                                         }
                                     )).join("\n")
                             ));
-                        }).without_source(),
+                        }),
                     ).await
                 }
             }
+        } else {
+            interaction.respond(
+                &state.client, message(|m| {
+                    m.ephemeral();
+                    m.content(format!("Only the current leader ({}) can choose who goes on the quest", leader.ping_nick()));
+                }),
+            ).await
         };
         result.map_err(|e| e.into())
     }
@@ -175,15 +168,14 @@ enum QuestUserError {
     Duplicate,
 }
 
-#[derive(Debug)]
-struct QuestData(Vec<UserId>);
+#[derive(CommandData)]
+struct QuestData(#[command(vararg = "player")] Vec<UserId>);
 
 impl QuestData {
     fn validate(mut self, players: &[AvalonPlayer]) -> Result<Vec<UserId>, HashMap<UserId, QuestUserError>> {
         let mut unique = Vec::new();
         let mut errors = HashMap::new();
-        for i in (0..self.0.len()).rev() {
-            let user = self.0.remove(i);
+        while let Some(user) = self.0.pop() {
             if !players.iter().any(|p| p.id() == user) {
                 errors.insert(user, NotPlaying);
             } else if unique.iter().any(|&u| u == user) {
@@ -198,14 +190,5 @@ impl QuestData {
         } else {
             Err(errors)
         }
-    }
-}
-
-impl From<ApplicationCommandInteractionData> for QuestData {
-    fn from(data: ApplicationCommandInteractionData) -> Self {
-        let data = data.options.into_iter()
-            .map(|opt| opt.value.unwrap().unwrap_user())
-            .collect();
-        Self(data)
     }
 }

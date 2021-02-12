@@ -8,31 +8,23 @@ use super::*;
 pub struct LotlCommand(pub UserId);
 
 #[async_trait]
-impl SlashCommand for LotlCommand {
+impl SlashCommand<Bot> for LotlCommand {
     fn name(&self) -> &'static str { "lotl" }
 
     fn command(&self) -> Command {
         self.make(
             "Learn a player's true alignment",
-            TopLevelOption::Data(vec![
-                DataOption::User(CommandDataOption::new(
-                    "target",
-                    "The player whose alignment you want to see.",
-                ).required())
-            ]),
+            LadyData::args()
         )
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<NotUsed>,
-                 mut data: ApplicationCommandInteractionData,
+                 interaction: InteractionUse<Unused>,
+                 data: ApplicationCommandInteractionData,
     ) -> Result<InteractionUse<Used>, BotError> {
         let result = if interaction.member.id() == self.0 {
-            let target = data.options.remove(0)
-                .value
-                .unwrap()
-                .unwrap_user();
+            let target = LadyData::from_data(data, interaction.guild)?.target;
             let mut guard = state.bot.games.write().await;
             let game = guard.get_mut(&interaction.guild).unwrap().game_mut();
             match game.player_ref(target).cloned() {
@@ -40,13 +32,13 @@ impl SlashCommand for LotlCommand {
                     interaction.respond(&state.client, message(|m| {
                         m.content(format!("{} is not playing Avalon", target.ping_nick()));
                         m.ephemeral();
-                    }).without_source()).await
+                    })).await
                 }
                 Some(target) if target.id() == self.0 => {
                     interaction.respond(&state.client, message(|m| {
                         m.content("You can't use the Lady of the Lake on yourself");
                         m.ephemeral();
-                    }).without_source()).await
+                    })).await
                 }
                 Some(target) => {
                     if let Some(idx) = game.prev_ladies.iter().position(|id| *id == target.id()) {
@@ -63,7 +55,7 @@ impl SlashCommand for LotlCommand {
                                 }
                             ));
                             m.ephemeral();
-                        }).without_source()).await
+                        })).await
                     } else {
                         self.0.send_dm(&*state, create_message(|m| {
                             m.content(format!("{} is {}", target.ping_nick(), target.role.loyalty()));
@@ -72,12 +64,12 @@ impl SlashCommand for LotlCommand {
                         let target_idx = game.players.iter()
                             .position(|p| p.id() == target.id())
                             .unwrap();
-                        let guard = state.bot.commands.read().await;
+                        let guard = state.commands.read().await;
                         let mut commands = guard.get(&interaction.guild).unwrap()
                             .write().await;
                         delete_command(
                             &*state, interaction.guild, &mut commands,
-                            |c| c.is::<LotlCommand>()
+                            |c| c.is::<LotlCommand>(),
                         ).await?;
                         game.lotl = Some(target_idx);
                         game.prev_ladies.push(self.0);
@@ -92,40 +84,50 @@ impl SlashCommand for LotlCommand {
             interaction.respond(&state.client, message(|m| {
                 m.content(format!("Only {} can use the Lady of the Lake", self.0.ping_nick()));
                 m.ephemeral();
-            }).without_source()).await
+            })).await
         };
         result.map_err(|e| e.into())
     }
+}
+
+#[derive(CommandData)]
+struct LadyData {
+    #[command(desc = "The player whose alignment you want to see.")]
+    target: UserId,
 }
 
 #[derive(Clone, Debug)]
 pub struct ToggleLady;
 
 #[async_trait]
-impl SlashCommand for ToggleLady {
+impl SlashCommand<Bot> for ToggleLady {
     fn name(&self) -> &'static str { "lady" }
 
     fn command(&self) -> Command {
         self.make(
             "Toggle the Lady of the Lake for the next game of Avalon",
-            TopLevelOption::Data(vec![DataOption::Boolean(
-                CommandDataOption::new("enabled", "Whether or not the Lady of the Lake will be used")
-            )]),
+            ToggleData::args()
         )
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<NotUsed>,
-                 mut data: ApplicationCommandInteractionData,
+                 interaction: InteractionUse<Unused>,
+                 data: ApplicationCommandInteractionData,
     ) -> Result<InteractionUse<Used>, BotError> {
         let mut guard = state.bot.games.write().await;
         let config = guard.get_mut(&interaction.guild).unwrap().config_mut();
-        config.lotl = if data.options.is_empty() {
-            !config.lotl
+        config.lotl = if let Some(enabled) = ToggleData::from_data(data, interaction.guild)?.enabled {
+            enabled
         } else {
-            data.options.remove(0).value.unwrap().unwrap_bool()
+            !config.lotl
         };
         config.update_embed(&*state, interaction).await.map_err(|e| e.into())
     }
+}
+
+#[derive(CommandData)]
+struct ToggleData {
+    #[command(desc = "Whether or not the Lady of the Lake will be used")]
+    enabled: Option<bool>,
 }

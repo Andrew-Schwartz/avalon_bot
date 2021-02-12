@@ -1,5 +1,4 @@
 use std::fmt::{self, Debug};
-use std::time::Instant;
 
 use image::{DynamicImage, GenericImageView, Rgba};
 use image::codecs::jpeg::JpegEncoder;
@@ -14,8 +13,6 @@ use imageproc::definitions::Image;
 static G: Lazy<DynamicImage> = Lazy::new(|| Reader::open("images/avalon/board/G.png").unwrap().decode().unwrap());
 static E: Lazy<DynamicImage> = Lazy::new(|| Reader::open("images/avalon/board/E.png").unwrap().decode().unwrap());
 static R: Lazy<DynamicImage> = Lazy::new(|| Reader::open("images/avalon/board/R.png").unwrap().decode().unwrap());
-// hmm
-// static G2: DynamicImage = Reader::open("").unwrap().decode().unwrap();
 
 #[derive(Clone)]
 pub struct Board(usize, DynamicImage);
@@ -30,7 +27,6 @@ impl Debug for Board {
 
 impl Board {
     pub fn new(players: usize) -> Self {
-        // todo just decode jpg?
         let board = Reader::open(format!("images/avalon/board/{}.jpg", players))
             .unwrap().decode().unwrap();
         Self(players, board)
@@ -38,36 +34,32 @@ impl Board {
 
     // todo get rid of unwraps?
     pub fn image(&self, wins: &[bool], rejects: usize) -> Vec<u8> {
-        let start = Instant::now();
+        const BOUND: f32 = std::f32::consts::PI / 10.0;
+
         let mut board = self.1.clone();
         let mut rng = thread_rng();
-        const BOUND: f32 = std::f32::consts::PI / 10.0;
         let radians = Uniform::new_inclusive(-BOUND, BOUND);
-        println!("cloned = {:?}", start.elapsed());
-        wins.into_iter()
+        wins.iter()
             .map(|&gw| if gw { &G } else { &E })
             .enumerate()
             .for_each(|(i, token)| {
-                let rotated = Self::rotate_token(&mut rng, radians, &token);
+                let rotated = Self::rotate_token(&mut rng, radians, token);
                 let (x, y) = GE_POS[self.0 - 5][i];
                 overlay(&mut board, &rotated, x, y)
             });
-        println!("G/E tokens = {:?}", start.elapsed());
         if rejects != 0 {
             let rotated = Self::rotate_token(&mut rng, radians, &R);
             let (x, y) = R_POS[self.0 - 5][rejects - 1];
             overlay(&mut board, &rotated, x, y);
         }
-        println!("R tokens = {:?}", start.elapsed());
         let mut buf = Vec::new();
         JpegEncoder::new(&mut buf).encode_image(&board).unwrap();
-        println!("encoded = {:?}", start.elapsed());
         buf
     }
 
     fn rotate_token(mut rng: &mut ThreadRng, radians: Uniform<f32>, token: &DynamicImage) -> Image<Rgba<u8>> {
         let theta = radians.sample(&mut rng);
-        println!("theta = {:?}", theta);
+        #[allow(clippy::cast_precision_loss)]
         rotate(
             &token.to_rgba8(),
             ((token.width() / 2) as f32, (token.height() / 2) as f32),
@@ -78,21 +70,20 @@ impl Board {
     }
 }
 
-// todo new coords for 6-10 players
-const GE_POS: [[(u32, u32); 5]; 6] = [
-    [(20, 293), (203, 294), (389, 294), (592, 293), (781, 295)],
-    [(68, 540), (440, 540), (821, 534), (1205, 535), (1575, 530)],
-    [(61, 560), (447, 564), (825, 566), (1196, 564), (1564, 568)],
-    [(60, 574), (440, 572), (818, 572), (1208, 570), (1580, 567)],
-    [(72, 547), (453, 545), (818, 546), (1188, 542), (1558, 540)],
-    [(53, 575), (423, 576), (794, 570), (1159, 567), (1531, 564)],
+const GE_POS: [[(u32, u32); 5]; 6]  = [
+    [(20, 293), (203, 294), (389, 294), (582, 293), (781, 295)],
+    [(30, 271), (221, 270), (413, 268), (607, 266), (794, 266)],
+    [(29, 281), (221, 283), (413, 283), (602, 284), (790, 284)],
+    [(26, 288), (317, 287), (411, 286), (606, 284), (798, 284)],
+    [(33, 274), (224, 273), (411, 271), (599, 272), (786, 271)],
+    [(23, 287), (210, 287), (398, 286), (585, 285), (773, 283)],
 ];
 
 const R_POS: [[(u32, u32); 5]; 6] = [
     [(36, 561), (169, 563), (307, 566), (445, 570), (586, 573)],
-    [(97, 1091), (376, 1091), (658, 1091), (937, 1088), (1215, 1085)],
-    [(100, 1102), (380, 1106), (656, 1106), (932, 1104), (1208, 1106)],
-    [(95, 1126), (372, 1120), (654, 1124), (934, 1122), (1216, 1120)],
-    [(104, 1089), (383, 1086), (659, 1086), (931, 1083), (1204, 1083)],
-    [(100, 1104), (365, 1102), (638, 1096), (904, 1098), (1174, 1098)],
+    [(44, 550), (187, 549), (330, 548), (472, 546), (613, 546)],
+    [(47, 557), (189, 556), (328, 556), (468, 555), (608, 558)],
+    [(45, 565), (184, 566), (327, 567), (470, 566), (613, 566)],
+    [(48, 549), (189, 545), (330, 546), (470, 544), (607, 545)],
+    [(45, 557), (182, 557), (320, 554), (455, 554), (592, 553)],
 ];

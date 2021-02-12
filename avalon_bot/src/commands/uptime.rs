@@ -4,21 +4,22 @@ use std::sync::Arc;
 use chrono::Utc;
 
 use discorsd::{async_trait, BotState};
+use discorsd::errors::BotError;
 use discorsd::http::channel::embed;
 use discorsd::http::interaction::message;
-use discorsd::http::model::{ApplicationCommandInteractionData, Color, Command, TopLevelOption};
+use discorsd::model::interaction::{ApplicationCommandInteractionData, Command, TopLevelOption};
+use discorsd::model::message::Color;
 
 use crate::Bot;
-use crate::commands::{InteractionUse, NotUsed, SlashCommand, SlashCommandExt, Used};
-use discorsd::errors::BotError;
 
+use discorsd::commands::*;
 #[derive(Copy, Clone, Debug)]
 pub struct UptimeCommand;
 
 pub const UPTIME_COMMAND: UptimeCommand = UptimeCommand;
 
 #[async_trait]
-impl SlashCommand for UptimeCommand {
+impl SlashCommand<Bot> for UptimeCommand {
     fn name(&self) -> &'static str { "uptime" }
 
     fn command(&self) -> Command {
@@ -30,14 +31,15 @@ impl SlashCommand for UptimeCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<NotUsed>,
+                 interaction: InteractionUse<Unused>,
                  _: ApplicationCommandInteractionData,
     ) -> Result<InteractionUse<Used>, BotError> {
         let msg = if let Some(ready) = state.bot.first_log_in.get().cloned() {
             let embed = embed(|e| {
                 e.color(Color::GOLD);
-                e.title(Duration(Utc::now().signed_duration_since(ready)));
+                e.title(Duration(Utc::now().signed_duration_since(ready)).to_string());
             });
+            // `map_or_else` tries to move `embed` in both branches, so it doesn't work
             if let Some(resume) = *state.bot.log_in.read().await {
                 message(|m| m.embed_with(embed, |e| {
                     e.add_field("Time since last reconnect", Duration(Utc::now().signed_duration_since(resume)));
@@ -51,7 +53,7 @@ impl SlashCommand for UptimeCommand {
                 m.content("Not yet connected, somehow :/")
             })
         };
-        interaction.respond(&state, msg.with_source()).await.map_err(|e| e.into())
+        interaction.respond_source(&state, msg).await.map_err(|e| e.into())
     }
 }
 

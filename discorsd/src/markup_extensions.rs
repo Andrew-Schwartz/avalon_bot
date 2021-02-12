@@ -1,6 +1,7 @@
 use std::fmt;
 
-use crate::http::model::{ChannelId, CustomEmoji, Id, RoleId, UserId, Emoji};
+use crate::model::ids::*;
+use crate::model::emoji::{CustomEmoji, Emoji};
 
 pub trait MarkupExt: AsRef<str> {
     fn underline(&self) -> String {
@@ -51,8 +52,8 @@ impl fmt::Display for CustomEmoji {
 impl fmt::Display for Emoji {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Emoji::Custom(c) => c.fmt(f),
-            Emoji::Unicode { name } => f.write_str(name),
+            Self::Custom(c) => c.fmt(f),
+            Self::Unicode { name } => f.write_str(name),
         }
     }
 }

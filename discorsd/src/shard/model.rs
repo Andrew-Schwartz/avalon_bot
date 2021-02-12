@@ -1,13 +1,13 @@
+use std::convert::TryFrom;
 use std::fmt::{self, Display};
 
 use serde::{de, Deserialize, Serialize, Serializer};
-use serde::export::TryFrom;
 use serde::ser::{Error, SerializeMap};
 use serde_json::value::RawValue;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-use crate::http::model::emoji::Emoji;
-use crate::http::model::ids::{ApplicationId, ChannelId, GuildId, UserId};
+use crate::model::emoji::Emoji;
+use crate::model::ids::{ApplicationId, ChannelId, GuildId, UserId};
 use crate::serde_utils::BoolExt;
 use crate::serde_utils::nice_from_str;
 use crate::shard::dispatch::DispatchPayload;
@@ -49,17 +49,17 @@ pub(crate) enum Payload {
 impl Payload {
     const fn opcode(&self) -> u8 {
         match self {
-            Payload::Dispatch { .. } => 0,
-            Payload::Heartbeat(_) => 1,
-            Payload::Identify(_) => 2,
-            Payload::UpdateStatus(_) => 3,
-            Payload::UpdateVoiceStatus(_) => 4,
-            Payload::Resume(_) => 6,
-            Payload::Reconnect => 7,
-            Payload::RequestGuildMembers(_) => 8,
-            Payload::InvalidSession(_) => 9,
-            Payload::Hello(_) => 10,
-            Payload::HeartbeatAck => 11,
+            Self::Dispatch { .. } => 0,
+            Self::Heartbeat(_) => 1,
+            Self::Identify(_) => 2,
+            Self::UpdateStatus(_) => 3,
+            Self::UpdateVoiceStatus(_) => 4,
+            Self::Resume(_) => 6,
+            Self::Reconnect => 7,
+            Self::RequestGuildMembers(_) => 8,
+            Self::InvalidSession(_) => 9,
+            Self::Hello(_) => 10,
+            Self::HeartbeatAck => 11,
         }
     }
 }
@@ -69,17 +69,17 @@ impl Serialize for Payload {
         let mut map = s.serialize_map(Some(2))?;
         map.serialize_entry("op", &self.opcode())?;
         match &self {
-            Payload::Identify(identify) => map.serialize_entry("d", identify)?,
-            Payload::Heartbeat(Heartbeat { seq_num }) => map.serialize_entry("d", seq_num)?,
-            Payload::UpdateStatus(status) => map.serialize_entry("d", status)?,
-            Payload::UpdateVoiceStatus(status) => map.serialize_entry("d", status)?,
-            Payload::Resume(resume) => map.serialize_entry("d", resume)?,
-            Payload::RequestGuildMembers(rgm) => map.serialize_entry("d", rgm)?,
-            Payload::Dispatch { .. }
-            | Payload::Reconnect
-            | Payload::InvalidSession(_)
-            | Payload::Hello(_)
-            | Payload::HeartbeatAck => return Err(S::Error::custom("should not be serialized")),
+            Self::Identify(identify) => map.serialize_entry("d", identify)?,
+            Self::Heartbeat(Heartbeat { seq_num }) => map.serialize_entry("d", seq_num)?,
+            Self::UpdateStatus(status) => map.serialize_entry("d", status)?,
+            Self::UpdateVoiceStatus(status) => map.serialize_entry("d", status)?,
+            Self::Resume(resume) => map.serialize_entry("d", resume)?,
+            Self::RequestGuildMembers(rgm) => map.serialize_entry("d", rgm)?,
+            Self::Dispatch { .. }
+            | Self::Reconnect
+            | Self::InvalidSession(_)
+            | Self::Hello(_)
+            | Self::HeartbeatAck => return Err(S::Error::custom("should not be serialized")),
         };
         map.end()
     }
@@ -109,26 +109,26 @@ impl<'a> TryFrom<RawPayload<'a>> for Payload {
                 let json = format!(r#"{{"t":"{}","d":{}}}"#, t, d);
 
                 match nice_from_str(&json) {
-                    Ok(event) => Ok(Payload::Dispatch { event, seq_num: s }),
+                    Ok(event) => Ok(Self::Dispatch { event, seq_num: s }),
                     Err(e) => Err(e)
                 }
             }
             1 => {
                 let seq_num = nice_from_str(d.get())?;
-                Ok(Payload::Heartbeat(Heartbeat { seq_num }))
+                Ok(Self::Heartbeat(Heartbeat { seq_num }))
             }
             7 => {
-                Ok(Payload::Reconnect)
+                Ok(Self::Reconnect)
             }
             9 => {
                 let resumable = nice_from_str(d.get())?;
-                Ok(Payload::InvalidSession(resumable))
+                Ok(Self::InvalidSession(resumable))
             }
             10 => {
-                Ok(Payload::Hello(nice_from_str(d.get())?))
+                Ok(Self::Hello(nice_from_str(d.get())?))
             }
             11 => {
-                Ok(Payload::HeartbeatAck)
+                Ok(Self::HeartbeatAck)
             }
             2 => Err(de::Error::custom("`Identify` should not be received")),
             3 => Err(de::Error::custom("`UpdateStatus` should not be received")),
@@ -216,7 +216,7 @@ impl Identify {
     }
 
     /// Override the default intents (all non-privileged intents).
-    pub fn intents(mut self, intents: Intents) -> Self {
+    pub const fn intents(mut self, intents: Intents) -> Self {
         self.intents = intents;
         self
     }
@@ -236,17 +236,17 @@ impl Display for Identify {
             debug_struct.field("compress", compress);
         }
         if let Some(large_threshold) = &self.large_threshold {
-			debug_struct.field("large_threshold", large_threshold);
-		}
+            debug_struct.field("large_threshold", large_threshold);
+        }
         if let Some(shard) = &self.shard {
-			debug_struct.field("shard", shard);
-		}
+            debug_struct.field("shard", shard);
+        }
         if let Some(presence) = &self.presence {
-			debug_struct.field("presence", presence);
-		}
+            debug_struct.field("presence", presence);
+        }
         if let Some(guild_subscriptions) = &self.guild_subscriptions {
-			debug_struct.field("guild_subscriptions", guild_subscriptions);
-		}
+            debug_struct.field("guild_subscriptions", guild_subscriptions);
+        }
         debug_struct.field("intents", &self.intents);
         debug_struct.finish()
     }
@@ -360,12 +360,12 @@ impl RequestGuildMembers {
         }
     }
 
-    pub fn limit(mut self, limit: u32) -> Self {
+    pub const fn limit(mut self, limit: u32) -> Self {
         self.limit = Some(limit);
         self
     }
 
-    pub fn presences(mut self, presences: bool) -> Self {
+    pub const fn presences(mut self, presences: bool) -> Self {
         self.presences = presences;
         self
     }
@@ -378,7 +378,7 @@ impl RequestGuildMembers {
 
 impl From<RequestGuildMembers> for Payload {
     fn from(rgm: RequestGuildMembers) -> Self {
-        Payload::RequestGuildMembers(rgm)
+        Self::RequestGuildMembers(rgm)
     }
 }
 
@@ -463,7 +463,7 @@ pub struct Activity {
 }
 
 impl Activity {
-    /// create an activity with a [name](Self::name) and [activity_type](Self::activity_type), two of the three fields
+    /// create an activity with a [name](Self::name) and [`activity_type`](Self::activity_type), two of the three fields
     /// bots are able to send
     pub fn for_bot<N, /*O, U*/>(name: N, activity_type: ActivityType) -> Self
         where N: Into<String>,

@@ -1,22 +1,27 @@
 use std::collections::{HashMap, HashSet};
 
 use discorsd::{BotState, UserMarkupExt};
-use discorsd::http::ClientResult;
+use discorsd::commands::*;
 use discorsd::http::channel::{ChannelExt, create_message, embed};
-use discorsd::http::model::{ChannelId, Color, CommandId, GuildId, Id, MessageId, UserId, ChannelMessageId};
+use discorsd::http::ClientResult;
+use discorsd::model::ids::*;
+use discorsd::model::message::{ChannelMessageId, Color};
 
 use crate::{Bot, create_command, delete_command};
-use crate::commands::{ReactionCommand, SlashCommand};
-
-use super::{Avalon, AvalonPlayer};
-use super::assassinate::Assassinate;
-use super::characters::{Character::{Assassin, Merlin}, Loyalty::Evil};
-use super::lotl::LotlCommand;
-use super::quest::QuestCommand;
-use super::rounds::{Round, Rounds};
-use super::stop::*;
-use super::vote::*;
 use crate::avalon::board::Board;
+use crate::avalon::vote::VoteStatus;
+
+use super::{
+    lotl::LotlCommand,
+    characters::{Character::{Assassin, Merlin}, Loyalty::Evil},
+    assassinate::Assassinate,
+    Avalon,
+    AvalonPlayer,
+    quest::QuestCommand,
+    rounds::{Round, Rounds},
+    vote::{PartyVote, QuestVote},
+};
+use crate::commands::stop::{StopCommand, StopVoteCommand};
 
 #[derive(Debug, Clone)]
 pub struct AvalonGame {
@@ -72,6 +77,7 @@ impl AvalonGame {
         self.lotl.map(|l| &self.players[l])
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     pub fn player_ref<I: Id<Id=UserId>>(&self, id: I) -> Option<&AvalonPlayer> {
         let id = id.id();
         self.players.iter().find(|p| p.id() == id)
@@ -93,7 +99,7 @@ impl AvalonGame {
         // )
     }
 
-    pub fn is_command(command: &dyn SlashCommand) -> bool {
+    pub fn is_command(command: &dyn SlashCommand<Bot>) -> bool {
         command.is::<Assassinate>() ||
             command.is::<LotlCommand>() ||
             command.is::<QuestCommand>() ||
@@ -101,7 +107,7 @@ impl AvalonGame {
             command.is::<VoteStatus>()
     }
 
-    pub fn is_reaction_command(command: &dyn ReactionCommand, guild: GuildId) -> bool {
+    pub fn is_reaction_command(command: &dyn ReactionCommand<Bot>, guild: GuildId) -> bool {
         matches!(command.downcast_ref::<StopVoteCommand>(), Some(svc) if svc.1 == guild) ||
             matches!(command.downcast_ref::<PartyVote>(), Some(pv) if pv.guild == guild) ||
             matches!(command.downcast_ref::<QuestVote>(), Some(qv) if qv.guild == guild)
@@ -112,7 +118,7 @@ impl Avalon {
     pub async fn end_round(&mut self,
                            state: &BotState<Bot>,
                            guild: GuildId,
-                           commands: &mut HashMap<CommandId, Box<dyn SlashCommand>>,
+                           commands: &mut HashMap<CommandId, Box<dyn SlashCommand<Bot>>>,
     ) -> ClientResult<()> {
         let game = self.game_mut();
         let new_state = if game.good_won.iter().filter(|g| **g).count() == 3 {
@@ -186,7 +192,7 @@ impl AvalonGame {
         &mut self,
         state: &BotState<Bot>,
         guild: GuildId,
-        commands: &mut HashMap<CommandId, Box<dyn SlashCommand>>,
+        commands: &mut HashMap<CommandId, Box<dyn SlashCommand<Bot>>>,
     ) -> ClientResult<()> {
         let round = self.round();
         delete_command(

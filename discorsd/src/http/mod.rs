@@ -1,10 +1,11 @@
+use std::fmt::{self, Display};
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_tungstenite::tungstenite::http::StatusCode;
 use backoff::{ExponentialBackoff, future::FutureOperation};
-use log::warn;
+use log::{error, warn};
 use reqwest::{Client, Method, multipart, Response};
 use reqwest::header::{AUTHORIZATION, HeaderMap};
 use serde::de::DeserializeOwned;
@@ -12,21 +13,20 @@ use serde::Serialize;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
-use model::Application;
-
 use crate::{BotState, serde_utils};
-use crate::http::model::{BotGateway, DiscordError};
 use crate::http::rate_limit::{BucketKey, RateLimiter};
 use crate::http::routes::Route;
+use crate::model::{BotGateway, DiscordError};
+use crate::model::Application;
 use crate::serde_utils::NiceResponseJson;
 
 mod rate_limit;
-pub mod model;
 pub mod channel;
 pub mod interaction;
 pub mod user;
 pub(crate) mod routes;
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error)]
 pub enum ClientError {
     #[error("request error: {0}")]
@@ -42,6 +42,38 @@ pub enum ClientError {
     Discord(#[from] DiscordError),
 }
 
+impl ClientError {
+    pub async fn display_error<B: Send + Sync>(self, state: &BotState<B>) -> DisplayClientError {
+        match self {
+            Self::Request(e) => DisplayClientError::Request(e),
+            Self::Http(status, route) => DisplayClientError::Http(format!("`{}` on {}", status, route.debug_with_cache(&state.cache).await)),
+            Self::Json(e) => DisplayClientError::Json(e),
+            Self::Io(e) => DisplayClientError::Io(e),
+            Self::Discord(e) => DisplayClientError::Discord(e),
+        }
+    }
+}
+
+pub enum DisplayClientError {
+    Request(reqwest::Error),
+    Http(String),
+    Json(serde_utils::Error),
+    Io(std::io::Error),
+    Discord(DiscordError),
+}
+
+impl Display for DisplayClientError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Request(e) => write!(f, "{}", e),
+            Self::Http(e) => f.write_str(e),
+            Self::Json(e) => write!(f, "{}", e),
+            Self::Io(e) => write!(f, "{}", e),
+            Self::Discord(e) => write!(f, "{}", e),
+        }
+    }
+}
+
 pub type ClientResult<T> = std::result::Result<T, ClientError>;
 
 #[derive(Debug)]
@@ -53,7 +85,7 @@ pub struct DiscordClient {
 
 /// General functionality
 impl DiscordClient {
-    /// Create a new [DiscordClient] using the specified bot `token`
+    /// Create a new [`DiscordClient`] using the specified bot `token`
     pub fn single(token: String) -> Self {
         Self::shared(token, Default::default())
     }
@@ -71,11 +103,11 @@ impl DiscordClient {
     }
 
     async fn request<Q, J, F, R, Fut, T>(&self, request: Request<Q, J, F, R, Fut, T>) -> ClientResult<T>
-        where Q: Serialize,
-              J: Serialize,
-              F: Fn() -> Option<multipart::Form>,
-              R: Fn(Response) -> Fut,
-              Fut: Future<Output=ClientResult<T>>,
+        where Q: Serialize + Send + Sync,
+              J: Serialize + Send + Sync,
+              F: Fn() -> Option<multipart::Form> + Send + Sync,
+              R: Fn(Response) -> Fut + Send + Sync,
+              Fut: Future<Output=ClientResult<T>> + Send,
               T: DeserializeOwned,
     {
         let Request { method, route, query, body, multipart, getter } = request;
@@ -126,8 +158,7 @@ impl DiscordClient {
         ).await
     }
 
-    pub(crate) async fn get<T: DeserializeOwned>(&self, route: Route) -> ClientResult<T>
-    {
+    pub(crate) async fn get<T: DeserializeOwned>(&self, route: Route) -> ClientResult<T> {
         self.request::<Ser, Ser, _, _, _, _>(Request {
             method: Method::GET,
             route,
@@ -140,7 +171,8 @@ impl DiscordClient {
 
     pub(crate) async fn post<T, J>(&self, route: Route, json: J) -> ClientResult<T>
         where T: DeserializeOwned,
-              J: Serialize, {
+              J: Serialize + Send + Sync,
+    {
         self.request::<Ser, _, _, _, _, _>(Request {
             method: Method::POST,
             route,
@@ -153,7 +185,7 @@ impl DiscordClient {
 
     pub(crate) async fn post_multipart<T, F>(&self, route: Route, multipart: F) -> ClientResult<T>
         where T: DeserializeOwned,
-              F: Fn() -> Option<multipart::Form>,
+              F: Fn() -> Option<multipart::Form> + Send + Sync,
     {
         self.request::<Ser, Ser, _, _, _, _>(Request {
             method: Method::POST,
@@ -165,7 +197,7 @@ impl DiscordClient {
         }).await
     }
 
-    pub(crate) async fn post_unit<J: Serialize>(&self, route: Route, json: J) -> ClientResult<()> {
+    pub(crate) async fn post_unit<J: Serialize + Send + Sync>(&self, route: Route, json: J) -> ClientResult<()> {
         self.request::<Ser, _, _, _, _, _>(Request {
             method: Method::POST,
             route,
@@ -176,7 +208,7 @@ impl DiscordClient {
         }).await
     }
 
-    pub(crate) async fn patch<T, J>(&self, route: Route, json: J) -> ClientResult<T>
+    pub(crate) async fn patch<T, J: Send + Sync>(&self, route: Route, json: J) -> ClientResult<T>
         where T: DeserializeOwned,
               J: Serialize, {
         self.request::<Ser, _, _, _, _, _>(Request {
@@ -189,7 +221,7 @@ impl DiscordClient {
         }).await
     }
 
-    pub(crate) async fn patch_unit<J: Serialize>(&self, route: Route, json: J) -> ClientResult<()> {
+    pub(crate) async fn patch_unit<J: Serialize + Send + Sync>(&self, route: Route, json: J) -> ClientResult<()> {
         self.request::<Ser, _, _, _, _, _>(Request {
             method: Method::PATCH,
             route,
@@ -244,18 +276,27 @@ enum Ser {}
 /// general functions
 impl DiscordClient {
     /// Gets information about how to connect to the bot's websocket
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `BotGateway`
     pub async fn gateway(&self) -> ClientResult<BotGateway> {
         self.get(Route::GetGateway).await
     }
 
+    /// Gets application information for the bot's application
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `Application`
     pub async fn application_information(&self) -> ClientResult<Application> {
         self.get(Route::ApplicationInfo).await
     }
 }
 
 impl AsRef<DiscordClient> for DiscordClient {
-    fn as_ref(&self) -> &DiscordClient {
-        &self
+    fn as_ref(&self) -> &Self {
+        self
     }
 }
 

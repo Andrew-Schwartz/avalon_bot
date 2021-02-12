@@ -1,58 +1,70 @@
-use std::fmt::{self, Debug, Display};
+use std::collections::HashMap;
+use std::fmt::{self, Debug};
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::error;
+use once_cell::sync::OnceCell;
+use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::cache::Cache;
-use crate::http::DiscordClient;
-use crate::http::model::{ApplicationId, Interaction, User, Integration, GuildId};
-use crate::http::model::guild::Guild;
-use crate::http::model::message::Message;
-use crate::shard::{Shard, ShardError};
+use crate::commands::{ReactionCommand, SlashCommand};
+use crate::errors::BotError;
+use crate::http::{DiscordClient, ClientResult};
+use crate::http::user::GuildId;
+use crate::model::commands::InteractionUse;
+use crate::model::guild::{Guild, Integration};
+use crate::model::ids::*;
+use crate::model::interaction::Interaction;
+use crate::model::message::Message;
+use crate::model::user::User;
 use crate::shard;
-use crate::shard::dispatch::{MessageUpdate, ReactionUpdate};
+use crate::shard::dispatch::{MessageUpdate, PartialApplication, ReactionUpdate};
 use crate::shard::model::Identify;
+use crate::shard::Shard;
 
-pub struct BotState<B> {
+pub type GuildCommands<B> = HashMap<CommandId, Box<dyn SlashCommand<B>>>;
+
+pub struct BotState<B: 'static> {
     pub client: DiscordClient,
     pub cache: Cache,
     pub bot: B,
+    pub commands: RwLock<HashMap<GuildId, RwLock<GuildCommands<B>>>>,
+    pub global_commands: OnceCell<HashMap<CommandId, &'static dyn SlashCommand<B>>>,
+    pub reaction_commands: RwLock<Vec<Box<dyn ReactionCommand<B>>>>,
 }
 
 impl<B> AsRef<BotState<B>> for BotState<B> {
-    fn as_ref(&self) -> &BotState<B> {
+    fn as_ref(&self) -> &Self {
         self
     }
 }
 
-impl<B> BotState<B> {
+impl<B: Send + Sync> BotState<B> {
     /// gets the current user
     ///
-    /// panics if somehow used before [Ready](crate::shard::dispatch::Ready) is received
+    /// panics if somehow used before [`Ready`](crate::shard::dispatch::Ready) is received
     pub async fn user(&self) -> User {
         self.cache.own_user().await
     }
 
     /// gets the bot's `ApplicationId`. The first time this is called, performs the
-    /// [DiscordClient](DiscordClient)::[application_information](DiscordClient::application_information)
+    /// [`DiscordClient::application_information`](DiscordClient::application_information)
     /// get request, otherwise recalls the id from the cache.
     ///
-    /// panics if [DiscordClient](DiscordClient)::[application_information](DiscordClient::application_information)
+    /// panics if [`DiscordClient::application_information`](DiscordClient::application_information)
     /// fails
     pub async fn application_id(&self) -> ApplicationId {
         let id = {
-            let guard = self.cache.application.read().await;
-            guard.as_ref().map(|app| app.id)
+            self.cache.application.read().await.map(|app| app.id)
         };
         if let Some(id) = id {
             id
         } else {
             let app = self.client.application_information().await
                 .expect("application_information should not fail");
-            let id = app.id;
-            *self.cache.application.write().await = Some(app);
-            id
+            *self.cache.application.write().await = Some(PartialApplication { id: app.id, flags: app.flags });
+            app.id
         }
     }
 }
@@ -79,64 +91,113 @@ impl<B: Debug> Debug for BotState<B> {
 #[allow(unused)]
 #[async_trait]
 pub trait Bot: Send + Sync + Sized {
-    type Error: Display + Send;
-
     fn token(&self) -> &str;
 
     fn identify(&self) -> Identify { Identify::new(self.token().to_string()) }
 
-    async fn ready(&self, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    // todo make this const generic array?
+    fn global_commands() -> &'static [&'static dyn SlashCommand<Self>] { &[] }
 
-    async fn resumed(&self, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    async fn ready(&self, state: Arc<BotState<Self>>) -> Result<(), BotError> { Ok(()) }
 
-    async fn guild_create(&self, guild: Guild, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    async fn resumed(&self, state: Arc<BotState<Self>>) -> Result<(), BotError> { Ok(()) }
 
-    async fn message_create(&self, message: Message, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    async fn guild_create(&self, guild: Guild, state: Arc<BotState<Self>>) -> Result<(), BotError> { Ok(()) }
 
-    async fn message_update(&self, message: Message, state: Arc<BotState<Self>>, updates: MessageUpdate) -> Result<(), Self::Error> { Ok(()) }
+    async fn message_create(&self, message: Message, state: Arc<BotState<Self>>) -> Result<(), BotError> { Ok(()) }
 
-    async fn interaction(&self, interaction: Interaction, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    async fn message_update(&self, message: Message, state: Arc<BotState<Self>>, updates: MessageUpdate) -> Result<(), BotError> { Ok(()) }
 
-    async fn reaction(&self, reaction: ReactionUpdate, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    async fn interaction(&self, interaction: Interaction, state: Arc<BotState<Self>>) -> Result<(), BotError> { Ok(()) }
 
-    async fn integration_update(&self, guild: GuildId, integration: Integration, state: Arc<BotState<Self>>) -> Result<(), Self::Error> { Ok(()) }
+    async fn reaction(&self, reaction: ReactionUpdate, state: Arc<BotState<Self>>) -> Result<(), BotError> { Ok(()) }
 
-    async fn error(&self, error: Self::Error, state: Arc<BotState<Self>>) {
-        error!("{}", error);
+    async fn integration_update(&self, guild: GuildId, integration: Integration, state: Arc<BotState<Self>>) -> Result<(), BotError> { Ok(()) }
+
+    async fn error(&self, error: BotError, state: Arc<BotState<Self>>) {
+        error!("{}", error.display_error(&state).await);
     }
 }
 
 #[async_trait]
 pub trait BotExt: Bot + 'static {
-    async fn run(self) -> shard::Result<()> {
-        BotRunner::from(self)?
-            .run().await
+    async fn run(self) -> shard::ShardResult<()> {
+        BotRunner::from(self).run().await
+    }
+
+    async fn reset_commands(guild: GuildId, state: &BotState<Self>) -> ClientResult<()> {
+        let mut commands = state.commands.write().await;
+        let first_time = !commands.contains_key(&guild);
+        let mut commands = commands.entry(guild)
+            .or_default()
+            .write().await;
+        if first_time {
+            let app = state.application_id().await;
+            match state.client.get_guild_commands(app, guild).await {
+                Ok(old_commands) => {
+                    for command in old_commands {
+                        let delete = state.client
+                            .delete_guild_command(app, guild, command.id)
+                            .await;
+                        if let Err(e) = delete {
+                            error!("{}", e.display_error(state).await);
+                        }
+                        commands.remove(&command.id);
+                    }
+                }
+                Err(e) => error!("{}", e.display_error(state).await)
+            }
+        }
+        Ok(())
+    }
+
+    async fn slash_command(interaction: Interaction, state: Arc<BotState<Self>>) -> Result<(), BotError> {
+        let (interaction, data) = InteractionUse::from(interaction);
+
+        let command = state.global_commands.get().unwrap().get(&data.id);
+        if let Some(command) = command {
+            command.run(state, interaction, data).await?;
+        } else {
+            let command = {
+                let guard = state.commands.read().await;
+                let commands = guard.get(&interaction.guild).unwrap().read().await;
+                commands.get(&data.id).cloned()
+            };
+            if let Some(command) = command {
+                command.run(state, interaction, data).await?;
+            }
+        };
+        Ok(())
     }
 }
 
 #[async_trait]
 impl<B: Bot + 'static> BotExt for B {}
 
-struct BotRunner<B: Bot> {
+struct BotRunner<B: Bot + 'static> {
     shards: Vec<Shard<B>>,
 }
 
-impl<B: Bot + 'static> BotRunner<B> {
-    fn from(bot: B) -> shard::Result<Self> {
+impl<B: Bot + 'static> From<B> for BotRunner<B> {
+    fn from(bot: B) -> Self {
         let state = Arc::new(BotState {
             client: DiscordClient::single(bot.token().to_string()),
             cache: Default::default(),
             bot,
+            commands: Default::default(),
+            global_commands: Default::default(),
+            reaction_commands: Default::default(),
         });
         // todo more than one shard
-        let shard = Shard::new(Arc::clone(&state))?;
-        Ok(Self {
-            // state,
+        let shard = Shard::new(Arc::clone(&state));
+        Self {
             shards: vec![shard]
-        })
+        }
     }
+}
 
-    async fn run(self) -> shard::Result<()> {
+impl<B: Bot + 'static> BotRunner<B> {
+    async fn run(self) -> shard::ShardResult<()> {
         let mut handles = Vec::new();
         for mut shard in self.shards {
             let handle = tokio::spawn(async move {
@@ -148,15 +209,16 @@ impl<B: Bot + 'static> BotRunner<B> {
         //  the first is still going?
         for handle in handles {
             match handle.await {
-                Ok((id, handle)) => {
-                    error!("Shard {:?} finished", id);
-                    handle.unwrap();
+                Ok((id, _handle)) => {
+                    error!("Shard {:?} finished (this should be unreachable?)", id);
+                    // handle.unwrap();
                 }
                 Err(e) => {
                     error!("this is awkward, I didn't expect {}", e);
                 }
             }
         }
-        Err(ShardError::Other("Shouldn't stop running".into()))
+        unreachable!()
+        // Err(ShardError::Other("Shouldn't stop running".into()))
     }
 }

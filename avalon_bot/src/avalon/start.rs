@@ -2,14 +2,14 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use discorsd::errors::BotError;
-use discorsd::http::model::{ChannelMessageId, Color};
 use discorsd::http::user::UserExt;
+use discorsd::model::message::{ChannelMessageId, Color};
 use discorsd::UserMarkupExt;
 
 use crate::{create_command, delete_command};
 use crate::avalon::characters::Loyalty;
-use crate::commands::GameType;
 use crate::commands::stop::StopCommand;
+use crate::games::GameType;
 
 use super::*;
 
@@ -17,39 +17,31 @@ use super::*;
 pub struct StartCommand(pub HashSet<GameType>);
 
 #[async_trait]
-impl SlashCommand for StartCommand {
+impl SlashCommand<Bot> for StartCommand {
     fn name(&self) -> &'static str { "start" }
 
     fn command(&self) -> Command {
         let options = if self.0.len() == 1 {
             TopLevelOption::Empty
         } else {
-            TopLevelOption::Data(vec![DataOption::String(CommandDataOption::new_str(
-                "game", "Choose the game to start",
-            ).required().choices(
-                self.0.iter()
-                    .map(GameType::name)
-                    .map(CommandChoice::new_str)
-                    .collect())
-            )])
+            StartData::args()
         };
         self.make("Starts the game immediately in this channel", options)
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<NotUsed>,
+                 interaction: InteractionUse<Unused>,
                  data: ApplicationCommandInteractionData,
     ) -> Result<InteractionUse<Used>, BotError> {
         if !data.options.is_empty() {
-            todo!("handle starting specific game")
+            let game = StartData::from_data(data, interaction.guild)?.game;
+            todo!("start specific game {:?}", game)
         }
         let used = interaction.ack(&state).await?;
-        // let game = {
         let mut guard = state.bot.games.write().await;
         let avalon = guard.get_mut(&used.guild).unwrap();
         let game = avalon.start(used.channel);
-        // };
         state.client.trigger_typing(game.channel).await?;
         let board = game.board_image();
         let AvalonGame { channel, players, lotl, .. } = game.clone();
@@ -88,7 +80,9 @@ impl SlashCommand for StartCommand {
                     let image = player.role.image();
                     e.image(image);
                 })).await?;
-                let _pin = message.pin(&state).await;
+                if let Err(e) = message.pin(&state).await {
+                    warn!("Failed to pin character: {}", e.display_error(&state).await);
+                }
                 Ok(ChannelMessageId::from(message))
             });
             handles.push(handle);
@@ -120,19 +114,19 @@ impl SlashCommand for StartCommand {
                 .map(|p| p.role)
                 .filter(|c| !matches!(c, LoyalServant | MinionOfMordred))
                 .partition(|c| c.loyalty() == Loyalty::Good);
-            good.sort_by_key(Character::name);
-            evil.sort_by_key(Character::name);
+            good.sort_by_key(|c| c.name());
+            evil.sort_by_key(|c| c.name());
             let (n_good, n_evil) = (good.len(), evil.len());
             let max_evil = max_evil(players.len()).unwrap();
             let max_good = players.len() - max_evil;
-            let mut roles = good.into_iter().map(|c| c.name()).join("\n");
+            let mut roles = good.into_iter().map(Character::name).join("\n");
             let ls = max_good - n_good;
             if ls != 0 {
                 if n_good != 0 { roles.push('\n') }
                 roles.push_str(&format!("{}x {}", ls, LoyalServant));
             }
             roles.push('\n');
-            roles.push_str(&evil.into_iter().map(|c| c.name()).join("\n"));
+            roles.push_str(&evil.into_iter().map(Character::name).join("\n"));
             let mom = max_evil - n_evil;
             if mom != 0 {
                 if n_evil != 0 { roles.push('\n') }
@@ -149,7 +143,7 @@ impl SlashCommand for StartCommand {
         })).await?;
         println!("message = {:?}", start.elapsed());
 
-        let commands = state.bot.commands.read().await;
+        let commands = state.commands.read().await;
         let mut commands = commands.get(&used.guild).unwrap().write().await;
         create_command(&*state, used.guild, &mut commands, StopCommand(GameType::Avalon)).await?;
         delete_command(
@@ -165,4 +159,10 @@ impl SlashCommand for StartCommand {
 
         Ok(used)
     }
+}
+
+#[derive(CommandData)]
+struct StartData {
+    #[command(choices, desc = "Choose the game to start")]
+    game: GameType,
 }
