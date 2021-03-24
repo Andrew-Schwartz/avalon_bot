@@ -10,18 +10,19 @@ use discorsd::model::message::{ChannelMessageId, Color};
 use crate::{Bot, create_command, delete_command};
 use crate::avalon::board::Board;
 use crate::avalon::vote::VoteStatus;
+use crate::commands::stop::{StopCommand, StopVoteCommand};
 
 use super::{
-    lotl::LotlCommand,
-    characters::{Character::{Assassin, Merlin}, Loyalty::Evil},
     assassinate::Assassinate,
     Avalon,
     AvalonPlayer,
+    characters::{Character::{Assassin, Merlin}, Loyalty::Evil},
+    lotl::LotlCommand,
     quest::QuestCommand,
     rounds::{Round, Rounds},
     vote::{PartyVote, QuestVote},
 };
-use crate::commands::stop::{StopCommand, StopVoteCommand};
+use tokio::sync::RwLockWriteGuard;
 
 #[derive(Debug, Clone)]
 pub struct AvalonGame {
@@ -99,7 +100,7 @@ impl AvalonGame {
         // )
     }
 
-    pub fn is_command(command: &dyn SlashCommand<Bot>) -> bool {
+    pub fn is_command(command: &dyn SlashCommand<Bot=Bot>) -> bool {
         command.is::<Assassinate>() ||
             command.is::<LotlCommand>() ||
             command.is::<QuestCommand>() ||
@@ -115,10 +116,11 @@ impl AvalonGame {
 }
 
 impl Avalon {
-    pub async fn end_round(&mut self,
-                           state: &BotState<Bot>,
-                           guild: GuildId,
-                           commands: &mut HashMap<CommandId, Box<dyn SlashCommand<Bot>>>,
+    pub async fn end_round(
+        &mut self,
+        state: &BotState<Bot>,
+        guild: GuildId,
+        mut commands: RwLockWriteGuard<'_, HashMap<CommandId, Box<dyn SlashCommand<Bot=Bot>>>>,
     ) -> ClientResult<()> {
         let game = self.game_mut();
         let new_state = if game.good_won.iter().filter(|g| **g).count() == 3 {
@@ -144,7 +146,7 @@ impl Avalon {
                     });
                 })).await?;
                 let assassinate = Assassinate(assassin.id());
-                create_command(&*state, guild, commands, assassinate).await?;
+                create_command(&*state, guild, &mut commands, assassinate).await?;
 
                 AvalonState::Assassinate
             } else {
@@ -173,13 +175,13 @@ impl Avalon {
                 });
             })).await?;
             let lotl = LotlCommand(lotl.id());
-            create_command(&*state, guild, commands, lotl).await?;
+            create_command(&*state, guild, &mut commands, lotl).await?;
 
             AvalonState::Lotl
         } else {
             game.round += 1;
             AvalonGame::next_leader(&mut game.leader, game.players.len());
-            game.start_round(state, guild, commands).await?;
+            game.start_round(state, guild, &mut commands).await?;
             AvalonState::RoundStart
         };
         game.state = new_state;
@@ -192,7 +194,7 @@ impl AvalonGame {
         &mut self,
         state: &BotState<Bot>,
         guild: GuildId,
-        commands: &mut HashMap<CommandId, Box<dyn SlashCommand<Bot>>>,
+        commands: &mut HashMap<CommandId, Box<dyn SlashCommand<Bot=Bot>>>,
     ) -> ClientResult<()> {
         let round = self.round();
         delete_command(

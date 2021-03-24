@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use crate::model::ids::*;
 use crate::http::{ClientResult, DiscordClient};
-use crate::http::channel::{RichEmbed, MessageAttachment};
+use crate::http::channel::{RichEmbed, MessageAttachment, embed};
 use crate::http::routes::Route::*;
 
 pub use crate::model::interaction::message;
@@ -304,7 +304,7 @@ impl WebhookMessage {
             panic!("can't send more than 10 embeds");
         } else {
             self.embeds.extend(
-                (0..n).map(|i| RichEmbed::build(|e| builder(i, e)))
+                (0..n).map(|i| embed(|e| builder(i, e)))
             );
             self
         }
@@ -319,7 +319,7 @@ impl WebhookMessage {
         if self.embeds.len() >= 10 {
             panic!("can't send more than 10 embeds");
         } else {
-            self.embeds.push(RichEmbed::build(builder));
+            self.embeds.push(embed(builder));
             self
         }
     }
@@ -333,7 +333,7 @@ impl WebhookMessage {
         if self.embeds.len() >= 10 {
             Err(builder)
         } else {
-            self.embeds.push(RichEmbed::build(builder));
+            self.embeds.push(embed(builder));
             Ok(self)
         }
     }

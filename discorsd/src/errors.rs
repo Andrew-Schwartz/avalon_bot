@@ -5,7 +5,6 @@ use thiserror::Error;
 
 use crate::BotState;
 use crate::http::{ClientError, DisplayClientError};
-use crate::http::user::CommandId;
 use crate::model::ids::*;
 use crate::model::interaction::{ApplicationCommandOptionType, OptionValue};
 
@@ -22,7 +21,7 @@ pub enum BotError {
 }
 
 impl BotError {
-    pub async fn display_error<B: Send + Sync>(self, state: &BotState<B>) -> DisplayBotError {
+    pub async fn display_error<B: Send + Sync>(&self, state: &BotState<B>) -> DisplayBotError<'_> {
         match self {
             Self::Client(e) => DisplayBotError::Client(e.display_error(state).await),
             Self::Game(e) => DisplayBotError::Game(e),
@@ -32,14 +31,14 @@ impl BotError {
     }
 }
 
-pub enum DisplayBotError {
-    Client(DisplayClientError),
-    Game(GameError),
+pub enum DisplayBotError<'a> {
+    Client(DisplayClientError<'a>),
+    Game(&'a GameError),
     CommandParse(String),
     Chrono,
 }
 
-impl Display for DisplayBotError {
+impl Display for DisplayBotError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Client(e) => write!(f, "{}", e),
@@ -100,7 +99,7 @@ pub struct CommandParseErrorInfo {
 }
 
 impl CommandParseErrorInfo {
-    pub async fn display_error<B>(self, state: &BotState<B>) -> String {
+    pub async fn display_error<B: Send + Sync>(&self, state: &BotState<B>) -> String {
         let guild = if let Some(guild) = state.cache.guild(self.guild).await {
             format!("guild `{}` ({})", guild.name.as_deref().unwrap_or("null"), self.guild)
         } else {

@@ -14,6 +14,7 @@ use crate::serde_utils::BoolExt;
 
 pub use crate::model::ids::MessageId;
 use crate::model::guild::GuildMemberUserless;
+use crate::model::interaction::MessageInteraction;
 
 /// Represents a message sent in a channel within Discord.
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -109,6 +110,13 @@ pub struct Message {
     /// If the field exists but is `None`, the referenced message was deleted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub referenced_message: Option<Box<Message>>,
+    pub interaction: Option<MessageInteraction>,
+}
+
+impl Message {
+    pub fn cmid(&self) -> ChannelMessageId {
+        self.into()
+    }
 }
 
 id_eq!(Message);
@@ -248,7 +256,7 @@ bitflags! {
 		const SOURCE_MESSAGE_DELETED = 1 << 3;
         /// this message came from the urgent message system
 		const URGENT = 1 << 4;
-		/// Only usable on interaction responses I think?? (undocumented so far)
+		/// Only usable on interaction responses I think??
 		const EPHEMERAL = 1 << 6;
     }
 }

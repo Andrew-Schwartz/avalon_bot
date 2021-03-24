@@ -2,27 +2,33 @@ use std::collections::HashMap;
 
 use tokio::sync::Mutex;
 
-use discorsd::errors::AvalonError;
-use discorsd::http::channel::create_message;
 use discorsd::model::message::ChannelMessageId;
-use discorsd::UserMarkupExt;
 
-use crate::{create_command, delete_command};
-use crate::avalon::quest::QuestUserError::*;
 use crate::avalon::vote::{PartyVote, VoteStatus};
 use crate::utils::IterExt;
 
 use super::*;
+use discorsd::http::channel::create_message;
+use discorsd::errors::AvalonError;
+use crate::{create_command, delete_command};
+use crate::avalon::quest::QuestUserError::{NotPlaying, Duplicate};
+use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub struct QuestCommand(pub usize);
 
 #[async_trait]
-impl SlashCommand<Bot> for QuestCommand {
-    fn name(&self) -> &'static str { "quest" }
+impl SlashCommandData for QuestCommand {
+    type Bot = Bot;
+    type Data = QuestData;
+    const NAME: &'static str = "quest";
 
-    fn command(&self) -> Command {
-        let options = ["First", "Second", "Third", "Fourth", "Fifth"].iter()
+    fn description(&self) -> Cow<'static, str> {
+        "Choose who will go on the quest! Only the current leader can use this.".into()
+    }
+
+    fn options(&self) -> TopLevelOption {
+        let data = ["First", "Second", "Third", "Fourth", "Fifth"].iter()
             .take(self.0)
             .enumerate()
             .map(|(i, s)| CommandDataOption::<UserId>::new(
@@ -31,25 +37,22 @@ impl SlashCommand<Bot> for QuestCommand {
             .map(CommandDataOption::required)
             .map(DataOption::User)
             .collect();
-        self.make(
-            "Choose who will go on the quest! Only the current leader can use this.",
-            TopLevelOption::Data(options),
-        )
+        TopLevelOption::Data(data)
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
-                 data: ApplicationCommandInteractionData,
+                 data: QuestData,
     ) -> Result<InteractionUse<Used>, BotError> {
-        let data = QuestData::from_data(data, interaction.guild)?;
-        let mut guard = state.bot.games.write().await;
-        let game = guard.get_mut(&interaction.guild).unwrap().game_mut();
+        let guild = interaction.guild().unwrap();
+        let mut guard = state.bot.avalon_games.write().await;
+        let game = guard.get_mut(&guild).unwrap().game_mut();
         let leader = game.leader();
-        let result = if interaction.member.id() == leader.member.id() {
+        let result = if interaction.user().id == leader.member.id() {
             match data.validate(&game.players) {
                 Ok(party) => {
-                    let result = interaction.respond_source(
+                    let result = interaction.respond(
                         &state.client,
                         embed(|e| {
                             e.title(format!("{} has proposed a party to go on this quest", leader.member.nick_or_name()));
@@ -59,7 +62,7 @@ impl SlashCommand<Bot> for QuestCommand {
 
                     // I think this we should only move on if this works?
                     if let Ok(interaction) = &result {
-                        let guild = interaction.guild;
+                        let guild = interaction.guild().unwrap();
                         let list_party = party.iter().list_grammatically(UserId::ping_nick);
                         let list_party = Arc::new(list_party);
                         let mut handles = Vec::new();
@@ -169,7 +172,15 @@ enum QuestUserError {
 }
 
 #[derive(CommandData)]
-struct QuestData(#[command(vararg = "player")] Vec<UserId>);
+#[command(type = "QuestCommand")]
+pub struct QuestData(
+    #[command(vararg = "player"/*, va_count = "num_players", required, ordinals*/)]
+    Vec<UserId>
+);
+
+fn num_players(command: &QuestCommand) -> usize {
+    command.0
+}
 
 impl QuestData {
     fn validate(mut self, players: &[AvalonPlayer]) -> Result<Vec<UserId>, HashMap<UserId, QuestUserError>> {

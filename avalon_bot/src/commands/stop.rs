@@ -11,6 +11,7 @@ use discorsd::shard::dispatch::{ReactionType, ReactionUpdate};
 use crate::{async_trait, Bot, create_command};
 use crate::avalon::AvalonPlayer;
 use crate::games::GameType;
+use std::borrow::Cow;
 
 #[derive(Debug, Copy, Clone)]
 pub struct StopCommand(pub GameType);
@@ -21,22 +22,25 @@ impl StopCommand {
 }
 
 #[async_trait]
-impl SlashCommand<Bot> for StopCommand {
-    fn name(&self) -> &'static str { "stop" }
+impl SlashCommandData for StopCommand {
+    type Bot = Bot;
+    type Data = ();
+    const NAME: &'static str = "stop";
 
-    fn command(&self) -> Command {
-        self.make(
-            format!("Stop the current game of {}. Requires 2 additional players to confirm.", self.0.name()),
-            TopLevelOption::Empty,
-        )
+    fn description(&self) -> Cow<'static, str> {
+        format!(
+            "Stop the current game of {}. Requires 2 additional players to confirm.",
+            self.0.name()
+        ).into()
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
-                 _: ApplicationCommandInteractionData,
+                 _: (),
     ) -> Result<InteractionUse<Used>, BotError> {
-        let used = interaction.ack_source(&state).await?;
+        let guild = interaction.guild().unwrap();
+        let used = interaction.defer(&state).await?;
         let message = used.channel.send(&state, format!(
             "React {} to confirm stopping the game or {} to cancel this.\
                 \nNote: 2 other players must confirm for the game to be stopped.",
@@ -50,23 +54,23 @@ impl SlashCommand<Bot> for StopCommand {
             ClientResult::Ok(())
         });
         {
-            let players = state.bot.games.read().await
-                .get(&used.guild)
+            let players = state.bot.avalon_games.read().await
+                .get(&guild)
                 .unwrap().game_ref()
                 .players.iter()
                 .map(AvalonPlayer::id)
                 .collect();
             let mut reaction_commands = state.reaction_commands.write().await;
-            let vote = StopVoteCommand(id, used.guild, players, used.member.id(), self.0);
+            let vote = StopVoteCommand(id, guild, players, used.user().id, self.0);
             reaction_commands.push(Box::new(vote));
         }
         {
             let guard = state.commands.read().await;
-            let mut commands = guard.get(&used.guild).unwrap()
+            let mut commands = guard.get(&guild).unwrap()
                 .write().await;
             state.client.delete_guild_command(
                 state.application_id().await,
-                used.guild,
+                guild,
                 used.command,
             ).await?;
             commands.remove(&used.command);
@@ -86,7 +90,7 @@ impl ReactionCommand<Bot> for StopVoteCommand {
     }
 
     async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError> {
-        let mut guard = state.bot.games.write().await;
+        let mut guard = state.bot.avalon_games.write().await;
         let avalon = guard.get_mut(&self.1).unwrap();
         let game = avalon.game_mut();
         let (confirms, cancels) = &mut game.stop_votes;
@@ -110,10 +114,10 @@ impl ReactionCommand<Bot> for StopVoteCommand {
         }
         if *confirms >= 2 {
             let guard = state.commands.read().await;
-            let mut commands = guard.get(&self.1).unwrap()
+            let commands = guard.get(&self.1).unwrap()
                 .write().await;
             state.client.delete_message(reaction.channel_id, self.0).await?;
-            avalon.game_over(&state, self.1, &mut commands, embed(|e| {
+            avalon.game_over(&state, self.1, commands, embed(|e| {
                 e.title("Manually restarted");
                 e.color(Color::GOLD);
             })).await?;

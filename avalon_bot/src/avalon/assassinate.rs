@@ -1,29 +1,31 @@
-use super::*;
 use discorsd::model::message::Color;
+
+use super::*;
+use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub struct Assassinate(pub UserId);
 
 #[async_trait]
-impl SlashCommand<Bot> for Assassinate {
-    fn name(&self) -> &'static str { "assassinate" }
+impl SlashCommandData for Assassinate {
+    type Bot = Bot;
+    type Data = AssassinateData;
+    const NAME: &'static str = "assassinate";
 
-    fn command(&self) -> Command {
-        self.make(
-            "Assassinate who you think is Merlin",
-            AssassinateData::args()
-        )
+    fn description(&self) -> Cow<'static, str> {
+        "Assassinate who you think is Merlin".into()
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
-                 data: ApplicationCommandInteractionData,
+                 data: AssassinateData,
     ) -> Result<InteractionUse<Used>, BotError> {
-        let result = if interaction.member.id() == self.0 {
-            let target = AssassinateData::from_data(data, interaction.guild)?.target;
-            let mut guard = state.bot.games.write().await;
-            let avalon = guard.get_mut(&interaction.guild).unwrap();
+        let result = if interaction.user().id == self.0 {
+            let target = data.target;
+            let guild = interaction.guild().unwrap();
+            let mut guard = state.bot.avalon_games.write().await;
+            let avalon = guard.get_mut(&guild).unwrap();
             let game = avalon.game_mut();
             match game.player_ref(target) {
                 None => {
@@ -39,7 +41,7 @@ impl SlashCommand<Bot> for Assassinate {
                     })).await
                 }
                 Some(guess) => {
-                    let interaction = interaction.ack_source(&state.client).await?;
+                    let interaction = interaction.defer(&state.client).await?;
                     let game_over = embed(|e| {
                         if guess.role == Merlin {
                             e.color(Color::RED);
@@ -56,9 +58,9 @@ impl SlashCommand<Bot> for Assassinate {
                         }
                     });
                     let guard = state.commands.read().await;
-                    let mut commands = guard.get(&interaction.guild).unwrap()
+                    let commands = guard.get(&guild).unwrap()
                         .write().await;
-                    avalon.game_over(&*state, interaction.guild, &mut commands, game_over).await?;
+                    avalon.game_over(&*state, guild, commands, game_over).await?;
                     Ok(interaction)
                 }
             }
@@ -73,7 +75,7 @@ impl SlashCommand<Bot> for Assassinate {
 }
 
 #[derive(CommandData)]
-struct AssassinateData {
+pub struct AssassinateData {
     #[command(desc = "Your guess of who is Merlin")]
     target: UserId,
 }

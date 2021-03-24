@@ -8,13 +8,13 @@ use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use tokio::sync::{RwLock, RwLockReadGuard};
 
+use crate::model::channel::{CategoryChannel, Channel, ChannelType, DmChannel, NewsChannel, StoreChannel, TextChannel};
+use crate::model::guild::{Guild, GuildMember, UnavailableGuild};
 use crate::model::ids::*;
-use crate::shard::dispatch::PartialApplication;
-use crate::model::user::User;
-use crate::model::guild::{UnavailableGuild, Guild, GuildMember};
-use crate::model::channel::{ChannelType, TextChannel, DmChannel, CategoryChannel, NewsChannel, StoreChannel, Channel};
-use crate::model::message::{Message, Reaction};
 use crate::model::interaction::ApplicationCommand;
+use crate::model::message::{Message, Reaction};
+use crate::model::user::User;
+use crate::shard::dispatch::PartialApplication;
 
 #[derive(Default, Debug)]
 pub struct Cache {
@@ -37,7 +37,7 @@ pub struct Cache {
 
     pub(crate) messages: RwLock<IdMap<Message>>,
 
-    pub(crate) commands: RwLock<IdMap<ApplicationCommand>>
+    pub(crate) commands: RwLock<IdMap<ApplicationCommand>>,
 }
 
 impl Cache {
@@ -154,6 +154,10 @@ impl<T: Id> IdMap<T> {
         self.0.get(&id.id())
     }
 
+    pub fn contains<I: Id<Id=T::Id>>(&self, id: I) -> bool {
+        self.0.contains_key(&id.id())
+    }
+
     pub fn insert(&mut self, new: T) {
         self.0.insert(new.id(), new);
     }
@@ -173,8 +177,8 @@ impl<T: Id> IdMap<T> {
         self.0.entry(id.id())
     }
 
-    pub fn remove<I: Id<Id=T::Id>>(&mut self, id: I) {
-        self.0.remove(&id.id());
+    pub fn remove<I: Id<Id=T::Id>>(&mut self, id: I) -> Option<T> {
+        self.0.remove(&id.id())
     }
 
     pub fn len(&self) -> usize {
@@ -206,6 +210,8 @@ impl<T: Id> IntoIterator for IdMap<T> {
     type IntoIter = Map<hash_map::IntoIter<T::Id, T>, fn((T::Id, T)) -> T>;
 
     fn into_iter(self) -> Self::IntoIter {
+        // todo: use this when stablized
+        // self.0.into_values()
         self.0.into_iter().map(|(_, t)| t)
     }
 }
@@ -222,9 +228,7 @@ impl<'a, T: Id> IntoIterator for &'a IdMap<T> {
 impl<I: Id + Serialize> Serialize for IdMap<I> {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         let mut seq = s.serialize_seq(Some(self.0.len()))?;
-        self.iter()
-            .map(|i| seq.serialize_element(i))
-            .collect::<Result<(), S::Error>>()?;
+        self.iter().try_for_each(|i| seq.serialize_element(i))?;
         seq.end()
     }
 }

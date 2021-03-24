@@ -15,7 +15,7 @@ impl Display for Rounds {
         if !(5..=10).contains(&self.0) { return Ok(()) }
         self.rounds().iter()
             .zip(1..=5)
-            .map(|(round, i)| {
+            .try_for_each(|(round, i)| {
                 write!(f,
                        "{}{} Round: {} on the quest.",
                        i,
@@ -33,7 +33,6 @@ impl Display for Rounds {
                 }
                 writeln!(f)
             })
-            .collect()
     }
 }
 

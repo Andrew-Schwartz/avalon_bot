@@ -9,25 +9,26 @@ use serde::ser::SerializeSeq;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::errors::OptionType;
-use crate::http::channel::RichEmbed;
+use crate::http::channel::{RichEmbed, embed};
 use crate::model::ids::*;
 
 pub use crate::model::ids::{InteractionId, CommandId};
 use crate::model::message::{MessageFlags, AllowedMentions};
 use crate::model::guild::GuildMember;
+use crate::model::user::User;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct Command {
-    name: &'static str,
-    description: Cow<'static, str>,
-    options: TopLevelOption,
+    pub name: &'static str,
+    pub description: Cow<'static, str>,
+    pub options: TopLevelOption,
 }
 
 impl Command {
     pub fn new<D: Into<Cow<'static, str>>>(name: &'static str, description: D, options: TopLevelOption) -> Self {
         assert!(
-            name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
-            "command names must only contain letters, numbers, and `_`; name = `{:?}`",
+            name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+            "command names must only contain letters, numbers, `-`, and `_`; name = `{:?}`",
             name
         );
         assert!(
@@ -38,15 +39,11 @@ impl Command {
         let description = description.into();
         let dlen = description.chars().count();
         assert!(
-            1 <= dlen && dlen <= 100,
+            (1..=100).contains(&dlen),
             "command descriptions must be 1-100 characters long ({} is {} characters)",
             description, dlen
         );
         Self { name, description, options }
-    }
-
-    pub fn options(self) -> TopLevelOption {
-        self.options
     }
 }
 
@@ -251,7 +248,7 @@ impl<T> CommandDataOption<T> {
         );
         assert!(1 <= name.len() && name.len() <= 32, "command names must be 1-32 characters, name = {:?}", name);
         let dlen = description.chars().count();
-        assert!(1 <= dlen && dlen <= 100, "command descriptions must be 1-100 characters, description = {:?}", description);
+        assert!((1..=100).contains(&dlen), "command descriptions must be 1-100 characters, description = {:?}", description);
 
         Self {
             name,
@@ -333,17 +330,19 @@ trait EnumChoice {
 #[derive(Serialize, Debug, Clone, Copy)]
 pub struct CommandChoice<T> {
     /// 1-100 character choice name
-    name: &'static str,
+    pub name: &'static str,
     /// value of the choice
-    value: T,
+    pub value: T,
+    #[serde(skip)]
+    _priv: (),
 }
 
 impl<T> CommandChoice<T> {
     pub fn new(name: &'static str, value: T) -> Self {
         let nlen = name.chars().count();
-        assert!(1 <= nlen && nlen <= 100, "command names must be 1-100 characters, name = {:?}", name);
+        assert!((1..=100).contains(&nlen), "command names must be 1-100 characters, name = {:?}", name);
 
-        Self { name, value }
+        Self { name, value, _priv: () }
     }
 }
 
@@ -408,7 +407,7 @@ struct SerializeOption<'a, O: Debug> {
     pub options: Option<&'a Vec<O>>,
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
+#[allow(clippy::trivially_copy_pass_by_ref, clippy::ref_option_ref)]
 fn skip_options<O: Debug>(options: &Option<&Vec<O>>) -> bool {
     options.filter(|vec| !vec.is_empty()).is_none()
 }
@@ -854,9 +853,6 @@ impl OptionValue {
             Err(self.parse_error(ApplicationCommandOptionType::String))
         }
     }
-    pub fn unwrap_string(self) -> String {
-        self.string().unwrap()
-    }
 
     pub fn int(self) -> Result<i64, OptionType> {
         if let Self::Integer(i) = self {
@@ -864,9 +860,6 @@ impl OptionValue {
         } else {
             Err(self.parse_error(ApplicationCommandOptionType::Integer))
         }
-    }
-    pub fn unwrap_int(self) -> i64 {
-        self.int().unwrap()
     }
 
     pub fn bool(self) -> Result<bool, OptionType> {
@@ -876,29 +869,17 @@ impl OptionValue {
             Err(self.parse_error(ApplicationCommandOptionType::Boolean))
         }
     }
-    pub fn unwrap_bool(self) -> bool {
-        self.bool().unwrap()
-    }
 
     pub fn user(self) -> Result<UserId, OptionType> {
         self.id(ApplicationCommandOptionType::User)
-    }
-    pub fn unwrap_user(self) -> UserId {
-        self.user().unwrap()
     }
 
     pub fn channel(self) -> Result<ChannelId, OptionType> {
         self.id(ApplicationCommandOptionType::Channel)
     }
-    pub fn unwrap_channel(self) -> ChannelId {
-        self.channel().unwrap()
-    }
 
     pub fn role(self) -> Result<RoleId, OptionType> {
         self.id(ApplicationCommandOptionType::Role)
-    }
-    pub fn unwrap_role(self) -> RoleId {
-        self.role().unwrap()
     }
 
     fn id<I: FromStr>(self, desired: ApplicationCommandOptionType) -> Result<I, OptionType> {
@@ -929,16 +910,51 @@ pub struct Interaction {
     /// It is optional for future-proofing against new interaction types (according to docs, but I'm
     /// cool and can just change it to be optional then :). Also will probably just be a tagged enum)
     pub data: ApplicationCommandInteractionData,
-    /// the guild it was sent from
-    pub guild_id: GuildId,
+    // todo document with the comments down there :)
+    #[serde(flatten)]
+    pub source: InteractionSource,
     /// the channel it was sent from
     pub channel_id: ChannelId,
-    /// guild member data for the invoking user
-    pub member: GuildMember,
+    // /// the guild it was sent from
+    // pub guild_id: Option<GuildId>,
+    // /// guild member data for the invoking user
+    // // todo make this & user be a 2 variant enum
+    // pub member: Option<GuildMember>,
+    // /// user object for the invoking user, if invoked in a DM
+    // pub user: Option<User>,
     /// a continuation token for responding to the interaction
     pub token: String,
     // /// read-only property, always 1
     // pub version: u8,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct GuildSource {
+    #[serde(rename = "guild_id")]
+    pub id: GuildId,
+    pub member: GuildMember,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum InteractionSource {
+    Guild(GuildSource),
+    Dm { user: User },
+}
+
+impl InteractionSource {
+    pub fn guild(self) -> Option<GuildSource> {
+        match self {
+            Self::Guild(gs) => Some(gs),
+            Self::Dm { .. } => None,
+        }
+    }
+    pub fn user(self) -> Option<User> {
+        match self {
+            Self::Guild(_) => None,
+            Self::Dm { user } => Some(user),
+        }
+    }
 }
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
@@ -991,14 +1007,15 @@ pub struct ApplicationCommandInteractionDataOption {
 pub enum InteractionResponse {
     /// ACK a `Ping`
     Pong,
-    /// ACK a command without sending a message, eating the user's input
-    Acknowledge,
-    /// respond with a message, showing the user's input
-    Message(InteractionMessage),
+    // Deprecated
+    // /// ACK a command without sending a message, eating the user's input
+    // Acknowledge,
+    // /// respond with a message, showing the user's input
+    // Message(InteractionMessage),
     /// ACK a command without sending a message, showing the user's input
-    MessageWithSource(InteractionMessage),
+    ChannelMessageWithSource(InteractionMessage),
     /// respond with a message, eating the user's input
-    AckWithSource,
+    DeferredChannelMessageWithSource,
 }
 
 impl Serialize for InteractionResponse {
@@ -1012,14 +1029,28 @@ impl Serialize for InteractionResponse {
 
         let shim = match self {
             Self::Pong => Shim { kind: 1, data: None },
-            Self::Acknowledge => Shim { kind: 2, data: None },
-            Self::Message(m) => Shim { kind: 3, data: Some(m) },
-            Self::MessageWithSource(m) => Shim { kind: 4, data: Some(m) },
-            Self::AckWithSource => Shim { kind: 5, data: None },
+            // Self::Acknowledge => Shim { kind: 2, data: None },
+            // Self::Message(m) => Shim { kind: 3, data: Some(m) },
+            Self::ChannelMessageWithSource(m) => Shim { kind: 4, data: Some(m) },
+            Self::DeferredChannelMessageWithSource => Shim { kind: 5, data: None },
         };
 
         shim.serialize(s)
     }
+}
+
+/// This is sent on the message object when the message is a response to an Interaction.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MessageInteraction {
+    /// id of the interaction
+    id: InteractionId,
+    /// the type of interaction
+    #[serde(rename = "type")]
+    kind: InteractionType,
+    /// the name of the ApplicationCommand
+    name: String,
+    /// the user who invoked the interaction
+    user: User,
 }
 
 /// Not all message fields are currently supported.
@@ -1033,7 +1064,7 @@ pub struct InteractionMessage {
     embeds: Vec<RichEmbed>,
     /// allowed mentions object
     pub allowed_mentions: Option<AllowedMentions>,
-    /// (undocumented) flags, probably for setting EPHEMERAL
+    /// flags, probably for setting EPHEMERAL
     flags: MessageFlags,
 }
 
@@ -1051,23 +1082,11 @@ impl<S: Into<Cow<'static, str>>> From<S> for InteractionMessage {
 
 impl From<RichEmbed> for InteractionMessage {
     fn from(e: RichEmbed) -> Self {
-        let mut msg = Self::default();
-        msg.embeds = vec![e];
-        msg
+        Self { embeds: vec![e], ..Default::default() }
     }
 }
 
 impl InteractionMessage {
-    // pub fn new(content: String) -> Self {
-    //     Self {
-    //         tts: false,
-    //         content,
-    //         embeds: vec![],
-    //         allowed_mentions: None,
-    //         flags: MessageFlags::empty(),
-    //     }
-    // }
-
     pub fn build_with<F: FnOnce(&mut Self)>(mut with: Self, builder: F) -> Self {
         builder(&mut with);
         with
@@ -1082,7 +1101,7 @@ impl InteractionMessage {
             panic!("can't send more than 10 embeds");
         } else {
             self.embeds.extend(
-                (0..n).map(|i| RichEmbed::build(|e| builder(i, e)))
+                (0..n).map(|i| embed(|e| builder(i, e)))
             );
         }
     }
@@ -1094,7 +1113,7 @@ impl InteractionMessage {
         if self.embeds.len() >= 10 {
             panic!("can't send more than 10 embeds");
         } else {
-            self.embeds.push(RichEmbed::build(builder));
+            self.embeds.push(embed(builder));
         }
     }
 
@@ -1105,7 +1124,7 @@ impl InteractionMessage {
         if self.embeds.len() >= 10 {
             panic!("can't send more than 10 embeds");
         } else {
-            self.embeds.push(RichEmbed::build_with(embed, builder));
+            self.embeds.push(embed.build(builder));
         }
     }
 
@@ -1118,7 +1137,7 @@ impl InteractionMessage {
         if self.embeds.len() >= 10 {
             Err(builder)
         } else {
-            self.embeds.push(RichEmbed::build(builder));
+            self.embeds.push(embed(builder));
             Ok(())
         }
     }

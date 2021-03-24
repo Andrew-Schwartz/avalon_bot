@@ -7,32 +7,32 @@ use discorsd::{async_trait, BotState};
 use discorsd::errors::BotError;
 use discorsd::http::channel::embed;
 use discorsd::http::interaction::message;
-use discorsd::model::interaction::{ApplicationCommandInteractionData, Command, TopLevelOption};
 use discorsd::model::message::Color;
 
 use crate::Bot;
 
 use discorsd::commands::*;
+use std::borrow::Cow;
+
 #[derive(Copy, Clone, Debug)]
 pub struct UptimeCommand;
 
 pub const UPTIME_COMMAND: UptimeCommand = UptimeCommand;
 
 #[async_trait]
-impl SlashCommand<Bot> for UptimeCommand {
-    fn name(&self) -> &'static str { "uptime" }
+impl SlashCommandData for UptimeCommand {
+    type Bot = Bot;
+    type Data = ();
+    const NAME: &'static str = "uptime";
 
-    fn command(&self) -> Command {
-        self.make(
-            "How long has this bot been online for?",
-            TopLevelOption::Empty,
-        )
+    fn description(&self) -> Cow<'static, str> {
+        "How long has this bot been online for?".into()
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
-                 _: ApplicationCommandInteractionData,
+                 _: (),
     ) -> Result<InteractionUse<Used>, BotError> {
         let msg = if let Some(ready) = state.bot.first_log_in.get().cloned() {
             let embed = embed(|e| {
@@ -53,7 +53,7 @@ impl SlashCommand<Bot> for UptimeCommand {
                 m.content("Not yet connected, somehow :/")
             })
         };
-        interaction.respond_source(&state, msg).await.map_err(|e| e.into())
+        interaction.respond(&state, msg).await.map_err(|e| e.into())
     }
 }
 

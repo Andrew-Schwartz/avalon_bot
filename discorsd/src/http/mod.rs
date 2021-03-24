@@ -43,7 +43,7 @@ pub enum ClientError {
 }
 
 impl ClientError {
-    pub async fn display_error<B: Send + Sync>(self, state: &BotState<B>) -> DisplayClientError {
+    pub async fn display_error<B: Send + Sync>(&self, state: &BotState<B>) -> DisplayClientError<'_> {
         match self {
             Self::Request(e) => DisplayClientError::Request(e),
             Self::Http(status, route) => DisplayClientError::Http(format!("`{}` on {}", status, route.debug_with_cache(&state.cache).await)),
@@ -54,15 +54,15 @@ impl ClientError {
     }
 }
 
-pub enum DisplayClientError {
-    Request(reqwest::Error),
+pub enum DisplayClientError<'a> {
+    Request(&'a reqwest::Error),
     Http(String),
-    Json(serde_utils::Error),
-    Io(std::io::Error),
-    Discord(DiscordError),
+    Json(&'a serde_utils::Error),
+    Io(&'a std::io::Error),
+    Discord(&'a DiscordError),
 }
 
-impl Display for DisplayClientError {
+impl Display for DisplayClientError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Request(e) => write!(f, "{}", e),
@@ -146,10 +146,9 @@ impl DiscordClient {
         }).retry_notify(
             // todo make it wait exactly how long ratelimit says if it was ratelimited? is that
             //  possible? is that even a problem, it might only be for emojis and those arent accurate idk
-            {
-                let mut eb = ExponentialBackoff::default();
-                eb.max_elapsed_time = Some(Duration::from_secs(10));
-                eb
+            ExponentialBackoff {
+                max_elapsed_time: Some(Duration::from_secs(10)),
+                ..Default::default()
             },
             |e: ClientError, dur|
                 if !matches!(e, ClientError::Http(StatusCode::TOO_MANY_REQUESTS, Route::CreateReaction(_, _, _))) {
@@ -300,13 +299,13 @@ impl AsRef<DiscordClient> for DiscordClient {
     }
 }
 
-impl<B> AsRef<DiscordClient> for BotState<B> {
+impl<B: Send + Sync> AsRef<DiscordClient> for BotState<B> {
     fn as_ref(&self) -> &DiscordClient {
         &self.client
     }
 }
 
-impl<B> AsRef<DiscordClient> for Arc<BotState<B>> {
+impl<B: Send + Sync> AsRef<DiscordClient> for Arc<BotState<B>> {
     fn as_ref(&self) -> &DiscordClient {
         &self.client
     }

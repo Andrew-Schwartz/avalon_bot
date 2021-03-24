@@ -11,6 +11,7 @@
     clippy::match_same_arms,
     clippy::must_use_candidate,
     clippy::option_if_let_else,
+    clippy::manual_non_exhaustive,
     // todo
     clippy::missing_errors_doc,
     // nursery

@@ -41,6 +41,12 @@ macro_rules! id_impl {
                 }
             }
 
+            impl From<NaiveDateTime> for $id {
+                fn from(ts: NaiveDateTime) -> Self {
+                    Self((ts.timestamp_millis() as u64 - DISCORD_EPOCH) << 22)
+                }
+            }
+
             impl FromStr for $id {
                 type Err = ParseIntError;
 
@@ -95,9 +101,7 @@ id_impl!(
 );
 
 mod sealed {
-    use std::hash::Hash;
-
-    pub trait IsId: Copy + Hash + Eq {}
+    pub trait IsId: Copy + std::hash::Hash + Eq {}
 }
 
 pub trait Id: PartialEq {

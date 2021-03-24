@@ -19,6 +19,7 @@ use crate::model::voice::VoiceState;
 use crate::shard::model::{Activity, StatusType};
 use crate::model::message::{Message, ChannelMention, Attachment, Embed, Reaction, MessageType, MessageActivity, MessageApplication, MessageReference, MessageFlags, Sticker};
 use crate::model::interaction::{Interaction, ApplicationCommand};
+use crate::commands::MessageInteraction;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Deserialize, Debug, Clone)]
@@ -305,17 +306,17 @@ impl Update for ChannelDelete {
     async fn update(&self, cache: &Cache) {
         cache.channel_types.write().await.remove(&self.channel.id());
         match &self.channel {
-            Channel::Text(text) => cache.channels.write().await.remove(text),
+            Channel::Text(text) => { cache.channels.write().await.remove(text); },
             Channel::Dm(dm) => {
                 let (by_user, by_channel) = &mut *cache.dms.write().await;
                 by_user.remove(&dm.recipient.id);
                 by_channel.remove(dm);
             }
-            Channel::Category(cat) => cache.categories.write().await.remove(cat),
-            Channel::News(news) => cache.news.write().await.remove(news),
-            Channel::Store(store) => cache.stores.write().await.remove(store),
+            Channel::Category(cat) => { cache.categories.write().await.remove(cat); },
+            Channel::News(news) => { cache.news.write().await.remove(news); },
+            Channel::Store(store) => { cache.stores.write().await.remove(store); },
             Channel::Voice(_) | Channel::GroupDm(_) => {}
-        }
+        };
     }
 }
 
@@ -675,7 +676,7 @@ impl Update for GuildMemberRemove {
                 map.remove(&self.guild_id);
             });
         cache.guilds.write().await.entry(self.guild_id)
-            .and_modify(|guild| guild.members.remove(self.user.clone()));
+            .and_modify(|guild| { guild.members.remove(self.user.clone()); });
         // don't remove from `cache.users` because they could be in other guilds too or have a dm or w/e
     }
 }
@@ -943,6 +944,7 @@ pub struct MessageUpdate {
     pub(crate) flags: Option<Option<MessageFlags>>,
     pub(crate) stickers: Option<Vec<Sticker>>,
     pub(crate) referenced_message: Option<Option<Message>>,
+    pub(crate) interaction: Option<Option<MessageInteraction>>,
 }
 
 impl TryFrom<MessageUpdate> for Message {
@@ -978,6 +980,7 @@ impl TryFrom<MessageUpdate> for Message {
                 flags: update.flags.unwrap_or_default(),
                 stickers: update.stickers.unwrap_or_default(),
                 referenced_message: update.referenced_message.unwrap_or_default().map(Box::new),
+                interaction: update.interaction.unwrap_or_default(),
             })
         }
         option(update).ok_or(())
@@ -1179,7 +1182,7 @@ impl Update for ReactionRemove {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum ReactionType { Add, Remove }
 
 #[derive(Debug, Clone)]

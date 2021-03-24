@@ -5,17 +5,23 @@ use strum::{EnumCount, IntoEnumIterator};
 
 use crate::avalon::characters::Character;
 use crate::Bot;
-
 use super::*;
+use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub struct RolesCommand(pub Vec<Character>);
 
 #[async_trait]
-impl SlashCommand<Bot> for RolesCommand {
-    fn name(&self) -> &'static str { "roles" }
+impl SlashCommandData for RolesCommand {
+    type Bot = Bot;
+    type Data = RoleData;
+    const NAME: &'static str = "roles";
 
-    fn command(&self) -> Command {
+    fn description(&self) -> Cow<'static, str> {
+        "Pick which roles will be available in the next game of Avalon.".into()
+    }
+
+    fn options(&self) -> TopLevelOption {
         let roles: HashSet<Character> = self.0.iter().cloned().collect();
         let make_opts = |first, addl, already_present| {
             let choices = Character::iter()
@@ -64,22 +70,21 @@ impl SlashCommand<Bot> for RolesCommand {
                 options: Vec::new(),
             });
         }
-        self.make(
-            "Pick which roles will be available in the next game of Avalon.",
-            TopLevelOption::Commands(commands),
-        )
+        TopLevelOption::Commands(commands)
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
-                 data: ApplicationCommandInteractionData,
+                 data: RoleData,
     ) -> Result<InteractionUse<Used>, BotError> {
-        let mut guard = state.bot.games.write().await;
-        let game = guard.get_mut(&interaction.guild).unwrap();
+        let interaction = interaction.defer(&state).await?;
+        let guild = interaction.guild().unwrap();
+        let mut guard = state.bot.avalon_games.write().await;
+        let game = guard.get_mut(&guild).unwrap();
         let config = game.config_mut();
         let roles = &mut config.roles;
-        let changed = match RoleData::from_data(data, interaction.guild)? {
+        let changed = match data {
             RoleData::Add(add) => {
                 let new = add.into_iter()
                     .filter(|c| !roles.contains(c))
@@ -104,7 +109,7 @@ impl SlashCommand<Bot> for RolesCommand {
         };
         if changed {
             let guard = state.commands.read().await;
-            let mut commands = guard.get(&interaction.guild).unwrap().write().await;
+            let mut commands = guard.get(&guild).unwrap().write().await;
             let roles_cmd = commands.get_mut(&interaction.command)
                 .unwrap()
                 .downcast_mut::<Self>()
@@ -112,18 +117,26 @@ impl SlashCommand<Bot> for RolesCommand {
             roles_cmd.0 = roles.clone();
             state.client.create_guild_command(
                 state.application_id().await,
-                interaction.guild,
-                roles_cmd.command(),
+                guild,
+                SlashCommand::command(roles_cmd),
             ).await?;
-            config.start_command(&*state, &mut commands, config.startable(), interaction.guild).await?;
+            config.start_command(&*state, &mut commands, config.startable(), guild).await?;
         }
-        config.update_embed(&*state, interaction).await.map_err(|e| e.into())
+        config.update_embed(&*state, &interaction).await?;
+        Ok(interaction)
     }
 }
 
 #[derive(CommandData)]
-enum RoleData {
+pub enum RoleData {
     Add(#[command(vararg = "role", default = "HashSet::new")] HashSet<Character>),
     Remove(#[command(vararg = "role", default = "HashSet::new")] HashSet<Character>),
     Clear,
+}
+
+impl CommandArgs<RolesCommand> for RoleData {
+    fn args(_: &RolesCommand) -> TopLevelOption {
+        unimplemented!("`RoleData::args()` should never be called - specific logic is used each time\
+                        `RolesCommand::command()` is called.")
+    }
 }

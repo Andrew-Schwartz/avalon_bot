@@ -242,7 +242,7 @@ impl Message {
         where Client: AsRef<DiscordClient> + Send,
               Msg: Into<EditMessage> + Send,
     {
-        *self = ChannelMessageId::from(&*self).edit(client, edit).await?;
+        *self = self.cmid().edit(client, edit).await?;
         Ok(())
     }
 
@@ -252,7 +252,7 @@ impl Message {
     ///
     /// See [`ChannelMessageId::delete`](ChannelMessageId)
     pub async fn delete<Client: AsRef<DiscordClient> + Send>(self, client: Client) -> ClientResult<()> {
-        ChannelMessageId::from(self).delete(client).await
+        self.cmid().delete(client).await
     }
 
     /// React to this message
@@ -264,7 +264,7 @@ impl Message {
         where E: Into<Emoji> + Send,
               Client: AsRef<DiscordClient> + Send,
     {
-        ChannelMessageId::from(self).react(client, emoji).await
+        self.cmid().react(client, emoji).await
     }
 
     /// Pin this message
@@ -273,7 +273,7 @@ impl Message {
     ///
     /// See [`ChannelMessageId::pin`](ChannelMessageId)
     pub async fn pin<Client: AsRef<DiscordClient> + Send>(&self, client: Client) -> ClientResult<()> {
-        ChannelMessageId::from(self).pin(client).await
+        self.cmid().pin(client).await
     }
 
     /// Unpin this message
@@ -282,7 +282,7 @@ impl Message {
     ///
     /// See [`ChannelMessageId::unpin`](ChannelMessageId)
     pub async fn unpin<Client: AsRef<DiscordClient> + Send>(&self, client: Client) -> ClientResult<()> {
-        ChannelMessageId::from(self).unpin(client).await
+        self.cmid().unpin(client).await
     }
 }
 
@@ -444,9 +444,7 @@ impl<S: Into<Cow<'static, str>>> From<S> for CreateMessage {
 
 impl From<RichEmbed> for CreateMessage {
     fn from(e: RichEmbed) -> Self {
-        let mut msg = Self::default();
-        msg.embed = Some(e);
-        msg
+        Self { embed: Some(e), ..Default::default() }
     }
 }
 
@@ -478,7 +476,7 @@ impl CreateMessage {
     }
 
     pub fn embed_with<F: FnOnce(&mut RichEmbed)>(&mut self, embed: RichEmbed, builder: F) {
-        self.embed = Some(RichEmbed::build_with(embed, builder));
+        self.embed = Some(RichEmbed::build(embed, builder));
     }
 
     pub fn embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) {
@@ -545,21 +543,21 @@ pub struct RichEmbed {
 }
 
 pub fn embed<F: FnOnce(&mut RichEmbed)>(f: F) -> RichEmbed {
-    RichEmbed::build(f)
+    RichEmbed::build_new(f)
 }
 
 pub fn embed_with<F: FnOnce(&mut RichEmbed)>(embed: RichEmbed, f: F) -> RichEmbed {
-    RichEmbed::build_with(embed, f)
+    RichEmbed::build(embed, f)
 }
 
 impl RichEmbed {
-    pub fn build<F: FnOnce(&mut Self)>(builder: F) -> Self {
-        Self::build_with(Self::default(), builder)
+    pub fn build_new<F: FnOnce(&mut Self)>(builder: F) -> Self {
+        Self::build(Self::default(), builder)
     }
 
-    pub fn build_with<F: FnOnce(&mut Self)>(mut embed: Self, builder: F) -> Self {
-        builder(&mut embed);
-        embed
+    pub fn build<F: FnOnce(&mut Self)>(mut self, builder: F) -> Self {
+        builder(&mut self);
+        self
     }
 
     pub fn title<S: Into<Cow<'static, str>>>(&mut self, title: S) {
@@ -733,9 +731,7 @@ impl<S: Into<Cow<'static, str>>> From<S> for EditMessage {
 
 impl From<RichEmbed> for EditMessage {
     fn from(e: RichEmbed) -> Self {
-        let mut msg = Self::default();
-        msg.embed = Some(Some(e));
-        msg
+        Self { embed: Some(Some(e)), ..Default::default() }
     }
 }
 
@@ -761,7 +757,7 @@ impl EditMessage {
         let embed = self.embed.as_mut()
             .and_then(Option::take)
             .unwrap_or_default();
-        self.embed = Some(Some(RichEmbed::build_with(embed, f)));
+        self.embed = Some(Some(RichEmbed::build(embed, f)));
     }
 
     pub fn clear_embed(&mut self) {

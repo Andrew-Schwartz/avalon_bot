@@ -5,6 +5,7 @@
     clippy::option_if_let_else,
     clippy::filter_map,
     clippy::use_self,
+    clippy::default_trait_access,
 )]
 // @formatter:on
 
@@ -17,13 +18,14 @@ mod struct_data;
 mod enum_option;
 mod enum_data;
 
+/// Todo document these
 #[proc_macro_derive(CommandData, attributes(command))]
 pub fn derive_data(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let ty = input.ident;
     let tokens = match input.data {
-        Data::Struct(data) => struct_data::struct_impl(&ty, data.fields),
+        Data::Struct(data) => struct_data::struct_impl(&ty, data.fields, &input.attrs),
         Data::Enum(data) => enum_data::enum_impl(&ty, data),
         Data::Union(_) => syn::Error::new(
             ty.span(),

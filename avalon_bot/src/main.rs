@@ -12,6 +12,8 @@
     clippy::default_trait_access,
     clippy::filter_map,
     clippy::must_use_candidate,
+    clippy::similar_names,
+    clippy::unit_arg,
     // nursery
     clippy::missing_const_for_fn,
 )]
@@ -33,7 +35,7 @@ use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use avalon::lotl::ToggleLady;
 use avalon::roles::RolesCommand;
-use discorsd::{BotExt, BotState, GuildCommands, shard};
+use discorsd::{BotExt, BotState, GuildCommands, IdMap, shard};
 use discorsd::async_trait;
 use discorsd::commands::{ReactionCommand, SlashCommand};
 use discorsd::errors::BotError;
@@ -50,11 +52,18 @@ use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, Updat
 use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
 pub use crate::commands::{addme::AddMeCommand};
+use crate::commands::start::StartCommand;
+use crate::games::GameType;
+use crate::hangman::Hangman;
+use crate::hangman::hangman_command::HangmanCommand;
+use crate::hangman::random_words::GuildHist;
+use std::collections::hash_map::Entry;
 
 #[macro_use]
 mod macros;
 mod commands;
 mod avalon;
+mod hangman;
 pub mod utils;
 pub mod games;
 
@@ -78,8 +87,11 @@ impl Debug for Config {
 
 pub struct Bot {
     config: Config,
-    games: RwLock<HashMap<GuildId, Avalon>>,
+    avalon_games: RwLock<HashMap<GuildId, Avalon>>,
+    hangman_games: RwLock<HashMap<GuildId, Hangman>>,
+    guild_hist_words: RwLock<IdMap<GuildHist>>,
     user_games: RwLock<HashMap<UserId, HashSet<GuildId>>>,
+    start: RwLock<HashMap<GuildId, CommandId>>,
     first_log_in: OnceCell<DateTime<Utc>>,
     log_in: RwLock<Option<DateTime<Utc>>>,
 }
@@ -90,8 +102,11 @@ impl Bot {
             config,
             // commands: Default::default(),
             // reaction_commands: Default::default(),
-            games: Default::default(),
+            avalon_games: Default::default(),
+            hangman_games: Default::default(),
+            guild_hist_words: Default::default(),
             user_games: Default::default(),
+            start: Default::default(),
             first_log_in: Default::default(),
             log_in: Default::default(),
         }
@@ -156,7 +171,7 @@ impl discorsd::Bot for Bot {
         })
     }
 
-    fn global_commands() -> &'static [&'static dyn SlashCommand<Self>] {
+    fn global_commands() -> &'static [&'static dyn SlashCommand<Bot=Self>] {
         &commands::GLOBAL_COMMANDS
     }
 
@@ -172,7 +187,6 @@ impl discorsd::Bot for Bot {
                 e.url("https://github.com/Andrew-Schwartz/AvalonBot")
             });
         })).await?;
-        // commands::init_global_commands(&state).await;
 
         Ok(())
     }
@@ -189,9 +203,15 @@ impl discorsd::Bot for Bot {
 
     async fn guild_create(&self, guild: Guild, state: Arc<BotState<Self>>) -> Result<()> {
         info!("Guild Create: {} ({})", guild.name.as_ref().unwrap(), guild.id);
-        self.games.write().await.entry(guild.id).or_default();
+        self.avalon_games.write().await.entry(guild.id).or_default();
 
-        Self::reset_commands(guild.id, &state).await?;
+        {
+            let mut commands = state.commands.write().await;
+            let commands = commands.entry(guild.id).or_default().write().await;
+            let rcs = state.reaction_commands.write().await;
+            // println!("bruh");
+            Self::reset_guild_commands(guild.id, &state, commands, rcs).await;
+        }
 
         if Utc::now().signed_duration_since(self.most_recent_login().await.unwrap()).num_seconds() >= 20 {
             self.config.channel.send(&state, format!(
@@ -264,7 +284,7 @@ impl discorsd::Bot for Bot {
     }
 
     async fn reaction(&self, reaction: ReactionUpdate, state: Arc<BotState<Self>>) -> Result<()> {
-        println!("reaction = {:?}", reaction);
+        // println!("reaction = {:?}", reaction);
         let mut results = Vec::new();
         let commands = state.reaction_commands.read().await.iter()
             .filter(|rc| rc.applies(&reaction))
@@ -283,7 +303,14 @@ impl discorsd::Bot for Bot {
 
     async fn integration_update(&self, guild: GuildId, integration: Integration, state: Arc<BotState<Self>>) -> Result<()> {
         info!("Guild Integration Update: {:?}", integration);
-        Self::reset_commands(guild, &state).await?;
+
+        {
+            let mut commands = state.commands.write().await;
+            let commands = commands.entry(guild.id()).or_default().write().await;
+            let rcs = state.reaction_commands.write().await;
+            Self::reset_guild_commands(guild.id(), &state, commands, rcs).await;
+        }
+
         let channels = state.cache.guild_channels(guild, Channel::text).await;
         let channel = channels.iter().find(|c| c.name == "general")
             .unwrap_or_else(|| channels.iter().next().unwrap());
@@ -296,7 +323,7 @@ impl discorsd::Bot for Bot {
     }
 }
 
-async fn delete_command<F: Fn(&dyn SlashCommand<Bot>) -> bool + Send>(
+async fn delete_command<F: Fn(&dyn SlashCommand<Bot=Bot>) -> bool + Send>(
     state: &BotState<Bot>,
     guild: GuildId,
     commands: &mut GuildCommands<Bot>,
@@ -315,12 +342,12 @@ async fn delete_command<F: Fn(&dyn SlashCommand<Bot>) -> bool + Send>(
     Ok(())
 }
 
-async fn create_command<C: SlashCommand<Bot>>(
+async fn create_command<C: SlashCommand<Bot=Bot>>(
     state: &BotState<Bot>,
     guild: GuildId,
     commands: &mut GuildCommands<Bot>,
     command: C,
-) -> ClientResult<()> {
+) -> ClientResult<CommandId> {
     let resp = state.client.create_guild_command(
         state.application_id().await,
         guild,
@@ -328,10 +355,9 @@ async fn create_command<C: SlashCommand<Bot>>(
     ).await?;
     commands.insert(resp.id, Box::new(command));
 
-    Ok(())
+    Ok(resp.id)
 }
 
-#[allow(clippy::use_self)]
 impl Bot {
     // async fn init_guild_commands(&self, guild: GuildId, state: &BotState<Bot>) -> ClientResult<()> {
     //     let app = state.application_id().await;
@@ -354,9 +380,11 @@ impl Bot {
     async fn reset_guild_commands(
         guild: GuildId,
         state: &BotState<Self>,
-        commands: &mut GuildCommands<Bot>,
-        mut reactions: RwLockWriteGuard<'_, Vec<Box<dyn ReactionCommand<Bot>>>>,
+        mut commands: RwLockWriteGuard<'_, GuildCommands<Self>>,
+        mut reactions: RwLockWriteGuard<'_, Vec<Box<dyn ReactionCommand<Self>>>>,
     ) {
+        // todo was this actually needed???
+        // Self::clear_prev_commands(guild, state).await.unwrap();
         reactions.retain(|rc| !AvalonGame::is_reaction_command(rc.as_ref(), guild));
         drop(reactions);
         let application = state.application_id().await;
@@ -374,13 +402,23 @@ impl Bot {
                 }
             }
         }
-        let new: Vec<Box<dyn SlashCommand<Bot>>> = vec![
+        let new: Vec<Box<dyn SlashCommand<Bot=Self>>> = vec![
             Box::new(RolesCommand(vec![])),
             Box::new(AddMeCommand),
             Box::new(ToggleLady),
+            Box::new(HangmanCommand),
+            // todo write the logic for taking this off of here when hangman starts etc (also ^)
         ];
         let new = discorsd::commands::create_guild_commands(&state, guild, new).await;
         commands.extend(new);
+        let start_id = create_command(
+            state, guild, &mut commands, StartCommand(set!(GameType::Hangman)),
+        ).await.unwrap();
+        // todo when `Entry.insert` is stabilized just use that
+        match state.bot.start.write().await.entry(guild) {
+            Entry::Occupied(mut o) => { o.insert(start_id); },
+            Entry::Vacant(v) => { v.insert(start_id); },
+        };
     }
 
     pub async fn most_recent_login(&self) -> Option<DateTime<Utc>> {
@@ -392,12 +430,15 @@ impl Bot {
     }
 
     pub async fn debug(&self) -> DebugBot<'_> {
-        let Self { config, first_log_in: ready, log_in: resume, games, user_games } = self;
+        let Self { config, hangman_games, guild_hist_words, start, first_log_in: ready, log_in: resume, avalon_games: games, user_games } = self;
         #[allow(clippy::eval_order_dependence)]
         DebugBot {
             config,
             games: games.read().await,
+            hangman_games: hangman_games.read().await,
+            guild_hist_words: guild_hist_words.read().await,
             user_games: user_games.read().await,
+            start: start.read().await,
             ready: ready.get(),
             resume: resume.read().await,
         }
@@ -408,7 +449,10 @@ impl Bot {
 pub struct DebugBot<'a> {
     config: &'a Config,
     games: RwLockReadGuard<'a, HashMap<GuildId, Avalon>>,
+    hangman_games: RwLockReadGuard<'a, HashMap<GuildId, Hangman>>,
+    guild_hist_words: RwLockReadGuard<'a, IdMap<GuildHist>>,
     user_games: RwLockReadGuard<'a, HashMap<UserId, HashSet<GuildId>>>,
+    start: RwLockReadGuard<'a, HashMap<GuildId, CommandId>>,
     ready: Option<&'a DateTime<Utc>>,
     resume: RwLockReadGuard<'a, Option<DateTime<Utc>>>,
 }

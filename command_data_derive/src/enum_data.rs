@@ -3,7 +3,7 @@ use std::iter::FromIterator;
 
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, quote_spanned};
-use syn::{DataEnum, Fields, Ident, LitStr};
+use syn::{DataEnum, Fields, Ident, LitStr, Attribute};
 use syn::spanned::Spanned;
 
 use crate::struct_data::Struct;
@@ -52,6 +52,7 @@ pub fn enum_impl(ty: &Ident, data: DataEnum) -> TokenStream2 {
 
 #[derive(Debug)]
 struct Variant {
+    attrs: Vec<Attribute>,
     ident: Ident,
     fields: Fields,
 }
@@ -70,7 +71,7 @@ impl TryFrom<syn::Variant> for Variant {
             return Err(syn::Error::new(variant.span(), "Command variants can't have discriminants (ex, `= 1`)"));
         }
 
-        Ok(Self { ident: variant.ident, fields: variant.fields })
+        Ok(Self { attrs: variant.attrs, ident: variant.ident, fields: variant.fields })
     }
 }
 
@@ -82,7 +83,7 @@ impl Enum {
         let branches = self.0.iter().enumerate().map(|(n, v)| {
             let span = v.ident.span();
             let patt = v.lowercase_name();
-            match Struct::from_fields(v.fields.clone()) {
+            match Struct::from_fields(v.fields.clone(), &v.attrs) {
                 Ok(fields) => match syn::parse_str(&format!("{}::{}", ty, v.ident)) {
                     Ok(path) => {
                         let try_from_body = fields.try_from_body(ty, &path, n);

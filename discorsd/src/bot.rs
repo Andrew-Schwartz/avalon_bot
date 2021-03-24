@@ -5,13 +5,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use log::error;
 use once_cell::sync::OnceCell;
-use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio::sync::RwLock;
 
 use crate::cache::Cache;
 use crate::commands::{ReactionCommand, SlashCommand};
 use crate::errors::BotError;
-use crate::http::{DiscordClient, ClientResult};
-use crate::http::user::GuildId;
+use crate::http::DiscordClient;
 use crate::model::commands::InteractionUse;
 use crate::model::guild::{Guild, Integration};
 use crate::model::ids::*;
@@ -23,18 +22,18 @@ use crate::shard::dispatch::{MessageUpdate, PartialApplication, ReactionUpdate};
 use crate::shard::model::Identify;
 use crate::shard::Shard;
 
-pub type GuildCommands<B> = HashMap<CommandId, Box<dyn SlashCommand<B>>>;
+pub type GuildCommands<B> = HashMap<CommandId, Box<dyn SlashCommand<Bot=B>>>;
 
-pub struct BotState<B: 'static> {
+pub struct BotState<B: Send + Sync + 'static> {
     pub client: DiscordClient,
     pub cache: Cache,
     pub bot: B,
     pub commands: RwLock<HashMap<GuildId, RwLock<GuildCommands<B>>>>,
-    pub global_commands: OnceCell<HashMap<CommandId, &'static dyn SlashCommand<B>>>,
+    pub global_commands: OnceCell<HashMap<CommandId, &'static dyn SlashCommand<Bot=B>>>,
     pub reaction_commands: RwLock<Vec<Box<dyn ReactionCommand<B>>>>,
 }
 
-impl<B> AsRef<BotState<B>> for BotState<B> {
+impl<B: Send + Sync> AsRef<BotState<B>> for BotState<B> {
     fn as_ref(&self) -> &Self {
         self
     }
@@ -69,7 +68,7 @@ impl<B: Send + Sync> BotState<B> {
     }
 }
 
-impl<B: Debug> Debug for BotState<B> {
+impl<B: Debug + Send + Sync> Debug for BotState<B> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("BotState")
             .field("client", &self.client)
@@ -96,7 +95,7 @@ pub trait Bot: Send + Sync + Sized {
     fn identify(&self) -> Identify { Identify::new(self.token().to_string()) }
 
     // todo make this const generic array?
-    fn global_commands() -> &'static [&'static dyn SlashCommand<Self>] { &[] }
+    fn global_commands() -> &'static [&'static dyn SlashCommand<Bot=Self>] { &[] }
 
     async fn ready(&self, state: Arc<BotState<Self>>) -> Result<(), BotError> { Ok(()) }
 
@@ -125,31 +124,36 @@ pub trait BotExt: Bot + 'static {
         BotRunner::from(self).run().await
     }
 
-    async fn reset_commands(guild: GuildId, state: &BotState<Self>) -> ClientResult<()> {
-        let mut commands = state.commands.write().await;
-        let first_time = !commands.contains_key(&guild);
-        let mut commands = commands.entry(guild)
-            .or_default()
-            .write().await;
-        if first_time {
-            let app = state.application_id().await;
-            match state.client.get_guild_commands(app, guild).await {
-                Ok(old_commands) => {
-                    for command in old_commands {
-                        let delete = state.client
-                            .delete_guild_command(app, guild, command.id)
-                            .await;
-                        if let Err(e) = delete {
-                            error!("{}", e.display_error(state).await);
-                        }
-                        commands.remove(&command.id);
-                    }
-                }
-                Err(e) => error!("{}", e.display_error(state).await)
-            }
-        }
-        Ok(())
-    }
+    // /// Initializes the hashset of guild commands, and deletes any existing commands Discord has
+    // async fn clear_prev_commands(
+    //     guild: GuildId,
+    //     state: &BotState<Self>,
+    //     mut commands: RwLockWriteGuard<'_, GuildCommands<Self>>,
+    // ) -> ClientResult<()> {
+    //     let mut commands = state.commands.write().await;
+    //     let first_time = !commands.contains_key(&guild);
+    //     let mut commands = commands.entry(guild)
+    //         .or_default()
+    //         .write().await;
+    //     if first_time {
+    //         let app = state.application_id().await;
+    //         match state.client.get_guild_commands(app, guild).await {
+    //             Ok(old_commands) => {
+    //                 for command in old_commands {
+    //                     let delete = state.client
+    //                         .delete_guild_command(app, guild, command.id)
+    //                         .await;
+    //                     if let Err(e) = delete {
+    //                         error!("{}", e.display_error(state).await);
+    //                     }
+    //                     commands.remove(&command.id);
+    //                 }
+    //             }
+    //             Err(e) => error!("{}", e.display_error(state).await)
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
     async fn slash_command(interaction: Interaction, state: Arc<BotState<Self>>) -> Result<(), BotError> {
         let (interaction, data) = InteractionUse::from(interaction);
@@ -160,7 +164,8 @@ pub trait BotExt: Bot + 'static {
         } else {
             let command = {
                 let guard = state.commands.read().await;
-                let commands = guard.get(&interaction.guild).unwrap().read().await;
+                // todo fix this unwrap lol
+                let commands = guard.get(&interaction.guild().unwrap()).unwrap().read().await;
                 commands.get(&data.id).cloned()
             };
             if let Some(command) = command {

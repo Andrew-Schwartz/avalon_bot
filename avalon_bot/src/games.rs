@@ -1,7 +1,6 @@
 use command_data_derive::CommandDataOption;
 use std::fmt::{Display, self};
 
-// this will be somewhere else lol
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, CommandDataOption)]
 pub enum GameType {
     #[command(default)]

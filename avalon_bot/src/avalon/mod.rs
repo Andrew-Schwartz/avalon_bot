@@ -5,6 +5,7 @@ use std::sync::Arc;
 use itertools::Itertools;
 use log::warn;
 use rand::prelude::SliceRandom;
+use tokio::sync::RwLockWriteGuard;
 
 pub use command_data_derive::*;
 pub use discorsd::{async_trait, BotState, errors::BotError};
@@ -12,10 +13,9 @@ pub use discorsd::commands::*;
 use discorsd::http::channel::{ChannelExt, embed, embed_with, RichEmbed};
 use discorsd::http::ClientResult;
 use discorsd::http::user::UserExt;
-pub use discorsd::model::{commands::*, interaction::*};
 use discorsd::model::guild::GuildMember;
 use discorsd::model::ids::*;
-use discorsd::UserMarkupExt;
+use discorsd::{UserMarkupExt, GuildCommands};
 use game::{AvalonGame, AvalonState};
 
 use crate::avalon::characters::Character::{self, LoyalServant, Merlin, MinionOfMordred};
@@ -25,7 +25,6 @@ pub use crate::Bot;
 
 pub mod characters;
 pub mod quest;
-pub mod start;
 pub mod roles;
 pub mod rounds;
 pub mod config;
@@ -34,6 +33,7 @@ pub mod assassinate;
 pub mod lotl;
 pub mod game;
 pub mod board;
+pub mod start;
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
@@ -61,7 +61,7 @@ impl Avalon {
         if let Self::Game(game) = self {
             game
         } else {
-            panic!("Expected Avalon to be in the Config state")
+            panic!("Expected Avalon to be in the Game state")
         }
     }
 
@@ -69,7 +69,7 @@ impl Avalon {
         if let Self::Game(game) = self {
             game
         } else {
-            panic!("Expected Avalon to be in the Config state")
+            panic!("Expected Avalon to be in the Game state")
         }
     }
 
@@ -144,7 +144,7 @@ impl Avalon {
         &mut self,
         state: &BotState<Bot>,
         guild: GuildId,
-        commands: &mut HashMap<CommandId, Box<dyn SlashCommand<Bot>>>,
+        commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
         embed: RichEmbed,
     ) -> ClientResult<()> {
         let game = self.game_ref();
@@ -175,7 +175,7 @@ impl Avalon {
         *self = Self::default();
 
         let rcs = state.reaction_commands.write().await;
-        state.bot.reset_guild_commands(&*state, commands, rcs, guild).await;
+        Bot::reset_guild_commands(guild, state, commands, rcs).await;
         Ok(())
     }
 }

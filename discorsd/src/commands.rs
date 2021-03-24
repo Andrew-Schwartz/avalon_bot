@@ -15,11 +15,12 @@ use crate::model::guild::GuildId;
 pub use crate::model::interaction::*;
 use crate::shard::dispatch::ReactionUpdate;
 
+// todo this really shouldn't be here
 pub async fn create_guild_commands<B, State>(
     state: State,
     guild: GuildId,
-    commands: Vec<Box<dyn SlashCommand<B>>>,
-) -> HashMap<CommandId, Box<dyn SlashCommand<B>>>
+    commands: Vec<Box<dyn SlashCommand<Bot=B>>>,
+) -> HashMap<CommandId, Box<dyn SlashCommand<Bot=B>>>
     where
         B: Send + Sync + 'static,
         State: AsRef<BotState<B>> + Send,
@@ -39,30 +40,74 @@ pub async fn create_guild_commands<B, State>(
 }
 
 #[async_trait]
-pub trait SlashCommand<B>: Send + Sync + Debug + Downcast + DynClone {
+pub trait SlashCommandData: Sized + Send + Sync + Debug + Downcast + DynClone {
+    type Bot: Send + Sync;
+    type Data: DataExt + CommandArgs<Self> + Send;
+
+    const NAME: &'static str;
+    fn description(&self) -> Cow<'static, str>;
+
+    fn options(&self) -> TopLevelOption {
+        Self::Data::args(self)
+    }
+
+    async fn run(&self,
+                 state: Arc<BotState<<Self as SlashCommand>::Bot>>,
+                 interaction: InteractionUse<Unused>,
+                 data: Self::Data,
+    ) -> Result<InteractionUse<Used>, BotError>;
+}
+
+#[allow(clippy::use_self)]
+#[async_trait]
+impl<Scd: SlashCommandData> SlashCommand for Scd
+    where <Self as SlashCommandData>::Bot: Send + Sync
+{
+    type Bot = <Self as SlashCommandData>::Bot;
+
+    fn name(&self) -> &'static str {
+        Self::NAME
+    }
+
+    fn command(&self) -> Command {
+        Command::new(Self::NAME, self.description(), self.options())
+    }
+
+    async fn run(&self,
+                 state: Arc<BotState<Self::Bot>>,
+                 interaction: InteractionUse<Unused>,
+                 data: ApplicationCommandInteractionData,
+    ) -> Result<InteractionUse<Used>, BotError> {
+        let data = Scd::Data::from_data(data, interaction.guild().unwrap())?;
+        SlashCommandData::run(self, state, interaction, data).await
+    }
+}
+
+#[async_trait]
+pub trait SlashCommand: Send + Sync + Debug + Downcast + DynClone {
+    type Bot: Send + Sync;
+
     fn name(&self) -> &'static str;
 
     fn command(&self) -> Command;
 
     async fn run(&self,
-                 state: Arc<BotState<B>>,
+                 state: Arc<BotState<Self::Bot>>,
                  interaction: InteractionUse<Unused>,
                  data: ApplicationCommandInteractionData,
     ) -> Result<InteractionUse<Used>, BotError>;
 }
-impl_downcast!(SlashCommand<B>);
-clone_trait_object!(<B> SlashCommand<B>);
+impl_downcast!(SlashCommand assoc Bot);
+// clone_trait_object!(SlashCommand);
 
-pub trait SlashCommandExt<B>: SlashCommand<B> {
-    fn make<D: Into<Cow<'static, str>>>(&self, description: D, options: TopLevelOption) -> Command {
-        Command::new(self.name(), description, options)
+impl<'clone, B> Clone for Box<dyn SlashCommand<Bot=B> + 'clone> {
+    fn clone(&self) -> Self {
+        dyn_clone::clone_box(&**self)
     }
 }
 
-impl<B, S: SlashCommand<B>> SlashCommandExt<B> for S {}
-
 #[async_trait]
-pub trait ReactionCommand<B>: Send + Sync + Debug + Downcast + DynClone {
+pub trait ReactionCommand<B: Send + Sync>: Send + Sync + Debug + Downcast + DynClone {
     fn applies(&self, reaction: &ReactionUpdate) -> bool;
 
     async fn run(&self,
@@ -70,5 +115,5 @@ pub trait ReactionCommand<B>: Send + Sync + Debug + Downcast + DynClone {
                  reaction: ReactionUpdate,
     ) -> Result<(), BotError>;
 }
-impl_downcast!(ReactionCommand<B>);
-clone_trait_object!(<B> ReactionCommand<B>);
+impl_downcast!(ReactionCommand<B> where B: Send + Sync);
+clone_trait_object!(<B> ReactionCommand<B> where B: Send + Sync);

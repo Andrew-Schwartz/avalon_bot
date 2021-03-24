@@ -6,7 +6,7 @@ use crate::http::{ClientResult, DiscordClient};
 use crate::http::channel::{ChannelExt, CreateMessage};
 use crate::http::routes::Route::*;
 
-pub use crate::model::ids::*;
+use crate::model::ids::*;
 use crate::model::user::User;
 use crate::model::channel::DmChannel;
 use crate::model::message::Message;

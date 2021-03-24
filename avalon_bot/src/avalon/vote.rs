@@ -13,6 +13,7 @@ use crate::create_command;
 use crate::utils::IterExt;
 
 use super::*;
+use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub struct PartyVote {
@@ -41,7 +42,7 @@ impl ReactionCommand<Bot> for PartyVote {
                 Add => 1,
                 Remove => -1,
             };
-            let mut guard = state.bot.games.write().await;
+            let mut guard = state.bot.avalon_games.write().await;
             let guild = self.guild;
             let avalon = guard.get_mut(&guild).unwrap();
             let game = avalon.game_mut();
@@ -73,9 +74,9 @@ impl ReactionCommand<Bot> for PartyVote {
                         match game.rejected_quests {
                             5 => {
                                 let guard = state.commands.read().await;
-                                let mut commands = guard.get(&guild).unwrap()
+                                let commands = guard.get(&guild).unwrap()
                                     .write().await;
-                                return avalon.game_over(&state, guild, &mut commands, embed(|e| {
+                                return avalon.game_over(&state, guild, commands, embed(|e| {
                                     e.color(Color::RED);
                                     e.title("With 5 rejected parties in a row, the bad guys win");
                                     e.image(board);
@@ -221,7 +222,7 @@ impl ReactionCommand<Bot> for QuestVote {
                 Add => 1,
                 Remove => -1,
             };
-            let mut guard = state.bot.games.write().await;
+            let mut guard = state.bot.avalon_games.write().await;
             let avalon = guard.get_mut(&self.guild).unwrap();
             let game = avalon.game_mut();
             let round = game.round();
@@ -264,9 +265,9 @@ impl ReactionCommand<Bot> for QuestVote {
                     };
                     // let _ = game.pin(&state, msg).await;
                     let guard = state.commands.read().await;
-                    let mut commands = guard.get(&self.guild).unwrap()
+                    let commands = guard.get(&self.guild).unwrap()
                         .write().await;
-                    avalon.end_round(&state, self.guild, &mut commands).await?;
+                    avalon.end_round(&state, self.guild, commands).await?;
 
                     state.reaction_commands.write().await
                         .retain(|rc|
@@ -288,20 +289,22 @@ impl ReactionCommand<Bot> for QuestVote {
 pub struct VoteStatus;
 
 #[async_trait]
-impl SlashCommand<Bot> for VoteStatus {
-    fn name(&self) -> &'static str { "vote_status" }
+impl SlashCommandData for VoteStatus {
+    type Bot = Bot;
+    type Data = ();
+    const NAME: &'static str = "vote-status";
 
-    fn command(&self) -> Command {
-        self.make("Find out who didn't vote yet", TopLevelOption::Empty)
+    fn description(&self) -> Cow<'static, str> {
+        "Find out who didn't vote yet".into()
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
-                 _data: ApplicationCommandInteractionData,
+                 _data: (),
     ) -> Result<InteractionUse<Used>, BotError> {
-        let guard = state.bot.games.read().await;
-        let game = guard.get(&interaction.guild).unwrap().game_ref();
+        let guard = state.bot.avalon_games.read().await;
+        let game = guard.get(&interaction.guild().unwrap()).unwrap().game_ref();
         match &game.state {
             AvalonState::PartyVote(votes, _)
             | AvalonState::Questing(votes) => {
@@ -310,7 +313,7 @@ impl SlashCommand<Bot> for VoteStatus {
                     .collect_vec();
                 let list = not_voted.iter()
                     .list_grammatically(|((_, user), _)| user.ping_nick());
-                interaction.respond_source(&state.client, match not_voted.len() {
+                interaction.respond(&state.client, match not_voted.len() {
                     0 => "no one".to_string(),
                     1 => format!("{} has not voted", list),
                     _ => format!("{} have not voted", list),

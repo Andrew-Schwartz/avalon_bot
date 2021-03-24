@@ -20,6 +20,7 @@ pub fn enum_impl(ty: &Ident, data: DataEnum) -> TokenStream2 {
     let branches = variants.branches();
     let variants_array = variants.array();
     let default_impl = variants.default_impl(ty);
+    let eq_branches = variants.eq_branches();
 
     let tokens = quote! {
         impl discorsd::model::commands::OptionChoices for #ty {
@@ -49,6 +50,32 @@ pub fn enum_impl(ty: &Ident, data: DataEnum) -> TokenStream2 {
         }
 
         #default_impl
+
+        impl<'a> PartialEq<&'a str> for #ty {
+            fn eq(&self, other: &&'a str) -> bool {
+                match self {
+                    #eq_branches
+                }
+            }
+        }
+
+        impl<'a> PartialEq<#ty> for &'a str {
+            fn eq(&self, other: &#ty) -> bool {
+                other == self
+            }
+        }
+
+        impl PartialEq<str> for #ty {
+            fn eq(&self, other: &str) -> bool {
+                self == &other
+            }
+        }
+
+        impl PartialEq<#ty> for str {
+            fn eq(&self, other: &#ty) -> bool {
+                other == &self
+            }
+        }
     };
     tokens
 }
@@ -156,6 +183,17 @@ impl Enum {
                     format!("Only one variant can be marked default (`{}` all are)", variants),
                 ).into_compile_error()
             }
+        }
+    }
+
+    fn eq_branches(&self) -> TokenStream2 {
+        let branches = self.0.iter().map(|v| {
+            let ident = &v.ident;
+            let name = v.name();
+            quote_spanned! { v.ident.span() => Self::#ident => *other == #name }
+        });
+        quote! {
+            #(#branches,)*
         }
     }
 }

@@ -1,9 +1,9 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use command_data_derive::CommandData;
 use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
-use discorsd::commands::SlashCommandExt;
 use discorsd::errors::BotError;
 use discorsd::http::ClientResult;
 use discorsd::model::ids::*;
@@ -15,34 +15,33 @@ use crate::games::GameType;
 pub struct AddMeCommand;
 
 #[async_trait]
-impl SlashCommand<Bot> for AddMeCommand {
-    fn name(&self) -> &'static str { "addme" }
+impl SlashCommandData for AddMeCommand {
+    type Bot = Bot;
+    type Data = AddMeData;
+    const NAME: &'static str = "addme";
 
-    fn command(&self) -> Command {
-        self.make(
-            "Add yourself to a game",
-            AddMeData::args(),
-        )
+    fn description(&self) -> Cow<'static, str> {
+        "Add yourself to a game".into()
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
-                 data: ApplicationCommandInteractionData,
+                 data: AddMeData,
     ) -> Result<InteractionUse<Used>, BotError> {
-        let data = AddMeData::from_data(data, interaction.guild)?;
-        let id = data.player.unwrap_or_else(|| interaction.member.id());
+        let id = data.player.unwrap_or_else(|| interaction.user().id());
         match data.game {
             GameType::Avalon => avalon(&*state, interaction, id).await,
-            _ => {
-                interaction.respond_source(&state.client, format!(r#""added" to {:?}"#, data.game)).await
+            GameType::Hangman => hangman(&state, interaction, id).await,
+            GameType::Kittens => {
+                interaction.respond(&state.client, format!(r#""added" to {:?}"#, data.game)).await
             }
         }.map_err(|e| e.into())
     }
 }
 
 #[derive(CommandData)]
-struct AddMeData {
+pub struct AddMeData {
     #[command(default, choices, desc = "The game to add you to, or Avalon if not specified")]
     game: GameType,
     #[command(desc = "Forcibly add someone else to the game")]
@@ -54,13 +53,14 @@ async fn avalon(
     interaction: InteractionUse<Unused>,
     user: UserId,
 ) -> ClientResult<InteractionUse<Used>> {
-    let guild = interaction.guild;
+    let guild = interaction.guild().unwrap();
 
-    let mut games = state.bot.games.write().await;
+    let mut games = state.bot.avalon_games.write().await;
     let game = games.entry(guild).or_default();
     let config = game.config_mut();
 
-    {
+    // track which guilds this user is in a game in
+    let used = {
         let mut users = state.bot.user_games.write().await;
         let guilds = users.entry(user).or_default();
 
@@ -68,6 +68,7 @@ async fn avalon(
             // remove player
             config.players.retain(|m| m.id() != user);
             guilds.remove(&guild);
+            interaction.defer(&state).await?
         } else {
             // add player
             if config.players.len() == 10 {
@@ -75,21 +76,53 @@ async fn avalon(
                     m.content("There can be a maximum of 10 people playing Avalon");
                     m.ephemeral();
                 })).await;
-            } else {
-                if interaction.channel == state.bot.config.channel && user == state.bot.config.owner {
-                    for _ in 0..(5_usize.saturating_sub(config.players.len())) {
-                        config.players.push(interaction.member.clone());
-                    };
-                } else {
-                    config.players.push(interaction.member.clone());
-                }
-                guilds.insert(guild);
             }
+            let interaction = interaction.defer(&state).await?;
+            if interaction.channel == state.bot.config.channel && user == state.bot.config.owner {
+                for _ in 0..(5_usize.saturating_sub(config.players.len())) {
+                    config.players.push(interaction.member().unwrap().clone());
+                };
+            } else {
+                config.players.push(interaction.member().unwrap().clone());
+            }
+            guilds.insert(guild);
+            interaction
+        }
+    };
+
+    let guard = state.commands.read().await;
+    let mut commands = guard.get(&guild).unwrap().write().await;
+    config.start_command(state, &mut commands, config.startable(), guild).await?;
+    config.update_embed(state, &used).await?;
+    Ok(used)
+}
+
+async fn hangman(
+    state: &BotState<Bot>,
+    interaction: InteractionUse<Unused>,
+    user: UserId,
+) -> ClientResult<InteractionUse<Used>> {
+    let guild = interaction.guild().unwrap();
+
+    let mut games = state.bot.hangman_games.write().await;
+    let game = games.entry(guild).or_default();
+    let config = game.config_mut();
+
+    // track which guilds this user is in a game in
+    {
+        let mut users = state.bot.user_games.write().await;
+        let guilds = users.entry(user).or_default();
+
+        if config.players.iter().any(|u| u == &user) {
+            // remove player
+            config.players.retain(|&u| u != user);
+            guilds.remove(&guild);
+        } else {
+            // add player
+            config.players.push(user);
+            guilds.insert(guild);
         }
     }
 
-    let guard = state.commands.read().await;
-    let mut commands = guard.get(&interaction.guild).unwrap().write().await;
-    config.start_command(state, &mut commands, config.startable(), guild).await?;
     config.update_embed(state, interaction).await
 }

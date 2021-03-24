@@ -1,11 +1,13 @@
-use discorsd::{async_trait, BotState};
 use std::sync::Arc;
-use discorsd::model::interaction::{ApplicationCommandInteractionData, Command, TopLevelOption};
-use crate::Bot;
-use discorsd::http::channel::{ChannelExt, embed};
 use std::time::Instant;
-use discorsd::errors::BotError;
+
+use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
+use discorsd::errors::BotError;
+use discorsd::http::channel::embed;
+
+use crate::Bot;
+use std::borrow::Cow;
 
 #[derive(Copy, Clone, Debug)]
 pub struct PingCommand;
@@ -13,27 +15,26 @@ pub struct PingCommand;
 pub const PING_COMMAND: PingCommand = PingCommand;
 
 #[async_trait]
-impl SlashCommand<Bot> for PingCommand {
-    fn name(&self) -> &'static str { "ping" }
+impl SlashCommandData for PingCommand {
+    type Bot = Bot;
+    type Data = ();
+    const NAME: &'static str = "ping";
 
-    fn command(&self) -> Command {
-        self.make(
-            "pongs, and says how long it took",
-            TopLevelOption::Empty,
-        )
+    fn description(&self) -> Cow<'static, str> {
+        "pongs, and says how long it took".into()
     }
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
-                 _: ApplicationCommandInteractionData
+                 _: (),
     ) -> Result<InteractionUse<Used>, BotError> {
         let start = Instant::now();
-        let mut resp = interaction.channel.send(&state, embed(|e| e.title("Pong!"))).await?;
-        let embed = resp.embeds.remove(0);
-        resp.edit(&state, embed.build(|e|
+        let embed = embed(|e| e.title("Pong!"));
+        let mut used = interaction.respond(&state, embed.clone()).await?;
+        used.edit(&state, embed.build(|e|
             e.footer_text(format!("Took {:?} to respond", start.elapsed()))
         )).await?;
-        interaction.ack(&state).await.map_err(|e| e.into())
+        Ok(used)
     }
 }

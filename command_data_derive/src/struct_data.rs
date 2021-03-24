@@ -8,13 +8,14 @@ use syn::spanned::Spanned;
 
 use crate::utils::TypeExt;
 
-pub fn struct_impl(ty: &Ident, fields: Fields) -> TokenStream2 {
-    let fields = match Struct::from_fields(fields) {
+pub fn struct_impl(ty: &Ident, fields: Fields, attributes: &[Attribute]) -> TokenStream2 {
+    let strukt = match Struct::from_fields(fields, attributes) {
         Ok(fields) => fields,
         Err(e) => return e.into_compile_error(),
     };
-    let try_from_body = fields.try_from_body(ty, &Path::from(ty.clone()), 0);
-    let data_options = fields.data_options();
+    let try_from_body = strukt.try_from_body(ty, &Path::from(ty.clone()), 0);
+    let (args_impl_statement, command_type) = strukt.args_impl_statement();
+    let data_options = strukt.data_options();
 
     let tokens = quote! {
         impl ::std::convert::TryFrom<ApplicationCommandInteractionData> for #ty {
@@ -28,8 +29,8 @@ pub fn struct_impl(ty: &Ident, fields: Fields) -> TokenStream2 {
             }
         }
 
-        impl #ty {
-            pub fn args() -> discorsd::model::interaction::TopLevelOption {
+        #args_impl_statement for #ty {
+            fn args(command: &#command_type) -> discorsd::model::interaction::TopLevelOption {
                 discorsd::model::interaction::TopLevelOption::Data(#data_options)
             }
         }
@@ -40,13 +41,25 @@ pub fn struct_impl(ty: &Ident, fields: Fields) -> TokenStream2 {
 #[derive(Debug)]
 struct Field {
     name: FieldIdent,
+    ty: Type,
     /// for example, Default::default or Instant::now
     default: Option<Path>,
-    ty: Type,
-    /// the root of the vararg parameter, for example `player` for player1, player2, player3, ...
-    vararg: Option<LitStr>,
+    /// function to determine if this field is required, must be callable as
+    /// `fn<C: SlashCommand>(command: &C) -> bool`, where the generic is not necessary if the
+    /// struct's type is specified (`#[command(type = "MyCommand")]`
+    required: Option<Path>,
+    /// see [Vararg] for details
+    vararg: Vararg,
     /// whether to generate `.choices(Self::choices())` for this field's `DataOption`
     choices: bool,
+    /// how to filter the choices, if `choices` is true
+    ///
+    /// must be a function callable as
+    /// `fn<C: SlashCommand>(command: &C, choice: &CommandChoice<&'static str>) -> bool`
+    /// if the type for this data is not set, or as
+    /// `fn(command: &C, choice: &CommandChoice<&'static str) -> bool`
+    /// where `C` is the right hand side of `#[command(type = ...)]` on the struct if
+    retain: Option<Path>,
     /// The description of this `DataOption`
     desc: Option<LitStr>,
 }
@@ -84,14 +97,72 @@ struct UnnamedField {
     index: Index,
 }
 
+#[derive(Debug, Default)]
+struct Vararg {
+    /// the root of the vararg parameter, for example `player` for player1, player2, player3, ...
+    root: Option<LitStr>,
+    /// `fn<C: SlashCommand>(command: &C) -> usize` to pick how many vararg options to display
+    num: Option<Path>,
+    /// how to name the vararg options
+    names: VarargNames,
+}
+
+impl Vararg {
+    const fn is_some(&self) -> bool {
+        self.root.is_some()
+    }
+}
+
+#[derive(Debug)]
+enum VarargNames {
+    /// if root is `player`, names will be `player1`, `player2`, etc
+    Count,
+    /// names will be `First`, `Second`, `Third`, etc (up to 20)
+    Ordinals,
+    /// names given by this function, callable as `fn<C: Into<Cow<'static, str>>(n: usize) -> C`
+    Function(Path),
+}
+
+impl Default for VarargNames {
+    fn default() -> Self {
+        Self::Count
+    }
+}
+
+impl VarargNames {
+    fn names(&self, root: &LitStr) -> TokenStream2 {
+        match self {
+            VarargNames::Count => {
+                let names = (1..).map(|i| format!("{}{}", root.value(), i));
+                quote! {
+                    [#(#names),*].iter()
+                }
+            }
+            VarargNames::Ordinals => quote! {
+                [
+                    "First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth",
+                    "Ninth", "Tenth", "Eleventh", "Twelfth", "Thirteenth", "Fourteenth",
+                    "Fifteenth", "Sixteenth", "Seventeenth", "Eighteenth", "Nineteenth", "Twentieth"
+                ].iter()
+            },
+            VarargNames::Function(fun) => {
+                let names = (1..).map(|i| quote! { #fun(#i) });
+                quote! {
+                    [#(#names),*].iter()
+                }
+            }
+        }
+    }
+}
+
 impl Field {
     fn arg_name(&self) -> String {
         match &self.name {
             FieldIdent::Named(named) => named.rename.as_ref()
                 .map(LitStr::value)
-                .or_else(|| self.vararg.as_ref().map(LitStr::value))
+                .or_else(|| self.vararg.root.as_ref().map(LitStr::value))
                 .unwrap_or_else(|| named.ident.to_string()),
-            FieldIdent::Unnamed(unnamed) => self.vararg.as_ref()
+            FieldIdent::Unnamed(unnamed) => self.vararg.root.as_ref()
                 .map_or_else(|| unnamed.index.index.to_string(), LitStr::value),
         }
     }
@@ -109,18 +180,20 @@ impl TryFrom<syn::Field> for Field {
             }),
             default: None,
             ty: field.ty,
-            vararg: None,
+            vararg: Default::default(),
             choices: false,
+            retain: None,
             desc: None,
+            required: None,
         };
 
+        if field.ty.generic_type_of("Option").is_some() {
+            field.default = Some(syn::parse_str("Default::default")?);
+        }
         for attr in attrs {
             if !attr.path.is_ident("command") { continue; }
 
             field.handle_attribute(&attr)?;
-        }
-        if field.ty.generic_type_of("Option").is_some() {
-            field.default = Some(syn::parse_str("Default::default")?);
         }
 
         Ok(field)
@@ -138,18 +211,20 @@ impl TryFrom<(usize, syn::Field)> for Field {
             }),
             default: None,
             ty: field.ty,
-            vararg: None,
+            vararg: Default::default(),
             choices: false,
+            retain: None,
             desc: None,
+            required: None,
         };
 
+        if field.ty.generic_type_of("Option").is_some() {
+            field.default = Some(syn::parse_str("Default::default")?);
+        }
         for attr in attrs {
             if !attr.path.is_ident("command") { continue; }
 
             field.handle_attribute(&attr)?;
-        }
-        if field.ty.generic_type_of("Option").is_some() {
-            field.default = Some(syn::parse_str("Default::default")?);
         }
 
         Ok(field)
@@ -172,11 +247,20 @@ impl Field {
                                 }
                             } else if path.is_ident("default") {
                                 // has to be parse_str so that the types don't get messed up
-                                self.default = Some(syn::parse_str(&str.value())?);
+                                self.default = Some(str.parse()?);
+                                // self.default = Some(syn::parse_str(&str.value())?);
                             } else if path.is_ident("vararg") {
-                                self.vararg = Some(str);
+                                self.vararg.root = Some(str);
                             } else if path.is_ident("desc") {
                                 self.desc = Some(str);
+                            } else if path.is_ident("retain") {
+                                self.retain = Some(str.parse()?);
+                            } else if path.is_ident("required") {
+                                self.required = Some(str.parse()?);
+                            } else if path.is_ident("va_count") {
+                                self.vararg.num = Some(str.parse()?);
+                            } else if path.is_ident("va_names") {
+                                self.vararg.names = VarargNames::Function(str.parse()?);
                             }
                         }
                         NestedMeta::Meta(Meta::Path(path)) => {
@@ -184,15 +268,27 @@ impl Field {
                                 self.default = Some(syn::parse_str("Default::default")?);
                             } else if path.is_ident("choices") {
                                 self.choices = true;
-                            }/* else if path.is_ident("required") {
-                                self.required = true;
-                            }*/
+                            } else if path.is_ident("required") {
+                                self.default = None;
+                            } else if path.is_ident("ordinals") {
+                                self.vararg.names = VarargNames::Ordinals;
+                            } else if path.is_ident("count") {
+                                self.vararg.names = VarargNames::Count;
+                            }
                         }
-                        _ => eprintln!("(struct) n = {:?}", n),
+                        // todo just impl whatever it is on [Type; N]
+                        // NestedMeta::Meta(
+                        //     Meta::NameValue(MetaNameValue{ path, lit: Lit::Int(int), .. })
+                        // ) => {
+                        //     if path.is_ident("va_count") {
+                        //         int.
+                        //     }
+                        // }
+                        _ => eprintln!("(field) n = {:?}", n),
                     }
                 }
             }
-            _ => eprintln!("(struct) meta = {:?}", meta),
+            _ => eprintln!("(field) meta = {:?}", meta),
         }
 
         Ok(())
@@ -200,13 +296,17 @@ impl Field {
 }
 
 #[derive(Debug)]
-pub struct Struct(Vec<Field>);
+pub struct Struct {
+    fields: Vec<Field>,
+    /// settable with `#[command(type = MyCommand)]` on a struct
+    command: Option<Ident>,
+}
 
 impl Struct {
-    const UNIT: Self = Self(Vec::new());
+    const UNIT: Self = Self { fields: Vec::new(), command: None };
 
-    pub fn from_fields(fields: Fields) -> Result<Self, syn::Error> {
-        match fields {
+    pub fn from_fields(fields: Fields, attributes: &[Attribute]) -> Result<Self, syn::Error> {
+        let mut strukt = match fields {
             Fields::Named(fields) => fields.named
                 .into_iter()
                 .map(Field::try_from)
@@ -217,11 +317,38 @@ impl Struct {
                 .map(Field::try_from)
                 .collect(),
             Fields::Unit => Ok(Struct::UNIT),
+        }?;
+        for attr in attributes {
+            if !attr.path.is_ident("command") { continue; }
+            strukt.handle_attribute(attr)?;
         }
+        Ok(strukt)
+    }
+
+    fn handle_attribute(&mut self, attr: &Attribute) -> Result<(), syn::Error> {
+        let meta = attr.parse_meta().expect("failed to parse meta");
+        match meta {
+            Meta::List(MetaList { nested, .. }) => {
+                for n in nested {
+                    match n {
+                        NestedMeta::Meta(
+                            Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. })
+                        ) => {
+                            if path.is_ident("type") {
+                                self.command = Some(str.parse()?);
+                            }
+                        }
+                        _ => eprint!("(struct) n = {:?}", n),
+                    }
+                }
+            }
+            _ => eprintln!("(struct) meta = {:?}", meta),
+        }
+        Ok(())
     }
 
     pub fn try_from_body(&self, return_type: &Ident, return_ctor: &Path, n: usize) -> TokenStream2 {
-        let num_fields = self.0.len();
+        let num_fields = self.fields.len();
         let builder_struct = self.builder_struct(return_type, return_ctor);
         let field_eq = self.field_eq();
         let fields_array = self.fields_array();
@@ -232,7 +359,7 @@ impl Struct {
             ident: Ident::new(&format!("opt{}", n), Span::call_site()),
         };
 
-        let build_struct = if self.0.is_empty() {
+        let build_struct = if self.fields.is_empty() {
             // if there are no fields (ie, is Unit struct), don't have to parse any options
             TokenStream2::new()
         } else {
@@ -288,7 +415,7 @@ impl Struct {
     }
 
     fn field_eq(&self) -> TokenStream2 {
-        match &self.0.first().map(|f| &f.name) {
+        match &self.fields.first().map(|f| &f.name) {
             // named fields, compare name to `opt.name`
             Some(FieldIdent::Named(_)) => quote! { (|idx: usize| FIELDS[idx] == option.name) },
             // unnamed fields, just select in order
@@ -299,12 +426,12 @@ impl Struct {
     }
 
     fn fields_array(&self) -> TokenStream2 {
-        let fields = self.0.iter().map(Field::arg_name);
+        let fields = self.fields.iter().map(Field::arg_name);
         quote! { [#(#fields),*] }
     }
 
     fn match_branches(&self) -> TokenStream2 {
-        let branches = self.0.iter().enumerate().map(|(i, f)| {
+        let branches = self.fields.iter().enumerate().map(|(i, f)| {
             let name = f.name.builder_ident();
             if f.vararg.is_some() {
                 let vararg_type = &f.ty.without_generics();
@@ -314,13 +441,8 @@ impl Struct {
                         // `id` is declared in the impl of TryFrom
                         let value: #generic_type = option.try_into().map_err(|e| (e, id))?;
                         // `builder` is made in `builder_struct`,
-                        if let Some(collection) = &mut builder.#name {
-                            collection.extend(::std::iter::once(value));
-                        } else {
-                            let mut collection = #vararg_type::default();
-                            collection.extend(::std::iter::once(value));
-                            builder.#name = Some(collection);
-                        }
+                        let collection = builder.#name.get_or_insert(#vararg_type::default());
+                        collection.extend(::std::iter::once(value));
                     }
                 }
             } else {
@@ -339,12 +461,12 @@ impl Struct {
             .map(|seq| seq.ident.to_string())
             .collect();
         let name = Ident::new(&format!("{}Builder", builder_prefix), Span::call_site());
-        let fields = self.0.iter().map(|f| {
+        let fields = self.fields.iter().map(|f| {
             let ident = &f.name.builder_ident();
             let ty = &f.ty;
             quote_spanned! { f.name.span() => #ident: Option<#ty> }
         });
-        let builder = self.0.iter().map(|f| {
+        let builder = self.fields.iter().map(|f| {
             let builder_ident = &f.name.builder_ident();
             let self_ident = match &f.name {
                 FieldIdent::Named(named) => {
@@ -386,8 +508,8 @@ impl Struct {
     }
 
     fn varargs_array(&self) -> TokenStream2 {
-        let vararg_names = self.0.iter().map(|f| {
-            if let Some(vararg) = &f.vararg {
+        let vararg_names = self.fields.iter().map(|f| {
+            if let Some(vararg) = &f.vararg.root {
                 quote_spanned! { f.name.span() => Some(#vararg) }
             } else {
                 quote_spanned! { f.name.span() => None }
@@ -396,52 +518,108 @@ impl Struct {
         quote! { [#(#vararg_names),*] }
     }
 
-    fn data_options(&self) -> TokenStream2 {
-        let options = self.0.iter().map(|f| {
-            let name = f.arg_name();
-            let desc = f.desc.as_ref()
-                .map_or_else(|| f.arg_name(), LitStr::value);
-            // todo impl choices on Option<Choices>
-            let required = if f.default.is_none() {
+    fn args_impl_statement(&self) -> (TokenStream2, TokenStream2) {
+        match &self.command {
+            None => (
                 quote! {
+                    impl<C: discorsd::commands::SlashCommand> discorsd::model::commands::CommandArgs<C>
+                }, quote! {
+                    C
+                }),
+            Some(ident) => (
+                quote_spanned! { ident.span() =>
+                    impl discorsd::model::commands::CommandArgs<#ident>
+                }, quote_spanned! { ident.span() =>
+                    #ident
+                }),
+        }
+    }
+
+    fn data_options(&self) -> TokenStream2 {
+        let options = self.fields.iter().map(|f|
+            // if f.vararg.is_some() {
+            //     Struct::vararg_option(f)
+            // } else {
+            //     Struct::single_option(f)
+            // }
+            Struct::single_option(f)
+        );
+        quote! { vec![#(#options),*] }
+    }
+
+    fn single_option(f: &Field) -> TokenStream2 {
+        let name = f.arg_name();
+        let desc = f.desc.as_ref()
+            .map_or_else(|| f.arg_name(), LitStr::value);
+        let required = if f.default.is_none() {
+            quote! {
+                option = option.required();
+            }
+        } else if let Some(required) = &f.required {
+            quote! {
+                if #required(command) {
                     option = option.required();
                 }
+            }
+        } else {
+            TokenStream2::new()
+        };
+        // todo is there some way to get the type out in a nice way? (the `generic_type` below is sketch)
+        let ty = f.ty.generic_type().unwrap_or(&f.ty);
+        if f.choices {
+            let retain = if let Some(path) = &f.retain {
+                quote_spanned! { path.span() =>
+                    choices.retain(|choice| #path(command, choice));
+                }
             } else {
-                // todo is there some way to get the type out in a nice way? (the `generic_type` below is sketch)
                 TokenStream2::new()
             };
-            let ty = f.ty.generic_type().unwrap_or(&f.ty);
-            if f.choices {
-                quote_spanned! { f.name.span() =>
-                    DataOption::String(
-                        {
-                            use discorsd::model::commands::OptionChoices;
-                            #[allow(unused_mut)]
-                            let mut option = CommandDataOption::new_str(#name, #desc).choices(#ty::choices());
-                            #required
-                            option
-                        }
-                    )
-                }
-            } else {
-                quote_spanned! { f.name.span() =>
+            quote_spanned! { f.name.span() =>
+                discorsd::commands::DataOption::String(
                     {
-                        use discorsd::model::commands::OptionCtor;
+                        use discorsd::model::commands::OptionChoices;
                         #[allow(unused_mut)]
-                        let mut option = CommandDataOption::new(#name, #desc);
+                        let mut choices = #ty::choices();
+                        #retain
+                        #[allow(unused_mut)]
+                        let mut option = discorsd::commands::CommandDataOption::new_str(#name, #desc).choices(choices);
                         #required
-                        #ty::option_ctor(option)
+                        option
                     }
+                )
+            }
+        } else {
+            quote_spanned! { f.name.span() =>
+                {
+                    use discorsd::model::commands::OptionCtor;
+                    #[allow(unused_mut)]
+                    let mut option = discorsd::commands::CommandDataOption::new(#name, #desc);
+                    #required
+                    #ty::option_ctor(option)
                 }
             }
-        });
-        quote! { vec![#(#options),*] }
+        }
+    }
+
+    fn vararg_option(_f: &Field) -> TokenStream2 {
+        todo!()
+        // let root = f.vararg.root.as_ref().unwrap();
+        // let names = f.vararg.names.names(root);
+        // let take = f.vararg.num.as_ref().unwrap();
+        // let descriptions = VarargNames::Count.names(root);
+        // quote! {
+        //     // `command` is in scope from `CommandArgs` impl
+        //     #names
+        //         .take(#take(command))
+        //         .zip(#descriptions)
+        //         .map
+        // }
     }
 }
 
 impl FromIterator<Field> for Struct {
     fn from_iter<I: IntoIterator<Item=Field>>(iter: I) -> Self {
         let fields: Vec<Field> = iter.into_iter().collect();
-        Self(fields)
+        Self { fields, command: None }
     }
 }
