@@ -9,9 +9,10 @@ use dyn_clone::{clone_trait_object, DynClone};
 use futures::StreamExt;
 
 use crate::BotState;
-use crate::errors::BotError;
+use crate::errors::{BotError, CommandParseErrorInfo};
 pub use crate::model::commands::*;
 use crate::model::guild::GuildId;
+use crate::model::ids::CommandId;
 pub use crate::model::interaction::*;
 use crate::shard::dispatch::ReactionUpdate;
 
@@ -40,15 +41,17 @@ pub async fn create_guild_commands<B, State>(
 }
 
 #[async_trait]
-pub trait SlashCommandData: Sized + Send + Sync + Debug + Downcast + DynClone {
+pub trait SlashCommandData: Sized + Send + Sync + Debug + Downcast + DynClone
+// where <<Self as SlashCommandData>::Data as CommandData<Self>>::Data: std::marker::Send,
+{
     type Bot: Send + Sync;
-    type Data: DataExt + CommandArgs<Self> + Send;
+    type Data: CommandData<Self> + Send;
 
     const NAME: &'static str;
     fn description(&self) -> Cow<'static, str>;
 
     fn options(&self) -> TopLevelOption {
-        Self::Data::args(self)
+        <Self::Data as CommandData<Self>>::VecArg::tlo_ctor()(Self::Data::make_args(self))
     }
 
     async fn run(&self,
@@ -61,7 +64,9 @@ pub trait SlashCommandData: Sized + Send + Sync + Debug + Downcast + DynClone {
 #[allow(clippy::use_self)]
 #[async_trait]
 impl<Scd: SlashCommandData> SlashCommand for Scd
-    where <Self as SlashCommandData>::Bot: Send + Sync
+// where
+// <Self as SlashCommandData>::Bot: Send + Sync,
+// <<Self as SlashCommandData>::Data as CommandData<Self>>::Options: Send,
 {
     type Bot = <Self as SlashCommandData>::Bot;
 
@@ -76,10 +81,57 @@ impl<Scd: SlashCommandData> SlashCommand for Scd
     async fn run(&self,
                  state: Arc<BotState<Self::Bot>>,
                  interaction: InteractionUse<Unused>,
-                 data: ApplicationCommandInteractionData,
+                 data: InteractionDataOption,
     ) -> Result<InteractionUse<Used>, BotError> {
-        let data = Scd::Data::from_data(data, interaction.guild().unwrap())?;
-        SlashCommandData::run(self, state, interaction, data).await
+        match <<Self as SlashCommandData>::Data as CommandData<Self>>::Options::from_data_option(data) {
+            Ok(options) => match <Self as SlashCommandData>::Data::from_options(options) {
+                Ok(data) => SlashCommandData::run(self, state, interaction, data).await,
+                Err(error) => Err(CommandParseErrorInfo {
+                    guild: interaction.guild().expect("Will be source later"),
+                    name: interaction.command_name,
+                    id: interaction.command,
+                    error,
+                }.into())
+            },
+            Err(error) => Err(CommandParseErrorInfo {
+                guild: interaction.guild().expect("Will be source later"),
+                name: interaction.command_name,
+                id: interaction.command,
+                error,
+            }.into())
+        }
+        // match <Self as SlashCommandData>::Data::from_data(data) {
+        //     Ok(data) => SlashCommandData::run(self, state, interaction, data).await,
+        //     Err(error) => Err(CommandParseErrorInfo {
+        //         guild: interaction.guild().expect("I'll make this Source later :)"),
+        //         name: interaction.command_name,
+        //         id: interaction.command,
+        //         error
+        //     }.into())
+        // }
+        // let data = <<Self as SlashCommandData>::Data as CommandData<Self>>::Data::from_data_option(data);
+        // match data {
+        //     Ok(data) => {
+        //         match <Self as SlashCommandData>::Data::from_data(data) {
+        //             Ok(data) => SlashCommandData::run(self, state, interaction, data).await,
+        //             // error in the actual contents of the data, though it was the right type
+        //             Err(error) => Err(CommandParseErrorInfo {
+        //                 guild: interaction.guild().expect("I'll do the Source thing later"),
+        //                 name: interaction.command_name,
+        //                 id: interaction.command,
+        //                 error,
+        //             }.into()),
+        //         }
+        //     }
+        //     // error getting to right type of data (eg the InteractionDataOption wasn't a
+        //     // CommandOption or whatever type it was supposed to be)
+        //     Err(error) => Err(CommandParseErrorInfo {
+        //         guild: interaction.guild().expect("I'll do this later"),
+        //         name: interaction.command_name,
+        //         id: interaction.command,
+        //         error,
+        //     }.into())
+        // }
     }
 }
 
@@ -94,7 +146,7 @@ pub trait SlashCommand: Send + Sync + Debug + Downcast + DynClone {
     async fn run(&self,
                  state: Arc<BotState<Self::Bot>>,
                  interaction: InteractionUse<Unused>,
-                 data: ApplicationCommandInteractionData,
+                 data: InteractionDataOption,
     ) -> Result<InteractionUse<Used>, BotError>;
 }
 impl_downcast!(SlashCommand assoc Bot);

@@ -20,6 +20,7 @@
 // @formatter:on
 
 use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::Entry;
 use std::fmt::{self, Debug};
 use std::hint::unreachable_unchecked;
 use std::io::Write;
@@ -52,12 +53,13 @@ use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, Updat
 use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
 pub use crate::commands::{addme::AddMeCommand};
+use crate::commands::perms::PermsCommand;
+use crate::commands::rules::RulesCommand;
 use crate::commands::start::StartCommand;
 use crate::games::GameType;
 use crate::hangman::Hangman;
 use crate::hangman::hangman_command::HangmanCommand;
 use crate::hangman::random_words::GuildHist;
-use std::collections::hash_map::Entry;
 
 #[macro_use]
 mod macros;
@@ -206,6 +208,9 @@ impl discorsd::Bot for Bot {
         self.avalon_games.write().await.entry(guild.id).or_default();
 
         {
+            // deletes any commands Discord has saved from the last time this bot was run
+            Self::clear_old_commands(guild.id, &state).await.unwrap();
+
             let mut commands = state.commands.write().await;
             let commands = commands.entry(guild.id).or_default().write().await;
             let rcs = state.reaction_commands.write().await;
@@ -213,13 +218,13 @@ impl discorsd::Bot for Bot {
             Self::reset_guild_commands(guild.id, &state, commands, rcs).await;
         }
 
-        if Utc::now().signed_duration_since(self.most_recent_login().await.unwrap()).num_seconds() >= 20 {
-            self.config.channel.send(&state, format!(
-                "🎉 Joined new guild **{}** (`{}`) 🎉",
-                guild.name.as_ref().unwrap(),
-                guild.id,
-            )).await?;
-        }
+        // if Utc::now().signed_duration_since(self.most_recent_login().await.unwrap()).num_seconds() >= 20 {
+        self.config.channel.send(&state, format!(
+            "🎉 Joined new guild **{}** (`{}`) 🎉",
+            guild.name.as_ref().unwrap(),
+            guild.id,
+        )).await?;
+        // }
 
         Ok(())
     }
@@ -383,8 +388,6 @@ impl Bot {
         mut commands: RwLockWriteGuard<'_, GuildCommands<Self>>,
         mut reactions: RwLockWriteGuard<'_, Vec<Box<dyn ReactionCommand<Self>>>>,
     ) {
-        // todo was this actually needed???
-        // Self::clear_prev_commands(guild, state).await.unwrap();
         reactions.retain(|rc| !AvalonGame::is_reaction_command(rc.as_ref(), guild));
         drop(reactions);
         let application = state.application_id().await;
@@ -403,6 +406,9 @@ impl Bot {
             }
         }
         let new: Vec<Box<dyn SlashCommand<Bot=Self>>> = vec![
+            // todo remove these two
+            Box::new(PermsCommand),
+            Box::new(RulesCommand),
             Box::new(RolesCommand(vec![])),
             Box::new(AddMeCommand),
             Box::new(ToggleLady),

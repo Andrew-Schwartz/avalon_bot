@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashSet;
 
 use itertools::Itertools;
@@ -5,8 +6,8 @@ use strum::{EnumCount, IntoEnumIterator};
 
 use crate::avalon::characters::Character;
 use crate::Bot;
+
 use super::*;
-use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub struct RolesCommand(pub Vec<Character>);
@@ -22,6 +23,7 @@ impl SlashCommandData for RolesCommand {
     }
 
     fn options(&self) -> TopLevelOption {
+        // println!("RoleData::make_args(self) = {:#?}", RoleData::make_args(self));
         let roles: HashSet<Character> = self.0.iter().cloned().collect();
         let make_opts = |first, addl, already_present| {
             let choices = Character::iter()
@@ -128,15 +130,31 @@ impl SlashCommandData for RolesCommand {
 }
 
 #[derive(CommandData)]
+#[command(rename_all = "lowercase")]
 pub enum RoleData {
+    #[command(desc = "Choose roles to add")]
     Add(#[command(vararg = "role", default = "HashSet::new")] HashSet<Character>),
+    #[command(desc = "Choose roles to remove")]
     Remove(#[command(vararg = "role", default = "HashSet::new")] HashSet<Character>),
+    #[command(desc = "Clear all roles")]
     Clear,
 }
 
-impl CommandArgs<RolesCommand> for RoleData {
-    fn args(_: &RolesCommand) -> TopLevelOption {
-        unimplemented!("`RoleData::args()` should never be called - specific logic is used each time\
-                        `RolesCommand::command()` is called.")
-    }
-}
+// impl<C: SlashCommand> CommandData<C> for RoleData {
+//     type Options = <<HashSet<Character> as CommandData<C>>::Options as OptionsLadder>::Raise;
+//
+//     fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
+//         unimplemented!()
+//     }
+//
+//     type VecArg = ();
+//
+//     fn make_args(_: &C) -> Vec<Self::VecArg> {
+//         vec![
+//             Self::VecArg::make(
+//                 "add", "Choose roles to add",
+//                 <>
+//             )
+//         ]
+//     }
+// }

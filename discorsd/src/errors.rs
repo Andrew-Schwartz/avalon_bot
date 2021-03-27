@@ -93,7 +93,9 @@ impl Display for AvalonError {
 
 #[derive(Error, Debug)]
 pub struct CommandParseErrorInfo {
+    pub name: String,
     pub id: CommandId,
+    // todo replace with Source
     pub guild: GuildId,
     pub error: CommandParseError,
 }
@@ -143,16 +145,12 @@ pub enum CommandParseError {
     MissingOption(String),
     /// Command named `String` didn't have a subcommand option
     NoSubtype(String),
-}
-
-pub trait CommandParseErrorWithInfo {
-    fn with_info(self, guild: GuildId) -> CommandParseErrorInfo;
-}
-
-impl CommandParseErrorWithInfo for (CommandParseError, CommandId) {
-    fn with_info(self, guild: GuildId) -> CommandParseErrorInfo {
-        CommandParseErrorInfo { id: self.1, guild, error: self.0 }
-    }
+    /// InteractionDataOption::Group(_) when parsing data for an struct
+    BadGroupOccurrence,
+    /// InteractionDataOption::Command(_) when parsing data for an struct
+    BadCommandOccurrence,
+    /// InteractionDataOption::Values(_) when parsing data for an enum
+    BadValueOccurrence,
 }
 
 #[derive(Debug)]

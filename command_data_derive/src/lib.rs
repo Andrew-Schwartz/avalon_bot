@@ -11,7 +11,7 @@
 
 use proc_macro::TokenStream;
 
-use syn::{DeriveInput, parse_macro_input, Data};
+use syn::{Data, DeriveInput, parse_macro_input};
 
 pub(crate) mod utils;
 mod struct_data;
@@ -19,6 +19,7 @@ mod enum_option;
 mod enum_data;
 
 /// Todo document these
+/// asdasdhasdha
 #[proc_macro_derive(CommandData, attributes(command))]
 pub fn derive_data(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -26,7 +27,7 @@ pub fn derive_data(input: TokenStream) -> TokenStream {
     let ty = input.ident;
     let tokens = match input.data {
         Data::Struct(data) => struct_data::struct_impl(&ty, data.fields, &input.attrs),
-        Data::Enum(data) => enum_data::enum_impl(&ty, data),
+        Data::Enum(data) => enum_data::enum_impl(&ty, data, &input.attrs),
         Data::Union(_) => syn::Error::new(
             ty.span(),
             "Can't derive `CommandData` on a Union",

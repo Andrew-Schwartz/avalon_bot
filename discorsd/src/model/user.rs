@@ -1,11 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-use crate::model::ImageFormat;
 use crate::model::guild::Integration;
 use crate::model::ids::*;
-
 pub use crate::model::ids::UserId;
+use crate::model::ImageFormat;
 
 /// Users in Discord are generally considered the base entity. Users can spawn across the entire
 /// platform, be members of guilds, participate in text and voice chat, and much more. Users are
@@ -131,6 +130,12 @@ bitflags! {
 }
 #[allow(clippy::use_self)]
 serde_bitflag!(UserFlags, u32);
+
+// impl UserFlags {
+//     fn a() {
+//         Self::from_bits(128)
+//     }
+// }
 
 /// Premium types denote the level of premium a user has.
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]

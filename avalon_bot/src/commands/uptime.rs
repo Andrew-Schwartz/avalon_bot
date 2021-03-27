@@ -1,9 +1,11 @@
+use std::borrow::Cow;
 use std::fmt::{self, Display};
 use std::sync::Arc;
 
 use chrono::Utc;
 
 use discorsd::{async_trait, BotState};
+use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::embed;
 use discorsd::http::interaction::message;
@@ -11,13 +13,8 @@ use discorsd::model::message::Color;
 
 use crate::Bot;
 
-use discorsd::commands::*;
-use std::borrow::Cow;
-
 #[derive(Copy, Clone, Debug)]
 pub struct UptimeCommand;
-
-pub const UPTIME_COMMAND: UptimeCommand = UptimeCommand;
 
 #[async_trait]
 impl SlashCommandData for UptimeCommand {

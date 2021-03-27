@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 use crate::cache::Cache;
 use crate::commands::{ReactionCommand, SlashCommand};
 use crate::errors::BotError;
-use crate::http::DiscordClient;
+use crate::http::{ClientResult, DiscordClient};
 use crate::model::commands::InteractionUse;
 use crate::model::guild::{Guild, Integration};
 use crate::model::ids::*;
@@ -124,41 +124,41 @@ pub trait BotExt: Bot + 'static {
         BotRunner::from(self).run().await
     }
 
-    // /// Initializes the hashset of guild commands, and deletes any existing commands Discord has
-    // async fn clear_prev_commands(
-    //     guild: GuildId,
-    //     state: &BotState<Self>,
-    //     mut commands: RwLockWriteGuard<'_, GuildCommands<Self>>,
-    // ) -> ClientResult<()> {
-    //     let mut commands = state.commands.write().await;
-    //     let first_time = !commands.contains_key(&guild);
-    //     let mut commands = commands.entry(guild)
-    //         .or_default()
-    //         .write().await;
-    //     if first_time {
-    //         let app = state.application_id().await;
-    //         match state.client.get_guild_commands(app, guild).await {
-    //             Ok(old_commands) => {
-    //                 for command in old_commands {
-    //                     let delete = state.client
-    //                         .delete_guild_command(app, guild, command.id)
-    //                         .await;
-    //                     if let Err(e) = delete {
-    //                         error!("{}", e.display_error(state).await);
-    //                     }
-    //                     commands.remove(&command.id);
-    //                 }
-    //             }
-    //             Err(e) => error!("{}", e.display_error(state).await)
-    //         }
-    //     }
-    //     Ok(())
-    // }
+    /// The first time connecting to a guild, run this to delete any commands Discord has saved from
+    /// the last time the bot was started
+    async fn clear_old_commands(
+        guild: GuildId,
+        state: &BotState<Self>,
+    ) -> ClientResult<()> {
+        let mut commands = state.commands.write().await;
+        let first_time = !commands.contains_key(&guild);
+        let mut commands = commands.entry(guild)
+            .or_default()
+            .write().await;
+        if first_time {
+            let app = state.application_id().await;
+            match state.client.get_guild_commands(app, guild).await {
+                Ok(old_commands) => {
+                    for command in old_commands {
+                        let delete = state.client
+                            .delete_guild_command(app, guild, command.id)
+                            .await;
+                        if let Err(e) = delete {
+                            error!("{}", e.display_error(state).await);
+                        }
+                        commands.remove(&command.id);
+                    }
+                }
+                Err(e) => error!("{}", e.display_error(state).await)
+            }
+        }
+        Ok(())
+    }
 
     async fn slash_command(interaction: Interaction, state: Arc<BotState<Self>>) -> Result<(), BotError> {
         let (interaction, data) = InteractionUse::from(interaction);
 
-        let command = state.global_commands.get().unwrap().get(&data.id);
+        let command = state.global_commands.get().unwrap().get(&interaction.command);
         if let Some(command) = command {
             command.run(state, interaction, data).await?;
         } else {
@@ -166,7 +166,7 @@ pub trait BotExt: Bot + 'static {
                 let guard = state.commands.read().await;
                 // todo fix this unwrap lol
                 let commands = guard.get(&interaction.guild().unwrap()).unwrap().read().await;
-                commands.get(&data.id).cloned()
+                commands.get(&interaction.command).cloned()
             };
             if let Some(command) = command {
                 command.run(state, interaction, data).await?;

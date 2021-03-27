@@ -1,7 +1,27 @@
 use std::fmt::Display;
 
-use proc_macro2::Ident;
-use syn::{GenericArgument, PathArguments, Type};
+use proc_macro2::{Ident, TokenStream as TokenStream2};
+use quote::{quote, quote_spanned};
+use syn::{GenericArgument, PathArguments, spanned::Spanned, Type};
+
+pub fn command_data_impl(command_type: Option<&Type>) -> (TokenStream2, TokenStream2) {
+    match command_type {
+        None => {
+            (quote! {
+                impl<C: ::discorsd::commands::SlashCommand> CommandData<C>
+            }, quote! {
+                C
+            })
+        }
+        Some(ident) => {
+            (quote_spanned! { ident.span() =>
+                impl ::discorsd::model::commands::CommandData<#ident>
+            }, quote_spanned! { ident.span() =>
+                #ident
+            })
+        }
+    }
+}
 
 pub trait TypeExt {
     fn generic_type_by<F>(&self, pred: F) -> Option<&Type>

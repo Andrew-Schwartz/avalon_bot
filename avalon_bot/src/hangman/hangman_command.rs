@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use command_data_derive::*;
@@ -7,10 +8,9 @@ use discorsd::http::channel::{ChannelExt, embed};
 use discorsd::model::message::Color;
 
 use crate::{Bot, hangman};
-use crate::avalon::{ApplicationCommandInteractionData, BotError, BotState, InteractionUse, Unused, Used};
+use crate::avalon::{BotError, BotState, InteractionUse, Unused, Used};
 use crate::hangman::random_words::{GuildHist, Wordnik};
 use crate::hangman::RandomWord;
-use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
 pub struct HangmanCommand;

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -7,12 +8,9 @@ use discorsd::errors::BotError;
 use discorsd::http::channel::embed;
 
 use crate::Bot;
-use std::borrow::Cow;
 
 #[derive(Copy, Clone, Debug)]
 pub struct PingCommand;
-
-pub const PING_COMMAND: PingCommand = PingCommand;
 
 #[async_trait]
 impl SlashCommandData for PingCommand {

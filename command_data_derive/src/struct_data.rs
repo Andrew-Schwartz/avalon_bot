@@ -6,32 +6,33 @@ use quote::{quote, quote_spanned};
 use syn::{Attribute, Fields, Ident, Index, Lifetime, Lit, LitStr, Meta, MetaList, MetaNameValue, NestedMeta, Path, Type};
 use syn::spanned::Spanned;
 
-use crate::utils::TypeExt;
+use crate::utils::*;
 
 pub fn struct_impl(ty: &Ident, fields: Fields, attributes: &[Attribute]) -> TokenStream2 {
     let strukt = match Struct::from_fields(fields, attributes) {
         Ok(fields) => fields,
         Err(e) => return e.into_compile_error(),
     };
-    let try_from_body = strukt.try_from_body(ty, &Path::from(ty.clone()), 0);
-    let (args_impl_statement, command_type) = strukt.args_impl_statement();
+    let (command_data_impl, command_type) = command_data_impl(strukt.command_type.as_ref());
+    let from_options_body = strukt.impl_from_options(ty, &Path::from(ty.clone()), &command_type, 0);
     let data_options = strukt.data_options();
 
     let tokens = quote! {
-        impl ::std::convert::TryFrom<ApplicationCommandInteractionData> for #ty {
-            type Error = (discorsd::errors::CommandParseError, discorsd::model::ids::CommandId);
+        #command_data_impl for #ty {
+            // all structs are built from a Vec<ValueOption>
+            type Options = ::std::vec::Vec<::discorsd::model::interaction::ValueOption>;
 
-            fn try_from(data: ApplicationCommandInteractionData) -> ::std::result::Result<Self, Self::Error> {
-                let id = data.id;
-                let options = data.options;
-
-                #try_from_body
+            fn from_options(
+                options: Self::Options,
+            ) -> ::std::result::Result<Self, ::discorsd::errors::CommandParseError> {
+                #from_options_body
             }
-        }
 
-        #args_impl_statement for #ty {
-            fn args(command: &#command_type) -> discorsd::model::interaction::TopLevelOption {
-                discorsd::model::interaction::TopLevelOption::Data(#data_options)
+            // all structs are DataOptions
+            type VecArg = ::discorsd::commands::DataOption;
+
+            fn make_args(command: &#command_type) -> Vec<Self::VecArg> {
+                #data_options
             }
         }
     };
@@ -39,7 +40,7 @@ pub fn struct_impl(ty: &Ident, fields: Fields, attributes: &[Attribute]) -> Toke
 }
 
 #[derive(Debug)]
-struct Field {
+pub struct Field {
     name: FieldIdent,
     ty: Type,
     /// for example, Default::default or Instant::now
@@ -65,7 +66,7 @@ struct Field {
 }
 
 #[derive(Debug)]
-enum FieldIdent {
+pub enum FieldIdent {
     Named(NamedField),
     Unnamed(UnnamedField),
 }
@@ -87,14 +88,15 @@ impl FieldIdent {
 }
 
 #[derive(Debug)]
-struct NamedField {
+pub struct NamedField {
     ident: Ident,
     rename: Option<LitStr>,
 }
 
 #[derive(Debug)]
-struct UnnamedField {
+pub struct UnnamedField {
     index: Index,
+    // todo presumably rename
 }
 
 #[derive(Debug, Default)]
@@ -299,11 +301,11 @@ impl Field {
 pub struct Struct {
     fields: Vec<Field>,
     /// settable with `#[command(type = MyCommand)]` on a struct
-    command: Option<Ident>,
+    command_type: Option<Type>,
 }
 
 impl Struct {
-    const UNIT: Self = Self { fields: Vec::new(), command: None };
+    const UNIT: Self = Self { fields: Vec::new(), command_type: None };
 
     pub fn from_fields(fields: Fields, attributes: &[Attribute]) -> Result<Self, syn::Error> {
         let mut strukt = match fields {
@@ -335,7 +337,7 @@ impl Struct {
                             Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. })
                         ) => {
                             if path.is_ident("type") {
-                                self.command = Some(str.parse()?);
+                                self.command_type = Some(str.parse()?);
                             }
                         }
                         _ => eprint!("(struct) n = {:?}", n),
@@ -347,12 +349,12 @@ impl Struct {
         Ok(())
     }
 
-    pub fn try_from_body(&self, return_type: &Ident, return_ctor: &Path, n: usize) -> TokenStream2 {
+    pub fn impl_from_options(&self, return_type: &Ident, return_ctor: &Path, command_ty: &TokenStream2, n: usize) -> TokenStream2 {
         let num_fields = self.fields.len();
         let builder_struct = self.builder_struct(return_type, return_ctor);
         let field_eq = self.field_eq();
         let fields_array = self.fields_array();
-        let fields_match = self.match_branches();
+        let fields_match = self.match_branches(command_ty);
         let varargs_array = self.varargs_array();
         let label = Lifetime {
             apostrophe: Span::call_site(),
@@ -385,7 +387,7 @@ impl Struct {
                             match idx {
                                 #fields_match
                                 // there were too many args
-                                _ => return Err((CommandParseError::BadOrder(option.name, idx, 0..#num_fields), id))
+                                _ => return Err(CommandParseError::BadOrder(option.name, idx, 0..#num_fields))
                             }
                             i = idx;
                             if !vararg_matches { i += 1 }
@@ -393,24 +395,25 @@ impl Struct {
                         }
                     }
                     // the option MUST match one of the fields, if it didn't that's an error
-                    return Err((CommandParseError::UnknownOption(UnknownOption {
+                    return Err(CommandParseError::UnknownOption(UnknownOption {
                         name: option.name,
                         options: &FIELDS,
-                    }), id))
+                    }))
                 }
             }
         };
 
         quote! {
-            use discorsd::model::commands::CommandOptionInto;
-            use discorsd::errors::*;
+            // use ::discorsd::model::commands::CommandOptionInto;
+            use ::discorsd::errors::*;
 
             // declares the type and makes a mutable instance named `builder`
             #builder_struct
 
             #build_struct
 
-            Ok(builder.build().map_err(|e| (e, id))?)
+            // Ok(builder.build().map_err(|e| (e, id))?)
+            builder.build()
         }
     }
 
@@ -430,7 +433,7 @@ impl Struct {
         quote! { [#(#fields),*] }
     }
 
-    fn match_branches(&self) -> TokenStream2 {
+    fn match_branches(&self, command_ty: &TokenStream2) -> TokenStream2 {
         let branches = self.fields.iter().enumerate().map(|(i, f)| {
             let name = f.name.builder_ident();
             if f.vararg.is_some() {
@@ -439,15 +442,19 @@ impl Struct {
                 quote! {
                     #i => {
                         // `id` is declared in the impl of TryFrom
-                        let value: #generic_type = option.try_into().map_err(|e| (e, id))?;
+                        let value: #generic_type = <#generic_type as ::discorsd::model::commands::CommandData<#command_ty>>
+                                                    ::from_options(option)?;
                         // `builder` is made in `builder_struct`,
                         let collection = builder.#name.get_or_insert(#vararg_type::default());
                         collection.extend(::std::iter::once(value));
                     }
                 }
             } else {
+                let ty = &f.ty;
                 quote! {
-                    #i => builder.#name = Some(option.try_into().map_err(|e| (e, id))?)
+                    #i => builder.#name = Some(
+                        <#ty as ::discorsd::model::commands::CommandData<#command_ty>>::from_options(option)?
+                    )
                 }
             }
         });
@@ -482,7 +489,7 @@ impl Struct {
             let opt_handler = if let Some(path) = &f.default {
                 quote_spanned! { path.span() => unwrap_or_else(#path) }
             } else {
-                quote! { ok_or_else(|| discorsd::errors::CommandParseError::MissingOption(#name.to_string()))? }
+                quote! { ok_or_else(|| ::discorsd::errors::CommandParseError::MissingOption(#name.to_string()))? }
             };
             quote_spanned! {
                 f.name.span() => #self_ident: self.#builder_ident.#opt_handler
@@ -495,7 +502,7 @@ impl Struct {
             }
 
             impl #name {
-                fn build(self) -> Result<#return_type, discorsd::errors::CommandParseError> {
+                fn build(self) -> Result<#return_type, ::discorsd::errors::CommandParseError> {
                     #[allow(clippy::used_underscore_binding)]
                     Ok(#return_ctor {
                         #(#builder),*
@@ -518,24 +525,7 @@ impl Struct {
         quote! { [#(#vararg_names),*] }
     }
 
-    fn args_impl_statement(&self) -> (TokenStream2, TokenStream2) {
-        match &self.command {
-            None => (
-                quote! {
-                    impl<C: discorsd::commands::SlashCommand> discorsd::model::commands::CommandArgs<C>
-                }, quote! {
-                    C
-                }),
-            Some(ident) => (
-                quote_spanned! { ident.span() =>
-                    impl discorsd::model::commands::CommandArgs<#ident>
-                }, quote_spanned! { ident.span() =>
-                    #ident
-                }),
-        }
-    }
-
-    fn data_options(&self) -> TokenStream2 {
+    pub fn data_options(&self) -> TokenStream2 {
         let options = self.fields.iter().map(|f|
             // if f.vararg.is_some() {
             //     Struct::vararg_option(f)
@@ -575,14 +565,14 @@ impl Struct {
                 TokenStream2::new()
             };
             quote_spanned! { f.name.span() =>
-                discorsd::commands::DataOption::String(
+                ::discorsd::commands::DataOption::String(
                     {
-                        use discorsd::model::commands::OptionChoices;
+                        use ::discorsd::model::commands::OptionChoices;
                         #[allow(unused_mut)]
                         let mut choices = #ty::choices();
                         #retain
                         #[allow(unused_mut)]
-                        let mut option = discorsd::commands::CommandDataOption::new_str(#name, #desc).choices(choices);
+                        let mut option = ::discorsd::commands::CommandDataOption::new_str(#name, #desc).choices(choices);
                         #required
                         option
                     }
@@ -591,9 +581,9 @@ impl Struct {
         } else {
             quote_spanned! { f.name.span() =>
                 {
-                    use discorsd::model::commands::OptionCtor;
+                    use ::discorsd::model::commands::OptionCtor;
                     #[allow(unused_mut)]
-                    let mut option = discorsd::commands::CommandDataOption::new(#name, #desc);
+                    let mut option = ::discorsd::commands::CommandDataOption::new(#name, #desc);
                     #required
                     #ty::option_ctor(option)
                 }
@@ -620,6 +610,6 @@ impl Struct {
 impl FromIterator<Field> for Struct {
     fn from_iter<I: IntoIterator<Item=Field>>(iter: I) -> Self {
         let fields: Vec<Field> = iter.into_iter().collect();
-        Self { fields, command: None }
+        Self { fields, command_type: None }
     }
 }

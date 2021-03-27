@@ -2,5 +2,6 @@
 members = [
 	"discorsd",
 	"avalon_bot",
-	"command_data_derive"
+	"command_data_derive",
+	"derive_test",
 ]

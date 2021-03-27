@@ -4,17 +4,16 @@ use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 use itertools::Itertools;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::ser::SerializeSeq;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::errors::OptionType;
-use crate::http::channel::{RichEmbed, embed};
-use crate::model::ids::*;
-
-pub use crate::model::ids::{InteractionId, CommandId};
-use crate::model::message::{MessageFlags, AllowedMentions};
+use crate::http::channel::{embed, RichEmbed};
 use crate::model::guild::GuildMember;
+use crate::model::ids::*;
+use crate::model::ids::{CommandId, InteractionId};
+use crate::model::message::{AllowedMentions, MessageFlags};
 use crate::model::user::User;
 
 #[derive(Serialize, Debug, Clone)]
@@ -429,23 +428,23 @@ mod tests {
 
     #[test]
     fn part1() {
-        const CORRECT: &'static str = r#"{
+        const CORRECT1: &'static str = r#"{
     "name": "permissions",
     "description": "Get or edit permissions for a user or a role",
     "options": []
 }"#;
-        let command2 = Command::new(
+        let command = Command::new(
             "permissions",
             "Get or edit permissions for a user or a role",
             TopLevelOption::Empty,
         );
 
-        assert_same_json_value(CORRECT, command2);
+        assert_same_json_value(CORRECT1, command);
     }
 
     #[test]
     fn part2() {
-        const CORRECT: &'static str = r#"{
+        const CORRECT2: &'static str = r#"{
     "name": "permissions",
     "description": "Get or edit permissions for a user or a role",
     "options": [
@@ -461,7 +460,6 @@ mod tests {
         }
     ]
 }"#;
-
         let command = Command::new(
             "permissions",
             "Get or edit permissions for a user or a role",
@@ -479,7 +477,7 @@ mod tests {
             ]),
         );
 
-        assert_same_json_value(CORRECT, command);
+        assert_same_json_value(CORRECT2, command);
     }
 
     #[test]
@@ -836,7 +834,7 @@ pub struct ApplicationCommandOptionChoice {
     pub value: OptionValue,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum OptionValue {
     String(String),
@@ -909,7 +907,8 @@ pub struct Interaction {
     /// This is always present on ApplicationCommand interaction types.
     /// It is optional for future-proofing against new interaction types (according to docs, but I'm
     /// cool and can just change it to be optional then :). Also will probably just be a tagged enum)
-    pub data: ApplicationCommandInteractionData,
+    pub data: InteractionData,
+    // pub data: InteractionData,
     // todo document with the comments down there :)
     #[serde(flatten)]
     pub source: InteractionSource,
@@ -964,6 +963,180 @@ pub enum InteractionType {
     ApplicationCommand = 2,
 }
 
+#[derive(/*Deserialize,*/ Serialize, Debug, Clone, Eq, PartialEq)]
+pub struct InteractionData {
+    pub id: CommandId,
+    pub name: String,
+    pub options: InteractionDataOption,
+}
+
+#[derive(/*Deserialize,*/ Serialize, Debug, Clone, Eq, PartialEq)]
+pub struct GroupOption {
+    pub name: String,
+    pub lower: CommandOption,
+}
+
+#[derive(/*Deserialize,*/ Serialize, Debug, Clone, Eq, PartialEq)]
+pub struct CommandOption {
+    pub name: String,
+    pub lower: Vec<ValueOption>,
+}
+
+#[derive(/*Deserialize,*/ Serialize, Debug, Clone, Eq, PartialEq)]
+pub struct ValueOption {
+    pub name: String,
+    pub lower: OptionValue,
+}
+
+#[derive(/*Deserialize,*/ Serialize, Debug, Clone, Eq, PartialEq)]
+pub enum InteractionDataOption {
+    Group(GroupOption),
+    Command(CommandOption),
+    // default (see empty lady command)
+    Values(/*#[serde(default)]*/ Vec<ValueOption>),
+    // None,
+}
+
+impl<'de> Deserialize<'de> for InteractionData {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use ApplicationCommandInteractionData as ACID;
+        use ApplicationCommandInteractionDataOption as ACIDO;
+        use ApplicationCommandInteractionDataValue as ACIDV;
+        let ACID { id, name: data_name, options } = ACID::deserialize(d)?;
+
+        fn new_ify(options: Vec<ACIDO>) -> Vec<ValueOption> {
+            options.into_iter()
+                .map(|opt| ValueOption {
+                    name: opt.name,
+                    lower: opt.value.value()
+                        .expect("There can only ever be multiple options for the value list"),
+                })
+                .collect()
+        }
+        fn yeet_first(options: Vec<ACIDO>) -> ACIDO {
+            options.into_iter()
+                .exactly_one()
+                .expect("Already checked for 0 or > 1 options")
+        }
+
+        let options = if options.len() == 0 {
+            InteractionDataOption::Values(Vec::new())
+        } else if options.len() > 1 {
+            InteractionDataOption::Values(new_ify(options))
+        } else {
+            match yeet_first(options) {
+                ACIDO {
+                    name: value_name,
+                    value: ACIDV::Value { value }
+                } => {
+                    InteractionDataOption::Values(vec![ValueOption { name: value_name, lower: value }])
+                }
+                ACIDO {
+                    name: group_or_command_name,
+                    value: ACIDV::Options { options }
+                } => {
+                    if options.len() == 0 {
+                        InteractionDataOption::Command(CommandOption { name: group_or_command_name, lower: Vec::new() })
+                    } else if options.len() > 1 {
+                        InteractionDataOption::Command(CommandOption { name: group_or_command_name, lower: new_ify(options) })
+                    } else {
+                        match yeet_first(options) {
+                            ACIDO {
+                                name: value_name,
+                                value: ACIDV::Value { value }
+                            } => {
+                                InteractionDataOption::Command(CommandOption {
+                                    name: group_or_command_name,
+                                    lower: vec![ValueOption { name: value_name, lower: value }],
+                                })
+                            }
+                            ACIDO {
+                                name: command_name,
+                                value: ACIDV::Options { options }
+                            } => {
+                                InteractionDataOption::Group(GroupOption {
+                                    name: group_or_command_name,
+                                    lower: CommandOption { name: command_name, lower: new_ify(options) },
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        Ok(Self { id, name: data_name, options })
+    }
+}
+
+#[cfg(test)]
+mod new_data_tests {
+    use super::*;
+
+    #[test]
+    fn rules() {
+        let rules = InteractionData {
+            id: CommandId(1234),
+            name: "data".to_string(),
+            options: InteractionDataOption::Values(vec![
+                ValueOption { name: "game".to_string(), lower: OptionValue::String("Avalon".to_string()) },
+                ValueOption { name: "where".to_string(), lower: OptionValue::String("Here".to_string()) },
+            ]),
+        };
+        println!("rules = {:#?}", rules);
+    }
+
+    #[test]
+    fn perms() {
+        let perms = InteractionData {
+            id: CommandId(1234),
+            name: "perms".to_string(),
+            options: InteractionDataOption::Group(GroupOption {
+                name: "user".to_string(),
+                lower: CommandOption {
+                    name: "edit".to_string(),
+                    lower: vec![
+                        ValueOption { name: "user".to_string(), lower: OptionValue::String("5678".to_string()) },
+                        ValueOption { name: "channel".to_string(), lower: OptionValue::String("0987".to_string()) },
+                    ],
+                },
+            }),
+        };
+        println!("perms = {:#?}", perms);
+    }
+
+    #[test]
+    fn roles_add() {
+        let roles_add = InteractionData {
+            id: CommandId(1234),
+            name: "roles".to_string(),
+            options: InteractionDataOption::Command(CommandOption {
+                name: "add".to_string(),
+                lower: vec![
+                    ValueOption { name: "role1".to_string(), lower: OptionValue::String("Assassin".to_string()) },
+                    ValueOption { name: "role2".to_string(), lower: OptionValue::String("Merlin".to_string()) },
+                    ValueOption { name: "role3".to_string(), lower: OptionValue::String("Mordred".to_string()) },
+                    ValueOption { name: "role4".to_string(), lower: OptionValue::String("Percival".to_string()) },
+                ],
+            }),
+        };
+        println!("roles_add = {:#?}", roles_add);
+    }
+
+    #[test]
+    fn roles_clear() {
+        let roles_clear = InteractionData {
+            id: CommandId(1234),
+            name: "roles".to_string(),
+            options: InteractionDataOption::Command(CommandOption {
+                name: "".to_string(),
+                lower: vec![],
+            }),
+        };
+        println!("roles_clear = {:#?}", roles_clear);
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ApplicationCommandInteractionData {
     /// the ID of the invoked command
@@ -975,25 +1148,52 @@ pub struct ApplicationCommandInteractionData {
     pub options: Vec<ApplicationCommandInteractionDataOption>,
 }
 
-// #[derive(Deserialize, Serialize, Debug, Clone)]
-// #[serde(transparent)]
-// pub struct ApplicationCommandInteractionDataOption2<'a>(#[serde(borrow)] &'a RawValue);
-
 /// All options have names, and an option can either be a parameter and input value--in which case
 /// `value` will be set--or it can denote a subcommand or group--in which case it will contain a
 /// top-level key and another array of `options`.
 ///
 /// `value` and `options` are mutually exclusive.
-// todo make value/options be an enum
+// todo rename
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ApplicationCommandInteractionDataOption {
     /// the name of the parameter
     pub name: String,
-    /// the value of the pair
-    pub value: Option<OptionValue>,
-    /// present if this option is a group or subcommand
-    #[serde(default)]
-    pub options: Vec<ApplicationCommandInteractionDataOption>,
+    #[serde(flatten)]
+    pub value: ApplicationCommandInteractionDataValue,
+    // /// the value of the pair
+    // pub value: Option<OptionValue>,
+    // /// present if this option is a group or subcommand
+    // #[serde(default)]
+    // pub options: Vec<ApplicationCommandInteractionDataOption>,
+}
+
+impl ApplicationCommandInteractionDataValue {
+    pub fn value(self) -> Option<OptionValue> {
+        match self {
+            Self::Value { value } => Some(value),
+            Self::Options { .. } => None,
+        }
+    }
+    pub fn options(self) -> Option<Vec<ApplicationCommandInteractionDataOption>> {
+        match self {
+            Self::Value { .. } => None,
+            Self::Options { options } => Some(options),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum ApplicationCommandInteractionDataValue {
+    Value {
+        value: OptionValue,
+    },
+    Options {
+        // todo figure out this exact behaviour
+        #[serde(default)]
+        options: Vec<ApplicationCommandInteractionDataOption>,
+    },
+    // None,
 }
 
 /// After receiving an interaction, you must respond to acknowledge it. This may be a `pong` for a

@@ -4,9 +4,9 @@ use std::path::PathBuf;
 
 use once_cell::sync::Lazy;
 use strum::{EnumCount, EnumIter, EnumString};
-use command_data_derive::CommandDataOption;
 
 use Character::*;
+use command_data_derive::CommandDataOption;
 use discorsd::model::message::Color;
 
 #[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, EnumIter, EnumString, EnumCount, CommandDataOption)]
@@ -95,7 +95,6 @@ impl fmt::Display for Loyalty {
         })
     }
 }
-
 
 static SEES: Lazy<HashMap<Character, HashSet<Character>>> = Lazy::new(|| map! {
     LoyalServant => set!(),

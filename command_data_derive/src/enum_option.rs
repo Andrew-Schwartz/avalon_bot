@@ -23,29 +23,39 @@ pub fn enum_impl(ty: &Ident, data: DataEnum) -> TokenStream2 {
     let eq_branches = variants.eq_branches();
 
     let tokens = quote! {
-        impl discorsd::model::commands::OptionChoices for #ty {
-            fn choices() -> Vec<discorsd::model::interaction::CommandChoice<&'static str>> {
+        impl ::discorsd::model::commands::OptionChoices for #ty {
+            fn choices() -> Vec<::discorsd::model::interaction::CommandChoice<&'static str>> {
                 vec![
                     #choices
                 ]
             }
         }
 
-        impl discorsd::model::commands::FromCommandOption for #ty {
-            fn try_from(data: discorsd::model::interaction::ApplicationCommandInteractionDataOption) -> ::std::result::Result<Self, discorsd::errors::CommandParseError> {
-                use discorsd::model::commands::FromCommandOption;
-                use discorsd::errors::*;
-                let discorsd::model::interaction::ApplicationCommandInteractionDataOption { name, value, options: _ } = data;
-                let value = value
-                    .ok_or_else(|| CommandParseError::EmptyOption(name))?
-                    .string()?;
+        // todo this probably has to be able to be specialized too
+        impl<C: ::discorsd::commands::SlashCommand> ::discorsd::model::commands::CommandData<C> for #ty {
+            // all choice enums are built from a ValueOption
+            type Options = ::discorsd::model::interaction::ValueOption;
+
+            fn from_options(
+                Self::Options { name, lower: value }: Self::Options,
+            ) -> Result<Self, ::discorsd::errors::CommandParseError> {
+                use ::discorsd::errors::*;
+                let value = value.string()?;
                 match value.as_str() {
                     #branches
                     _ => Err(CommandParseError::UnknownOption(UnknownOption {
-                        name: value,
-                        options: &#variants_array
-                    })),
+                        name: value, options: &#variants_array
+                    }))
                 }
+            }
+
+            // todo should be () maybe? cuz it doesn't really make options...
+            // or could be Lowest?
+            type VecArg = ::discorsd::commands::DataOption;
+
+            fn make_args(_: &C) -> Vec<Self::VecArg> { Vec::new() }
+            fn make_choices(_: &C) -> Vec<::discorsd::model::interaction::CommandChoice<&'static str>> {
+                vec![#choices]
             }
         }
 
@@ -139,7 +149,7 @@ impl Enum {
             let name = v.choice.as_ref().map_or_else(|| v.ident.to_string(), LitStr::value);
             let span = v.ident.span();
             let value = v.name();
-            quote_spanned! { span => discorsd::model::interaction::CommandChoice::new(#name, #value) }
+            quote_spanned! { span => ::discorsd::model::interaction::CommandChoice::new(#name, #value) }
         });
         quote! {
             #(#choices),*

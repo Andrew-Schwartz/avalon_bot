@@ -34,7 +34,7 @@ pub struct StartCommand(pub HashSet<GameType>);
 //     async fn run(&self,
 //                  state: Arc<BotState<Bot>>,
 //                  interaction: InteractionUse<Unused>,
-//                  data: ApplicationCommandInteractionData,
+//                  data: InteractionData,
 //     ) -> Result<InteractionUse<Used>, BotError> {
 //         let game = match self.0.iter().exactly_one() {
 //             Ok(game) => *game,

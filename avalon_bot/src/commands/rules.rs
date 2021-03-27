@@ -43,8 +43,7 @@ impl SlashCommandData for RulesCommand {
 pub struct RulesData {
     #[command(default, choices, desc = "The game to explain the rules for")]
     game: GameType,
-    #[command(rename = "where", default, choices,
-              desc = "What channel to explain the rules in (the rules can be long)")]
+    #[command(rename = "where", desc = "What channel to explain the rules in (the rules can be long)", default, choices)]
     channel: Where,
 }
 

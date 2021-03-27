@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use discorsd::{async_trait, BotState};
@@ -7,12 +8,9 @@ use discorsd::http::channel::embed;
 use discorsd::model::message::Color;
 
 use crate::Bot;
-use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub struct InfoCommand;
-
-pub const INFO_COMMAND: InfoCommand = InfoCommand;
 
 #[async_trait]
 impl SlashCommandData for InfoCommand {

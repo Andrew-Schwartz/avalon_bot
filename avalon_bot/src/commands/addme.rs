@@ -83,6 +83,7 @@ async fn avalon(
                     config.players.push(interaction.member().unwrap().clone());
                 };
             } else {
+                // TODO don't take the interaction member, MUST use the the user passed in
                 config.players.push(interaction.member().unwrap().clone());
             }
             guilds.insert(guild);

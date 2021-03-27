@@ -7,14 +7,13 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::model::channel::ChannelType;
 use crate::model::emoji::Emoji;
+use crate::model::guild::GuildMemberUserless;
 use crate::model::ids::*;
+pub use crate::model::ids::MessageId;
+use crate::model::interaction::MessageInteraction;
 use crate::model::Png;
 use crate::model::user::User;
 use crate::serde_utils::BoolExt;
-
-pub use crate::model::ids::MessageId;
-use crate::model::guild::GuildMemberUserless;
-use crate::model::interaction::MessageInteraction;
 
 /// Represents a message sent in a channel within Discord.
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -258,6 +257,7 @@ bitflags! {
 		const URGENT = 1 << 4;
 		/// Only usable on interaction responses I think??
 		const EPHEMERAL = 1 << 6;
+		const UNKNOWN = 1 << 7;
     }
 }
 serde_bitflag!(MessageFlags, u8);
