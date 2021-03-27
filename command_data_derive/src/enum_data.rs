@@ -59,8 +59,7 @@ impl Variant {
 
     fn description(&self, name: &str) -> String {
         self.desc.as_ref()
-            .map(LitStr::value)
-            .unwrap_or_else(|| name.to_string())
+            .map_or_else(|| name.to_string(), LitStr::value)
     }
 }
 
@@ -81,7 +80,7 @@ impl TryFrom<syn::Variant> for Variant {
         };
         for attr in &attrs {
             if !attr.path.is_ident("command") { continue; }
-            variant.handle_attribute(&attr)?;
+            variant.handle_attribute(attr)?;
         }
         variant.attrs = attrs;
 
@@ -201,7 +200,7 @@ impl Enum {
     //noinspection RsSelfConvention
     fn from_options_branches(&self, ty: &Ident, command_ty: &TokenStream2) -> TokenStream2 {
         let branches = self.variants.iter().enumerate().map(|(n, v)| {
-            let patt = v.name(self.rename_all.clone());
+            let patt = v.name(self.rename_all);
             match Struct::from_fields(v.fields.clone(), &v.attrs) {
                 Ok(fields) => match syn::parse_str(&format!("{}::{}", ty, v.ident)) {
                     Ok(path) => {
@@ -222,11 +221,11 @@ impl Enum {
         }
     }
 
-    fn make_args_vec(&self, ty: &Ident, command_ty: &TokenStream2) -> TokenStream2 {
+    fn make_args_vec(&self) -> TokenStream2 {
         let branches = self.variants.iter().map(|v| {
             match Struct::from_fields(v.fields.clone(), &v.attrs) {
                 Ok(strukt) => {
-                    let name = v.name(self.rename_all.clone());
+                    let name = v.name(self.rename_all);
                     let desc = v.description(&name);
                     let options = strukt.data_options();
                     quote_spanned! { v.ident.span() =>
@@ -271,10 +270,8 @@ impl Enum {
                             if inline_data {
                                 return differ_err(variant);
                             }
-                        } else {
-                            if !inline_data {
-                                return differ_err(variant);
-                            }
+                        } else if !inline_data {
+                            return differ_err(variant);
                         }
                     }
                     // just skip unit structs
@@ -325,11 +322,11 @@ impl Enum {
     /// This also works if the inner of the newtype is an enum, as long as you `#[derive(CommandData)]`
     fn newtype_structs(&self, ty: &Ident) -> TokenStream2 {
         let (args_impl_statement, c_ty) = command_data_impl(self.command_type.as_ref());
-        let first_variant_ty = &self.variants.iter().next().expect("Enum is not empty")
+        let first_variant_ty = &self.variants.get(0).expect("Enum is not empty")
             // todo some can be units, have to skip past that
             .fields.iter().next().expect("All variants are newtypes").ty;
         let args = self.variants.iter().map(|v| {
-            let name = v.name(self.rename_all.clone());
+            let name = v.name(self.rename_all);
             let desc = v.description(&name);
             let make_args = if let Some(f) = &v.fields.iter().next() {
                 let new_ty = &f.ty;
@@ -344,7 +341,7 @@ impl Enum {
         });
         // let match_branches = self.match_branches(ty, &c_ty);
         let match_branches = self.variants.iter().map(|v| {
-            let name = v.name(self.rename_all.clone());
+            let name = v.name(self.rename_all);
             let ident = &v.ident;
             let variant = if let Some(first) = &v.fields.iter().next() {
                 let ty = &first.ty;
@@ -412,7 +409,7 @@ impl Enum {
         let (command_data_impl_statement, c_ty) = command_data_impl(self.command_type.as_ref());
         let from_option_branches = self.from_options_branches(ty, &c_ty);
         let variants_array = self.variants_array();
-        let make_args_vec = self.make_args_vec(ty, &c_ty);
+        let make_args_vec = self.make_args_vec();
 
         quote! {
             #command_data_impl_statement for #ty {

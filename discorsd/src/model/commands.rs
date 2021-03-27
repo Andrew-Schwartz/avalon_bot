@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fmt::Debug;
-use std::hash::Hash;
+use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
 
 use log::warn;
@@ -151,6 +151,7 @@ impl InteractionUse<Used> {
     }
 }
 
+#[allow(clippy::use_self)]
 impl InteractionUse<Deferred> {
     pub async fn edit<B, State, Message>(self, state: State, message: Message) -> Result<InteractionUse<Used>, ClientError>
         where B: Send + Sync + 'static,
@@ -213,6 +214,7 @@ impl From<InteractionUse<Deferred>> for InteractionUse<Used> {
 macro_rules! option_primitives {
     ($($ty:ty, $method:ident, $ctor_fn:ident, $ctor_ty:ty);+ $(;)?) => {
         $(
+            #[allow(clippy::use_self)]
             impl<C: SlashCommand> CommandData<C> for $ty {
                 type Options = ValueOption;
 
@@ -484,6 +486,7 @@ impl OptionsLadder for Vec<ValueOption> {
     }
 }
 
+#[allow(clippy::use_self)]
 impl OptionsLadder for ValueOption {
     type Raise = Vec<ValueOption>;
     type Lower = Lowest;
@@ -549,10 +552,11 @@ impl<Command: SlashCommand> CommandData<Command> for () {
 // }
 
 // impl for some containers
-impl<T, C> CommandData<C> for HashSet<T>
+impl<T, C, S> CommandData<C> for HashSet<T, S>
     where
         T: CommandData<C, VecArg=DataOption, Options=ValueOption> + Eq + Hash,
-        C: SlashCommand
+        C: SlashCommand,
+        S: BuildHasher + Default,
 {
     type Options = Vec<ValueOption>;
 

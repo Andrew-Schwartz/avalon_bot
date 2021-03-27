@@ -290,6 +290,7 @@ pub struct Sticker {
 // as_ref_id!(Sticker => StickerId);
 // as_ref_id!(Sticker => StickerPackId);
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Deserialize_repr, Serialize_repr, Debug, Clone)]
 #[repr(u8)]
 pub enum StickerFormatType {

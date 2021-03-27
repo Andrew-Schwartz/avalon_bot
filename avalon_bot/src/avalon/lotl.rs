@@ -1,13 +1,15 @@
+use std::borrow::Cow;
+
 use discorsd::http::channel::create_message;
 
 use crate::delete_command;
 
 use super::*;
-use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub struct LotlCommand(pub UserId);
 
+#[allow(clippy::use_self)]
 #[async_trait]
 impl SlashCommandData for LotlCommand {
     type Bot = Bot;

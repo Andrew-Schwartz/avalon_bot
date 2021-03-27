@@ -1,51 +1,48 @@
-use std::borrow::Cow;
-use std::sync::Arc;
-
-use command_data_derive::*;
-use discorsd::async_trait;
-use discorsd::BotState;
-use discorsd::commands::*;
-use discorsd::errors::BotError;
-
-struct TestBot;
-
-macro_rules! make_slash_command {
-    ($data:ty) => {
-        #[derive(Debug, Clone)]
-        struct Perms;
-        #[async_trait]
-        impl SlashCommandData for Perms {
-            type Bot = TestBot;
-            type Data = $data;
-            const NAME: &'static str = "permissions";
-
-            fn description(&self) -> Cow<'static, str> {
-                "Get or edit permissions for a user or a role".into()
-            }
-
-            async fn run(&self, _: Arc<BotState<TestBot>>, _: InteractionUse<Unused>, _: Self::Data) -> Result<InteractionUse<Used>, BotError> {
-                unimplemented!()
-            }
-        }
-    };
-}
-
-fn assert_same_json_value(correct: &str, modeled: impl SlashCommand) {
-    use serde_json::Value;
-
-    let correct: Value = serde_json::from_str(correct.as_ref()).unwrap();
-    let modeled = serde_json::to_string_pretty(&modeled.command()).unwrap();
-    println!("modeled = {}", modeled);
-    let modeled: Value = serde_json::from_str(&modeled).unwrap();
-
-    assert_eq!(correct, modeled);
-}
-
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
+    use std::sync::Arc;
+
+    use command_data_derive::*;
+    use discorsd::async_trait;
+    use discorsd::BotState;
+    use discorsd::commands::*;
+    use discorsd::errors::BotError;
     use discorsd::model::ids::{ChannelId, RoleId, UserId};
 
-    use super::*;
+    struct TestBot;
+
+    macro_rules! make_slash_command {
+        ($data:ty) => {
+            #[derive(Debug, Clone)]
+            struct Perms;
+            #[async_trait]
+            impl SlashCommandData for Perms {
+                type Bot = TestBot;
+                type Data = $data;
+                const NAME: &'static str = "permissions";
+
+                fn description(&self) -> Cow<'static, str> {
+                    "Get or edit permissions for a user or a role".into()
+                }
+
+                async fn run(&self, _: Arc<BotState<TestBot>>, _: InteractionUse<Unused>, _: Self::Data) -> Result<InteractionUse<Used>, BotError> {
+                    unimplemented!()
+                }
+            }
+        };
+    }
+
+    fn assert_same_json_value(correct: &str, modeled: impl SlashCommand) {
+        use serde_json::Value;
+
+        let correct: Value = serde_json::from_str(correct).unwrap();
+        let modeled = serde_json::to_string_pretty(&modeled.command()).unwrap();
+        println!("modeled = {}", modeled);
+        let modeled: Value = serde_json::from_str(&modeled).unwrap();
+
+        assert_eq!(correct, modeled);
+    }
 
     const CORRECT1: &'static str = r#"{
     "name": "permissions",

@@ -14,6 +14,7 @@
     clippy::manual_non_exhaustive,
     // todo
     clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
     // nursery
     clippy::missing_const_for_fn,
 )]

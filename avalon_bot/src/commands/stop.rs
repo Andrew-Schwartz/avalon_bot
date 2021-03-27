@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use discorsd::{BotState, http::ClientResult};
@@ -11,7 +12,6 @@ use discorsd::shard::dispatch::{ReactionType, ReactionUpdate};
 use crate::{async_trait, Bot, create_command};
 use crate::avalon::AvalonPlayer;
 use crate::games::GameType;
-use std::borrow::Cow;
 
 #[derive(Debug, Copy, Clone)]
 pub struct StopCommand(pub GameType);
@@ -82,6 +82,7 @@ impl SlashCommandData for StopCommand {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StopVoteCommand(MessageId, pub GuildId, Vec<UserId>, UserId, GameType);
 
+#[allow(clippy::use_self)]
 #[async_trait]
 impl ReactionCommand<Bot> for StopVoteCommand {
     fn applies(&self, reaction: &ReactionUpdate) -> bool {

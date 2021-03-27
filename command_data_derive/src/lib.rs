@@ -6,6 +6,8 @@
     clippy::filter_map,
     clippy::use_self,
     clippy::default_trait_access,
+    // pedantic
+    clippy::wildcard_imports,
 )]
 // @formatter:on
 

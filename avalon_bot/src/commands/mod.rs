@@ -13,8 +13,6 @@ pub mod stop;
 pub mod uptime;
 pub mod start;
 
-pub mod perms;
-
 // todo reset voting command for avalon
 pub const GLOBAL_COMMANDS: [&'static dyn SlashCommand<Bot=Bot>; 3] = [
     &InfoCommand, &PingCommand, &UptimeCommand,

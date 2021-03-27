@@ -1,22 +1,23 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use tokio::sync::Mutex;
 
+use discorsd::errors::AvalonError;
+use discorsd::http::channel::create_message;
 use discorsd::model::message::ChannelMessageId;
 
+use crate::{create_command, delete_command};
+use crate::avalon::quest::QuestUserError::{Duplicate, NotPlaying};
 use crate::avalon::vote::{PartyVote, VoteStatus};
 use crate::utils::IterExt;
 
 use super::*;
-use discorsd::http::channel::create_message;
-use discorsd::errors::AvalonError;
-use crate::{create_command, delete_command};
-use crate::avalon::quest::QuestUserError::{NotPlaying, Duplicate};
-use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub struct QuestCommand(pub usize);
 
+#[allow(clippy::use_self)]
 #[async_trait]
 impl SlashCommandData for QuestCommand {
     type Bot = Bot;

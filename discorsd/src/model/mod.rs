@@ -45,6 +45,7 @@ impl Display for DiscordError {
 }
 
 /// <https://discord.com/developers/docs/topics/opcodes-and-status-codes#json-json-error-codes>
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Deserialize_repr, Debug)]
 #[repr(u32)]
 pub enum DiscordErrorType {

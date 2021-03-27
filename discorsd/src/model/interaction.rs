@@ -1002,7 +1002,6 @@ impl<'de> Deserialize<'de> for InteractionData {
         use ApplicationCommandInteractionData as ACID;
         use ApplicationCommandInteractionDataOption as ACIDO;
         use ApplicationCommandInteractionDataValue as ACIDV;
-        let ACID { id, name: data_name, options } = ACID::deserialize(d)?;
 
         fn new_ify(options: Vec<ACIDO>) -> Vec<ValueOption> {
             options.into_iter()
@@ -1019,7 +1018,8 @@ impl<'de> Deserialize<'de> for InteractionData {
                 .expect("Already checked for 0 or > 1 options")
         }
 
-        let options = if options.len() == 0 {
+        let ACID { id, name: data_name, options } = ACID::deserialize(d)?;
+        let options = if options.is_empty() {
             InteractionDataOption::Values(Vec::new())
         } else if options.len() > 1 {
             InteractionDataOption::Values(new_ify(options))
@@ -1035,7 +1035,7 @@ impl<'de> Deserialize<'de> for InteractionData {
                     name: group_or_command_name,
                     value: ACIDV::Options { options }
                 } => {
-                    if options.len() == 0 {
+                    if options.is_empty() {
                         InteractionDataOption::Command(CommandOption { name: group_or_command_name, lower: Vec::new() })
                     } else if options.len() > 1 {
                         InteractionDataOption::Command(CommandOption { name: group_or_command_name, lower: new_ify(options) })

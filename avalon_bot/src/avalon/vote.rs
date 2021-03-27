@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashSet;
 
 use tokio::sync::Mutex;
@@ -13,7 +14,6 @@ use crate::create_command;
 use crate::utils::IterExt;
 
 use super::*;
-use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub struct PartyVote {
@@ -26,6 +26,7 @@ impl PartyVote {
     pub const REJECT: char = '❌';
 }
 
+#[allow(clippy::use_self)]
 #[async_trait]
 impl ReactionCommand<Bot> for PartyVote {
     fn applies(&self, reaction: &ReactionUpdate) -> bool {
@@ -206,6 +207,7 @@ impl QuestVote {
     pub const FAIL: char = '❌';
 }
 
+#[allow(clippy::use_self)]
 #[async_trait]
 impl ReactionCommand<Bot> for QuestVote {
     fn applies(&self, reaction: &ReactionUpdate) -> bool {

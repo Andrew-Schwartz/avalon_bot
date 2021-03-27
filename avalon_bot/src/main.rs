@@ -53,7 +53,6 @@ use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, Updat
 use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
 pub use crate::commands::{addme::AddMeCommand};
-use crate::commands::perms::PermsCommand;
 use crate::commands::rules::RulesCommand;
 use crate::commands::start::StartCommand;
 use crate::games::GameType;
@@ -406,8 +405,6 @@ impl Bot {
             }
         }
         let new: Vec<Box<dyn SlashCommand<Bot=Self>>> = vec![
-            // todo remove these two
-            Box::new(PermsCommand),
             Box::new(RulesCommand),
             Box::new(RolesCommand(vec![])),
             Box::new(AddMeCommand),
