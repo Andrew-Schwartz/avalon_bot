@@ -1,13 +1,14 @@
 //! The `snowflake` types Discord uses to identify different objects.
 
 use std::fmt::{self, Display};
+use std::num::ParseIntError;
+use std::str::FromStr;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Error;
+
 use crate::model::ids::sealed::IsId;
-use std::str::FromStr;
-use std::num::ParseIntError;
 
 const DISCORD_EPOCH: u64 = 1_420_070_400_000;
 
@@ -77,6 +78,10 @@ macro_rules! id_impl {
 
                 fn id(&self) -> Self { *self }
             }
+
+            // impl<C: SlashCommand> CommandData<C> for $id {
+            //     type Options =
+            // }
         )+
     };
 }

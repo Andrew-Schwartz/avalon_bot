@@ -1,10 +1,11 @@
+use std::ffi::OsStr;
 use std::io;
 use std::path::Path;
 
+use array_init::IsArray;
 use thiserror::Error;
 
 use ImageHashError::*;
-use std::ffi::OsStr;
 
 #[derive(Debug, Error)]
 pub enum ImageHashError {
@@ -55,4 +56,22 @@ impl<T> TryRemove<T> for Vec<T> {
             Some(self.remove(index))
         }
     }
+}
+
+pub fn array_try_from_iter<Array, Iterable, F, Error>(iterable: Iterable, mut not_enough_elements: F) -> Result<Array, Error>
+    where
+        Iterable: IntoIterator<Item=Result<Array::Item, Error>>,
+        Array: IsArray,
+    // really should be able to be `FnOnce` but try_array_init's signature can't show that
+        F: FnMut(usize) -> Error,
+{
+    array_init::try_array_init({
+        let mut iterator = iterable.into_iter();
+        move |i| {
+            match iterator.next() {
+                Some(a) => a,
+                None => Err(not_enough_elements(i)),
+            }
+        }
+    })
 }

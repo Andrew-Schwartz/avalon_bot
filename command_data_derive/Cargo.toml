@@ -10,7 +10,9 @@ proc-macro = true
 [dependencies]
 quote = "1.0.8"
 proc-macro2 = "1.0.24"
+proc-macro-error = "1.0.4"
 
 [dependencies.syn]
 version = "1.0.58"
+# todo remove "extra-traits" when releasing
 features = ["extra-traits", "derive"]

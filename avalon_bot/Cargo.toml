@@ -18,6 +18,7 @@ rand = "0.8.0"
 thiserror = "1.0.23"
 image = "0.23.12"
 imageproc = "0.22.0"
+sysinfo = "0.16.5"
 
 # for hangman
 [dependencies.reqwest]

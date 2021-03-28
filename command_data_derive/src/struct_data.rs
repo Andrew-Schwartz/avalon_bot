@@ -1,7 +1,7 @@
-use std::convert::TryFrom;
 use std::iter::FromIterator;
 
 use proc_macro2::{Span, TokenStream as TokenStream2};
+use proc_macro_error::*;
 use quote::{quote, quote_spanned};
 use syn::{Attribute, Fields, Ident, Index, Lifetime, Lit, LitStr, Meta, MetaList, MetaNameValue, NestedMeta, Path, Type};
 use syn::spanned::Spanned;
@@ -9,10 +9,7 @@ use syn::spanned::Spanned;
 use crate::utils::*;
 
 pub fn struct_impl(ty: &Ident, fields: Fields, attributes: &[Attribute]) -> TokenStream2 {
-    let strukt = match Struct::from_fields(fields, attributes) {
-        Ok(fields) => fields,
-        Err(e) => return e.into_compile_error(),
-    };
+    let strukt = Struct::from_fields(fields, attributes);
     let (command_data_impl, command_type) = command_data_impl(strukt.command_type.as_ref());
     let from_options_body = strukt.impl_from_options(ty, &Path::from(ty.clone()), &command_type, 0);
     let data_options = strukt.data_options();
@@ -51,8 +48,6 @@ pub struct Field {
     required: Option<Path>,
     /// see [Vararg] for details
     vararg: Vararg,
-    /// whether to generate `.choices(Self::choices())` for this field's `DataOption`
-    choices: bool,
     /// how to filter the choices, if `choices` is true
     ///
     /// must be a function callable as
@@ -64,6 +59,54 @@ pub struct Field {
     /// The description of this `DataOption`
     desc: Option<LitStr>,
 }
+handle_attribute!(self Field =>
+    " (without a value)": Meta::Path(path), path =>
+        /// Uses this field's `Default` implementation if this field is missing.
+        ["default" => self.default = Some(syn::parse_str("::std::default::Default::default").unwrap())]
+        // todo is this necessary?
+        /// Make this field required (note: fields are required by default, unless they are an `Option`.
+        ["required" => self.default = None]
+        /// Name this vararg field One, Two, Three, etc.
+        ["ordinals" => self.vararg.names = VarargNames::Ordinals]
+        /// Name this vararg field <vararg>1, <vararg>2, where <vararg> is the key on the `vararg` option.
+        ["counts" => self.vararg.names = VarargNames::Count],
+
+    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
+        /// The description of this command option.
+        ["desc" => self.desc = Some(str)]
+        /// Use this path to provide the default if this field is missing.
+        /// Must be callable as `fn() -> T`
+        ["default" => self.default = Some(str.parse()?)]
+        /// Marks this field as a vararg argument to the command, with the name `{str}`.
+        /// See also `ordinals`, `counts`, `va_count`, and `va_names`
+        ["vararg" => self.vararg.root = Some(str)]
+        /// How to filter the choices, if `choices` is true.
+        ///
+        /// Must be a function callable as
+        /// `fn<C: SlashCommand>(command: &C, choice: &CommandChoice<&'static str>) -> bool`
+        /// if the type for this data is not set, or as
+        /// `fn(command: &C, choice: &CommandChoice<&'static str) -> bool`
+        /// where `C` is the right hand side of `#[command(type = ...)]` on the struct if it is.
+        ["retain" => self.retain = Some(str.parse()?)]
+        /// Function to determine if this field is required, must be callable as
+        /// `fn<C: SlashCommand>(command: &C) -> bool`, where the generic is not necessary if the
+        /// struct's type is specified (`#[command(type = "MyCommand")]`.
+        ["required" => self.required = Some(str.parse()?)]
+        /// `fn<C: SlashCommand>(command: &C) -> usize` to pick how many vararg options to display.
+        ["va_count" => self.vararg.num = VarargNum::Function(str.parse()?)]
+        /// How to name the vararg options.
+        ["va_names" => self.vararg.names = VarargNames::Function(str.parse()?)]
+        /// What to rename this field as in the Command.
+        ["rename" => {
+            if let FieldIdent::Named(named) = &mut self.name {
+                named.rename = Some(str);
+            }
+        }],
+
+    " = {int}": Meta::NameValue(MetaNameValue { path, lit: Lit::Int(int), .. }), path =>
+        /// The number of vararg options to show.
+        ["va_count" => self.vararg.num = VarargNum::Count(int.base10_parse()?)]
+);
 
 #[derive(Debug)]
 pub enum FieldIdent {
@@ -104,7 +147,7 @@ struct Vararg {
     /// the root of the vararg parameter, for example `player` for player1, player2, player3, ...
     root: Option<LitStr>,
     /// `fn<C: SlashCommand>(command: &C) -> usize` to pick how many vararg options to display
-    num: Option<Path>,
+    num: VarargNum,
     /// how to name the vararg options
     names: VarargNames,
 }
@@ -112,6 +155,31 @@ struct Vararg {
 impl Vararg {
     const fn is_some(&self) -> bool {
         self.root.is_some()
+    }
+}
+
+#[derive(Debug)]
+enum VarargNum {
+    Count(usize),
+    Function(Path),
+}
+
+impl VarargNum {
+    fn take_fn(&self) -> TokenStream2 {
+        match self {
+            VarargNum::Count(n) => {
+                quote! { (|_| n) }
+            }
+            VarargNum::Function(path) => {
+                quote! { path }
+            }
+        }
+    }
+}
+
+impl Default for VarargNum {
+    fn default() -> Self {
+        Self::Count(0)
     }
 }
 
@@ -170,10 +238,9 @@ impl Field {
     }
 }
 
-impl TryFrom<syn::Field> for Field {
-    type Error = syn::Error;
-
-    fn try_from(field: syn::Field) -> Result<Self, Self::Error> {
+#[allow(clippy::fallible_impl_from)]
+impl From<syn::Field> for Field {
+    fn from(field: syn::Field) -> Self {
         let attrs = field.attrs;
         let mut field = Self {
             name: FieldIdent::Named(NamedField {
@@ -183,29 +250,27 @@ impl TryFrom<syn::Field> for Field {
             default: None,
             ty: field.ty,
             vararg: Default::default(),
-            choices: false,
             retain: None,
             desc: None,
             required: None,
         };
 
         if field.ty.generic_type_of("Option").is_some() {
-            field.default = Some(syn::parse_str("Default::default")?);
+            field.default = Some(syn::parse_str("::std::default::Default::default").unwrap());
         }
         for attr in attrs {
             if !attr.path.is_ident("command") { continue; }
 
-            field.handle_attribute(&attr)?;
+            field.handle_attribute(&attr);
         }
 
-        Ok(field)
+        field
     }
 }
 
-impl TryFrom<(usize, syn::Field)> for Field {
-    type Error = syn::Error;
-
-    fn try_from((i, field): (usize, syn::Field)) -> Result<Self, Self::Error> {
+#[allow(clippy::fallible_impl_from)]
+impl From<(usize, syn::Field)> for Field {
+    fn from((i, field): (usize, syn::Field)) -> Self {
         let attrs = field.attrs;
         let mut field = Self {
             name: FieldIdent::Unnamed(UnnamedField {
@@ -214,86 +279,21 @@ impl TryFrom<(usize, syn::Field)> for Field {
             default: None,
             ty: field.ty,
             vararg: Default::default(),
-            choices: false,
             retain: None,
             desc: None,
             required: None,
         };
 
         if field.ty.generic_type_of("Option").is_some() {
-            field.default = Some(syn::parse_str("Default::default")?);
+            field.default = Some(syn::parse_str("::std::default::Default::default").unwrap());
         }
         for attr in attrs {
             if !attr.path.is_ident("command") { continue; }
 
-            field.handle_attribute(&attr)?;
+            field.handle_attribute(&attr);
         }
 
-        Ok(field)
-    }
-}
-
-impl Field {
-    fn handle_attribute(&mut self, attr: &Attribute) -> Result<(), syn::Error> {
-        let meta = attr.parse_meta().expect("failed to parse meta");
-        match meta {
-            Meta::List(MetaList { nested, .. }) => {
-                for n in nested {
-                    match n {
-                        NestedMeta::Meta(
-                            Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. })
-                        ) => {
-                            if path.is_ident("rename") {
-                                if let FieldIdent::Named(named) = &mut self.name {
-                                    named.rename = Some(str);
-                                }
-                            } else if path.is_ident("default") {
-                                // has to be parse_str so that the types don't get messed up
-                                self.default = Some(str.parse()?);
-                                // self.default = Some(syn::parse_str(&str.value())?);
-                            } else if path.is_ident("vararg") {
-                                self.vararg.root = Some(str);
-                            } else if path.is_ident("desc") {
-                                self.desc = Some(str);
-                            } else if path.is_ident("retain") {
-                                self.retain = Some(str.parse()?);
-                            } else if path.is_ident("required") {
-                                self.required = Some(str.parse()?);
-                            } else if path.is_ident("va_count") {
-                                self.vararg.num = Some(str.parse()?);
-                            } else if path.is_ident("va_names") {
-                                self.vararg.names = VarargNames::Function(str.parse()?);
-                            }
-                        }
-                        NestedMeta::Meta(Meta::Path(path)) => {
-                            if path.is_ident("default") {
-                                self.default = Some(syn::parse_str("Default::default")?);
-                            } else if path.is_ident("choices") {
-                                self.choices = true;
-                            } else if path.is_ident("required") {
-                                self.default = None;
-                            } else if path.is_ident("ordinals") {
-                                self.vararg.names = VarargNames::Ordinals;
-                            } else if path.is_ident("count") {
-                                self.vararg.names = VarargNames::Count;
-                            }
-                        }
-                        // todo just impl whatever it is on [Type; N]
-                        // NestedMeta::Meta(
-                        //     Meta::NameValue(MetaNameValue{ path, lit: Lit::Int(int), .. })
-                        // ) => {
-                        //     if path.is_ident("va_count") {
-                        //         int.
-                        //     }
-                        // }
-                        _ => eprintln!("(field) n = {:?}", n),
-                    }
-                }
-            }
-            _ => eprintln!("(field) meta = {:?}", meta),
-        }
-
-        Ok(())
+        field
     }
 }
 
@@ -303,50 +303,34 @@ pub struct Struct {
     /// settable with `#[command(type = MyCommand)]` on a struct
     command_type: Option<Type>,
 }
+handle_attribute!(self Struct =>
+    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
+        /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
+        /// can make decisions at runtime by taking functions callable as `fn(CommandType) -> SomeType`.
+        ["type" => self.command_type = Some(str.parse()?)]
+);
 
 impl Struct {
     const UNIT: Self = Self { fields: Vec::new(), command_type: None };
 
-    pub fn from_fields(fields: Fields, attributes: &[Attribute]) -> Result<Self, syn::Error> {
+    pub fn from_fields(fields: Fields, attributes: &[Attribute]) -> Self {
         let mut strukt = match fields {
             Fields::Named(fields) => fields.named
                 .into_iter()
-                .map(Field::try_from)
+                .map(Field::from)
                 .collect(),
             Fields::Unnamed(fields) => fields.unnamed
                 .into_iter()
                 .enumerate()
-                .map(Field::try_from)
+                .map(Field::from)
                 .collect(),
-            Fields::Unit => Ok(Struct::UNIT),
-        }?;
+            Fields::Unit => Struct::UNIT,
+        };
         for attr in attributes {
             if !attr.path.is_ident("command") { continue; }
-            strukt.handle_attribute(attr)?;
+            strukt.handle_attribute(attr);
         }
-        Ok(strukt)
-    }
-
-    fn handle_attribute(&mut self, attr: &Attribute) -> Result<(), syn::Error> {
-        let meta = attr.parse_meta().expect("failed to parse meta");
-        match meta {
-            Meta::List(MetaList { nested, .. }) => {
-                for n in nested {
-                    match n {
-                        NestedMeta::Meta(
-                            Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. })
-                        ) => {
-                            if path.is_ident("type") {
-                                self.command_type = Some(str.parse()?);
-                            }
-                        }
-                        _ => eprint!("(struct) n = {:?}", n),
-                    }
-                }
-            }
-            _ => eprintln!("(struct) meta = {:?}", meta),
-        }
-        Ok(())
+        strukt
     }
 
     pub fn impl_from_options(&self, return_type: &Ident, return_ctor: &Path, command_ty: &TokenStream2, n: usize) -> TokenStream2 {
@@ -404,7 +388,6 @@ impl Struct {
         };
 
         quote! {
-            // use ::discorsd::model::commands::CommandOptionInto;
             use ::discorsd::errors::*;
 
             // declares the type and makes a mutable instance named `builder`
@@ -556,54 +539,45 @@ impl Struct {
         };
         // todo is there some way to get the type out in a nice way? (the `generic_type` below is sketch)
         let ty = f.ty.generic_type().unwrap_or(&f.ty);
-        if f.choices {
-            let retain = if let Some(path) = &f.retain {
-                quote_spanned! { path.span() =>
+        let retain = if let Some(path) = &f.retain {
+            quote_spanned! { path.span() =>
                     choices.retain(|choice| #path(command, choice));
                 }
-            } else {
-                TokenStream2::new()
-            };
-            quote_spanned! { f.name.span() =>
-                ::discorsd::commands::DataOption::String(
-                    {
-                        use ::discorsd::model::commands::OptionChoices;
-                        #[allow(unused_mut)]
-                        let mut choices = #ty::choices();
-                        #retain
-                        #[allow(unused_mut)]
-                        let mut option = ::discorsd::commands::CommandDataOption::new_str(#name, #desc).choices(choices);
-                        #required
-                        option
-                    }
-                )
-            }
         } else {
-            quote_spanned! { f.name.span() =>
-                {
-                    use ::discorsd::model::commands::OptionCtor;
+            TokenStream2::new()
+        };
+        quote_spanned! { f.name.span() =>
+            {
+                #[allow(unused_mut)]
+                let mut choices = #ty::make_choices(command);
+                #retain
+                if choices.is_empty() {
                     #[allow(unused_mut)]
                     let mut option = ::discorsd::commands::CommandDataOption::new(#name, #desc);
                     #required
                     #ty::option_ctor(option)
+                } else {
+                    let mut option = ::discorsd::commands::CommandDataOption::new_str(#name, #desc);
+                    option = option.choices(choices);
+                    #required
+                    ::discorsd::commands::DataOption::String(option)
                 }
             }
         }
     }
 
-    fn vararg_option(_f: &Field) -> TokenStream2 {
-        todo!()
-        // let root = f.vararg.root.as_ref().unwrap();
-        // let names = f.vararg.names.names(root);
-        // let take = f.vararg.num.as_ref().unwrap();
-        // let descriptions = VarargNames::Count.names(root);
-        // quote! {
-        //     // `command` is in scope from `CommandArgs` impl
-        //     #names
-        //         .take(#take(command))
-        //         .zip(#descriptions)
-        //         .map
-        // }
+    fn vararg_option(f: &Field) -> TokenStream2 {
+        let root = f.vararg.root.as_ref().unwrap();
+        let names = f.vararg.names.names(root);
+        let take = f.vararg.num.take_fn();
+        let descriptions = VarargNames::Count.names(root);
+        quote! {
+            // `command` is in scope from `CommandArgs` impl
+            #names
+                .take(#take(command))
+                .zip(#descriptions)
+                .map
+        }
     }
 }
 

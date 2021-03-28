@@ -29,6 +29,7 @@ impl SlashCommandData for QuestCommand {
     }
 
     fn options(&self) -> TopLevelOption {
+        println!("QuestData::make_args(self) = {:#?}", QuestData::make_args(self));
         let data = ["First", "Second", "Third", "Fourth", "Fifth"].iter()
             .take(self.0)
             .enumerate()
@@ -175,7 +176,7 @@ enum QuestUserError {
 #[derive(CommandData)]
 #[command(type = "QuestCommand")]
 pub struct QuestData(
-    #[command(vararg = "player"/*, va_count = "num_players", required, ordinals*/)]
+    #[command(vararg = "player", va_count = "num_players", ordinals)]
     Vec<UserId>
 );
 

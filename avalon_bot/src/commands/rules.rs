@@ -41,9 +41,9 @@ impl SlashCommandData for RulesCommand {
 
 #[derive(Debug, CommandData)]
 pub struct RulesData {
-    #[command(default, choices, desc = "The game to explain the rules for")]
+    #[command(default, desc = "The game to explain the rules for")]
     game: GameType,
-    #[command(rename = "where", desc = "What channel to explain the rules in (the rules can be long)", default, choices)]
+    #[command(rename = "where", desc = "What channel to explain the rules in (the rules can be long)", default)]
     channel: Where,
 }
 
@@ -54,3 +54,11 @@ pub enum Where {
     #[command(choice = "In a dm")]
     Dm,
 }
+
+// impl OptionCtor for Where {
+//     type Data = &'static str;
+//
+//     fn option_ctor(cdo: CommandDataOption<Self::Data>) -> DataOption {
+//         DataOption::String(cdo)
+//     }
+// }

@@ -1,21 +1,17 @@
-use std::convert::TryFrom;
 use std::iter::FromIterator;
 
 use proc_macro2::TokenStream as TokenStream2;
+use proc_macro_error::*;
 use quote::{quote, quote_spanned};
 use syn::{DataEnum, Ident, Lit, LitStr, Meta, MetaList, MetaNameValue, NestedMeta};
 
 use crate::utils::IteratorJoin;
 
 pub fn enum_impl(ty: &Ident, data: DataEnum) -> TokenStream2 {
-    let variants: Result<Enum, syn::Error> = data.variants
+    let variants: Enum = data.variants
         .into_iter()
-        .map(Variant::try_from)
+        .map(Variant::from)
         .collect();
-    let variants = match variants {
-        Ok(e) => e,
-        Err(err) => return err.into_compile_error(),
-    };
     let choices = variants.choices();
     let branches = variants.branches();
     let variants_array = variants.array();
@@ -23,15 +19,18 @@ pub fn enum_impl(ty: &Ident, data: DataEnum) -> TokenStream2 {
     let eq_branches = variants.eq_branches();
 
     let tokens = quote! {
-        impl ::discorsd::model::commands::OptionChoices for #ty {
-            fn choices() -> Vec<::discorsd::model::interaction::CommandChoice<&'static str>> {
-                vec![
-                    #choices
-                ]
+        impl ::discorsd::commands::OptionCtor for #ty {
+            type Data = &'static str;
+
+            fn option_ctor(
+                cdo: ::discorsd::commands::CommandDataOption<Self::Data>
+            ) -> ::discorsd::commands::DataOption {
+                ::discorsd::commands::DataOption::String(cdo)
             }
         }
 
         // todo this probably has to be able to be specialized too
+        //  maybe not?
         impl<C: ::discorsd::commands::SlashCommand> ::discorsd::model::commands::CommandData<C> for #ty {
             // all choice enums are built from a ValueOption
             type Options = ::discorsd::model::interaction::ValueOption;
@@ -49,8 +48,6 @@ pub fn enum_impl(ty: &Ident, data: DataEnum) -> TokenStream2 {
                 }
             }
 
-            // todo should be () maybe? cuz it doesn't really make options...
-            // or could be Lowest?
             type VecArg = ::discorsd::commands::DataOption;
 
             fn make_args(_: &C) -> Vec<Self::VecArg> { Vec::new() }
@@ -96,6 +93,15 @@ struct Variant {
     choice: Option<LitStr>,
     default: bool,
 }
+handle_attribute!(self Variant =>
+    " (without a value)": Meta::Path(path), path =>
+        /// default doc
+        ["default" => self.default = true],
+
+    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
+        /// choice doc
+        ["choice" => self.choice = Some(str)]
+);
 
 impl Variant {
     fn name(&self) -> LitStr {
@@ -103,40 +109,20 @@ impl Variant {
     }
 }
 
-impl TryFrom<syn::Variant> for Variant {
-    type Error = syn::Error;
-
-    fn try_from(variant: syn::Variant) -> Result<Self, Self::Error> {
+impl From<syn::Variant> for Variant {
+    fn from(variant: syn::Variant) -> Self {
         if !variant.fields.is_empty() {
-            return Err(syn::Error::new_spanned(variant, "Command variants can't have fields"));
+            abort!(variant, "Command variants can't have fields")
         }
         if variant.discriminant.is_some() {
-            return Err(syn::Error::new_spanned(variant, "Command variants can't have discriminants (ex, `= 1`)"));
+            abort!(variant, "Command variants can't have discriminants (ex, `= 1`)")
         }
         let attrs = variant.attrs;
         let mut variant = Self { ident: variant.ident, choice: None, default: false };
-        attrs.into_iter()
+        attrs.iter()
             .filter(|a| a.path.is_ident("command"))
-            .map(|a| a.parse_meta().unwrap())
-            .for_each(|meta| match meta {
-                Meta::List(MetaList { nested, .. }) => nested.into_iter()
-                    .for_each(|n| match n {
-                        NestedMeta::Meta(Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. })) => {
-                            if path.is_ident("choice") {
-                                variant.choice = Some(str);
-                            }
-                        }
-                        NestedMeta::Meta(Meta::Path(path)) => {
-                            if path.is_ident("default") {
-                                variant.default = true;
-                            }
-                        }
-                        _ => eprintln!("(enum) n = {:?}", n),
-                    }),
-                _ => eprintln!("(enum) meta = {:?}", meta),
-            });
-
-        Ok(variant)
+            .for_each(|a| variant.handle_attribute(a));
+        variant
     }
 }
 
@@ -188,10 +174,10 @@ impl Enum {
             },
             too_long => {
                 let variants = too_long.iter().join(", ");
-                syn::Error::new(
-                    ty.span(),
+                abort!(
+                    ty,
                     format!("Only one variant can be marked default (`{}` all are)", variants),
-                ).into_compile_error()
+                )
             }
         }
     }

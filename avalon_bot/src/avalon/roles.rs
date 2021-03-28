@@ -139,22 +139,3 @@ pub enum RoleData {
     #[command(desc = "Clear all roles")]
     Clear,
 }
-
-// impl<C: SlashCommand> CommandData<C> for RoleData {
-//     type Options = <<HashSet<Character> as CommandData<C>>::Options as OptionsLadder>::Raise;
-//
-//     fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
-//         unimplemented!()
-//     }
-//
-//     type VecArg = ();
-//
-//     fn make_args(_: &C) -> Vec<Self::VecArg> {
-//         vec![
-//             Self::VecArg::make(
-//                 "add", "Choose roles to add",
-//                 <>
-//             )
-//         ]
-//     }
-// }

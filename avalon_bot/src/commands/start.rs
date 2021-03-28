@@ -86,7 +86,7 @@ impl SlashCommandData for StartCommand {
 #[derive(CommandData)]
 #[command(type = "StartCommand")]
 pub struct StartData {
-    #[command(choices, desc = "Choose the game to start", required = "req", retain = "retain")]
+    #[command(desc = "Choose the game to start", required = "req", retain = "retain")]
     game: Option<GameType>,
 }
 

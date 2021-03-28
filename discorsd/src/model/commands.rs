@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 
 use log::warn;
 
-use crate::BotState;
+use crate::{BotState, utils};
 use crate::commands::{Interaction, SlashCommand};
 use crate::errors::*;
 use crate::http::{ClientError, DiscordClient};
@@ -193,24 +193,6 @@ impl From<InteractionUse<Deferred>> for InteractionUse<Used> {
 
 // begin magic happy traits that let the proc macros be epic
 
-// CommandData parsing things
-// :( orphan rules :(
-// todo might be able to do away with this completely if GuildId/Source is just sent into smth with DataExt
-// pub trait FromCommandOption {
-//     fn try_from(option: ValueOption) -> Result<Self, CommandParseError>
-//         where Self: Sized;
-// }
-//
-// pub trait CommandOptionInto<T> {
-//     fn try_into(self) -> Result<T, CommandParseError>;
-// }
-//
-// impl<T: FromCommandOption> CommandOptionInto<T> for ValueOption {
-//     fn try_into(self) -> Result<T, CommandParseError> {
-//         T::try_from(self)
-//     }
-// }
-
 macro_rules! option_primitives {
     ($($ty:ty, $method:ident, $ctor_fn:ident, $ctor_ty:ty);+ $(;)?) => {
         $(
@@ -249,55 +231,6 @@ option_primitives!(
     RoleId,    role,    Role,    Self;
 );
 
-// impl<T: FromCommandOption> FromCommandOption for Option<T> {
-//     fn try_from(option: ValueOption) -> Result<Self, CommandParseError>
-//         where Self: Sized {
-//         Ok(Some(T::try_from(option)?))
-//     }
-// }
-
-impl<C: SlashCommand, T: CommandData<C>> CommandData<C> for Option<T> {
-    type Options = T::Options;
-
-    fn from_options(data: Self::Options) -> Result<Self, CommandParseError> {
-        // `T::from_data` failing means that the data was the wrong type, not that it was absent
-        // Absent data is handled before calling this function
-        Ok(Some(T::from_options(data)?))
-    }
-
-    type VecArg = T::VecArg;
-
-    fn make_args(command: &C) -> Vec<Self::VecArg> {
-        T::make_args(command)
-    }
-}
-
-// pub trait DataExt {
-//     // todo should probably take `Option<GuildId>` or even `InteractionSource` or smth
-//     fn from_data(data: InteractionData, guild: GuildId) -> Result<Self, CommandParseErrorInfo>
-//         where Self: Sized;
-// }
-//
-// impl<T> DataExt for T
-//     where T: TryFrom<InteractionData, Error=(CommandParseError, CommandId)>,
-// {
-//     fn from_data(data: InteractionData, guild: GuildId) -> Result<Self, CommandParseErrorInfo>
-//         where Self: Sized {
-//         Self::try_from(data)
-//             .map_err(|cpe| cpe.with_info(guild))
-//     }
-// }
-
-pub trait OptionChoices {
-    fn choices() -> Vec<CommandChoice<&'static str>>;
-}
-
-impl<T: OptionChoices> OptionChoices for Option<T> {
-    fn choices() -> Vec<CommandChoice<&'static str>> {
-        T::choices()
-    }
-}
-
 pub trait OptionCtor {
     type Data;
 
@@ -312,18 +245,7 @@ impl<T: OptionCtor<Data=T>> OptionCtor for Option<T> {
     }
 }
 
-// pub trait CommandArgs<Command: SlashCommand> {
-//     fn args(command: &Command) -> TopLevelOption;
-// }
-//
-// impl<T: CommandData<C>, C: SlashCommand> CommandArgs<C> for T {
-//     fn args(command: &C) -> TopLevelOption {
-//         <Self as CommandData<C>>::VecArg::tlo_ctor()(Self::make_args(command))
-//     }
-// }
-
-// wip
-// traits to let enums figure out how to impl CommandArgs
+// traits to let enums figure out how to impl CommandData
 
 pub enum Highest {}
 
@@ -459,7 +381,6 @@ impl OptionsLadder for GroupOption {
     }
 }
 
-
 impl OptionsLadder for CommandOption {
     type Raise = GroupOption;
     type Lower = Vec<ValueOption>;
@@ -514,6 +435,15 @@ impl OptionsLadder for Lowest {
     }
 }
 
+impl OptionsLadder for () {
+    type Raise = ();
+    type Lower = ();
+
+    fn from_data_option(_: InteractionDataOption) -> Result<Self, CommandParseError> {
+        Ok(())
+    }
+}
+
 // the big boi himself
 pub trait CommandData<Command: SlashCommand>: Sized {
     // function to go from InteractionData -> Self
@@ -545,13 +475,23 @@ impl<Command: SlashCommand> CommandData<Command> for () {
     }
 }
 
-// impl DataExt for () {
-//     fn from_data(_: InteractionData, _: GuildId) -> Result<Self, CommandParseErrorInfo> where Self: Sized {
-//         Ok(())
-//     }
-// }
-
 // impl for some containers
+impl<C: SlashCommand, T: CommandData<C>> CommandData<C> for Option<T> {
+    type Options = T::Options;
+
+    fn from_options(data: Self::Options) -> Result<Self, CommandParseError> {
+        // `T::from_data` failing means that the data was the wrong type, not that it was absent
+        // Absent data is handled before calling this function
+        Ok(Some(T::from_options(data)?))
+    }
+
+    type VecArg = T::VecArg;
+
+    fn make_args(command: &C) -> Vec<Self::VecArg> {
+        T::make_args(command)
+    }
+}
+
 impl<T, C, S> CommandData<C> for HashSet<T, S>
     where
         T: CommandData<C, VecArg=DataOption, Options=ValueOption> + Eq + Hash,
@@ -560,8 +500,8 @@ impl<T, C, S> CommandData<C> for HashSet<T, S>
 {
     type Options = Vec<ValueOption>;
 
-    fn from_options(data: Self::Options) -> Result<Self, CommandParseError> {
-        data.into_iter().map(T::from_options).collect()
+    fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
+        options.into_iter().map(T::from_options).collect()
     }
 
     type VecArg = DataOption;
@@ -573,5 +513,55 @@ impl<T, C, S> CommandData<C> for HashSet<T, S>
 
     fn make_choices(c: &C) -> Vec<CommandChoice<&'static str>> {
         T::make_choices(c)
+    }
+}
+
+#[allow(clippy::use_self)]
+impl<T, C> CommandData<C> for Vec<T>
+    where
+        T: CommandData<C, VecArg=DataOption, Options=ValueOption>,
+        C: SlashCommand,
+{
+    type Options = Vec<ValueOption>;
+
+    fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
+        options.into_iter().map(T::from_options).collect()
+    }
+
+    type VecArg = DataOption;
+
+    fn make_args(command: &C) -> Vec<Self::VecArg> {
+        T::make_args(command)
+    }
+
+    fn make_choices(command: &C) -> Vec<CommandChoice<&'static str>> {
+        T::make_choices(command)
+    }
+}
+
+impl<T, C, const N: usize> CommandData<C> for [T; N]
+    where
+        T: CommandData<C, VecArg=DataOption, Options=ValueOption>,
+        C: SlashCommand,
+{
+    type Options = Vec<ValueOption>;
+
+    fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
+        let iter = options.into_iter().map(T::from_options);
+        utils::array_try_from_iter(iter, |i| CommandParseError::MissingOption(
+            format!("Didn't have option number {}", i)
+        ))
+    }
+
+    type VecArg = DataOption;
+
+    fn make_args(command: &C) -> Vec<Self::VecArg> {
+        // todo repeat N times?
+        // T::make_args(command).into_iter().cycle().take(N)
+        T::make_args(command)
+    }
+
+    fn make_choices(command: &C) -> Vec<CommandChoice<&'static str>> {
+        T::make_choices(command)
     }
 }

@@ -52,9 +52,11 @@ use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, Updat
 
 use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
+use crate::avalon::quest::QuestCommand;
 pub use crate::commands::{addme::AddMeCommand};
 use crate::commands::rules::RulesCommand;
 use crate::commands::start::StartCommand;
+use crate::commands::system_info::SysInfoCommand;
 use crate::games::GameType;
 use crate::hangman::Hangman;
 use crate::hangman::hangman_command::HangmanCommand;
@@ -405,6 +407,8 @@ impl Bot {
             }
         }
         let new: Vec<Box<dyn SlashCommand<Bot=Self>>> = vec![
+            Box::new(QuestCommand(3)),
+            Box::new(SysInfoCommand),
             Box::new(RulesCommand),
             Box::new(RolesCommand(vec![])),
             Box::new(AddMeCommand),

@@ -1,7 +1,8 @@
 use std::convert::{TryFrom, TryInto};
 use std::iter::FromIterator;
 
-use proc_macro2::{Span, TokenStream as TokenStream2};
+use proc_macro2::TokenStream as TokenStream2;
+use proc_macro_error::*;
 use quote::{quote, quote_spanned};
 use syn::{Attribute, DataEnum, Fields, Ident, Lit, LitStr, Meta, MetaList, MetaNameValue, NestedMeta, Type};
 use syn::spanned::Spanned;
@@ -9,27 +10,16 @@ use syn::spanned::Spanned;
 use crate::struct_data::Struct;
 use crate::utils::command_data_impl;
 
-// todo use this in other files too
-macro_rules! comp_err {
-    ($($tt:tt)*) => {
-        match $($tt)* {
-            Ok(ok) => ok,
-            Err(err) => return err.into_compile_error(),
-        }
-    };
-}
-
 pub fn enum_impl(ty: &Ident, data: DataEnum, attrs: &[Attribute]) -> TokenStream2 {
-    let variants: Result<Enum, syn::Error> = data.variants
+    let mut variants: Enum = data.variants
         .into_iter()
-        .map(Variant::try_from)
+        .map(Variant::from)
         .collect();
-    let mut variants = comp_err!(variants);
     for attr in attrs {
         if !attr.path.is_ident("command") { continue; };
-        comp_err!(variants.handle_attribute(attr));
+        variants.handle_attribute(attr);
     }
-    comp_err!(variants.args_maker_impl(ty))
+    variants.args_maker_impl(ty)
 }
 
 #[derive(Debug)]
@@ -37,16 +27,18 @@ struct Variant {
     attrs: Vec<Attribute>,
     ident: Ident,
     rename: Option<LitStr>,
-    // todo will probably have to be Vec<My::Field>
     fields: Fields,
     desc: Option<LitStr>,
 }
+handle_attribute!(self Variant =>
+    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
+        /// The description of this command option.
+        ["desc" => self.desc = Some(str)]
+        /// What to rename this field as in the Command.
+        ["rename" => self.rename = Some(str)]
+);
 
 impl Variant {
-    // fn lowercase_name(&self) -> LitStr {
-    //     LitStr::new(&self.ident.to_string().to_lowercase(), self.ident.span())
-    // }
-
     fn name(&self, rename_all: Option<RenameAll>) -> String {
         if let Some(lit) = &self.rename {
             lit.value()
@@ -63,12 +55,10 @@ impl Variant {
     }
 }
 
-impl TryFrom<syn::Variant> for Variant {
-    type Error = syn::Error;
-
-    fn try_from(variant: syn::Variant) -> Result<Self, Self::Error> {
+impl From<syn::Variant> for Variant {
+    fn from(variant: syn::Variant) -> Self {
         if variant.discriminant.is_some() {
-            return Err(syn::Error::new(variant.span(), "Command variants can't have discriminants (ex, `= 1`)"));
+            abort!(variant, "Command variants can't have discriminants (ex, `= 1`)");
         }
         let attrs = variant.attrs;
         let mut variant = Self {
@@ -80,48 +70,11 @@ impl TryFrom<syn::Variant> for Variant {
         };
         for attr in &attrs {
             if !attr.path.is_ident("command") { continue; }
-            variant.handle_attribute(attr)?;
+            variant.handle_attribute(attr);
         }
         variant.attrs = attrs;
 
-        Ok(variant)
-    }
-}
-
-impl Variant {
-    fn handle_attribute(&mut self, attr: &Attribute) -> Result<(), syn::Error> {
-        let meta = attr.parse_meta()?;
-        match meta {
-            Meta::List(MetaList { nested, .. }) => {
-                for n in nested {
-                    match n {
-                        NestedMeta::Meta(
-                            Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. })
-                        ) => {
-                            if path.is_ident("desc") {
-                                self.desc = Some(str);
-                            } else if path.is_ident("rename") {
-                                self.rename = Some(str);
-                            } else {
-                                return Err(syn::Error::new(
-                                    str.span(),
-                                    format!("Unknown attribute `{:?}`", str),
-                                ));
-                            }
-                        }
-                        other => return Err(syn::Error::new(
-                            other.span(),
-                            format!("Unexpected NestedMeta {:?}", other),
-                        ))
-                    }
-                }
-            }
-            other => return Err(syn::Error::new(
-                other.span(),
-                format!("unexpected meta {:?}", other),
-            )),
-        };
-        Ok(())
+        variant
     }
 }
 
@@ -132,6 +85,14 @@ struct Enum {
     command_type: Option<Type>,
     rename_all: Option<RenameAll>,
 }
+handle_attribute!(self Enum =>
+    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
+        /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
+        /// can make decisions at runtime by taking functions callable as `fn(CommandType) -> SomeType`.
+        ["type" => self.command_type = Some(str.parse()?)]
+        /// How to rename all of the variants of this enum. Acceptable options are `lowercase`
+        ["rename_all" => self.rename_all = Some(str.try_into()?)]
+);
 
 // todo more of these ig
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -162,58 +123,22 @@ impl TryFrom<LitStr> for RenameAll {
 }
 
 impl Enum {
-    fn handle_attribute(&mut self, attr: &Attribute) -> Result<(), syn::Error> {
-        let meta = attr.parse_meta()?;
-        match meta {
-            Meta::List(MetaList { nested, .. }) => {
-                for n in nested {
-                    match n {
-                        NestedMeta::Meta(
-                            Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. })
-                        ) => {
-                            if path.is_ident("type") {
-                                self.command_type = Some(str.parse()?);
-                            } else if path.is_ident("rename_all") {
-                                self.rename_all = Some(str.try_into()?);
-                            } else {
-                                return Err(syn::Error::new(
-                                    str.span(),
-                                    format!("Unknown attribute `{:?}`", str),
-                                ));
-                            }
-                        }
-                        other => return Err(syn::Error::new(
-                            other.span(),
-                            format!("Unexpected NestedMeta {:?}", other),
-                        ))
-                    }
-                }
-            }
-            other => return Err(syn::Error::new(
-                other.span(),
-                format!("unexpected meta {:?}", other),
-            )),
-        };
-        Ok(())
-    }
-
     //noinspection RsSelfConvention
     fn from_options_branches(&self, ty: &Ident, command_ty: &TokenStream2) -> TokenStream2 {
         let branches = self.variants.iter().enumerate().map(|(n, v)| {
             let patt = v.name(self.rename_all);
-            match Struct::from_fields(v.fields.clone(), &v.attrs) {
-                Ok(fields) => match syn::parse_str(&format!("{}::{}", ty, v.ident)) {
-                    Ok(path) => {
-                        let try_from_body = fields.impl_from_options(ty, &path, command_ty, n);
-                        quote_spanned! { v.ident.span() =>
-                            #patt => {
-                                #try_from_body
-                            }
+            // todo filter out the attributes this used
+            let fields = Struct::from_fields(v.fields.clone(), &[]);
+            match syn::parse_str(&format!("{}::{}", ty, v.ident)) {
+                Ok(path) => {
+                    let try_from_body = fields.impl_from_options(ty, &path, command_ty, n);
+                    quote_spanned! { v.ident.span() =>
+                        #patt => {
+                            #try_from_body
                         }
                     }
-                    Err(e) => e.into_compile_error(),
-                },
-                Err(e) => e.into_compile_error(),
+                }
+                Err(e) => abort!(e),
             }
         });
         quote! {
@@ -223,18 +148,15 @@ impl Enum {
 
     fn make_args_vec(&self) -> TokenStream2 {
         let branches = self.variants.iter().map(|v| {
-            match Struct::from_fields(v.fields.clone(), &v.attrs) {
-                Ok(strukt) => {
-                    let name = v.name(self.rename_all);
-                    let desc = v.description(&name);
-                    let options = strukt.data_options();
-                    quote_spanned! { v.ident.span() =>
-                        Self::VecArg::make(
-                            #name, #desc, #options
-                        )
-                    }
-                }
-                Err(e) => e.into_compile_error(),
+            // todo filter out the attributes this used
+            let strukt = Struct::from_fields(v.fields.clone(), &[]);
+            let name = v.name(self.rename_all);
+            let desc = v.description(&name);
+            let options = strukt.data_options();
+            quote_spanned! { v.ident.span() =>
+                Self::VecArg::make(
+                    #name, #desc, #options
+                )
             }
         });
 
@@ -249,11 +171,11 @@ impl Enum {
         quote! { [#(#array),*] }
     }
 
-    fn args_maker_impl(&self, ty: &Ident) -> Result<TokenStream2, syn::Error> {
-        let differ_err = |variant: &Variant| Err(syn::Error::new(
-            variant.fields.span(),
+    fn args_maker_impl(&self, ty: &Ident) -> TokenStream2 {
+        let differ_err = |variant: &Variant| abort!(
+            variant.fields,
             "All variants must be same type (tuple/struct), but this one isn't",
-        ));
+        );
 
         let mut inline_data = None::<bool>;
         for variant in &self.variants {
@@ -262,16 +184,16 @@ impl Enum {
                 match &variant.fields {
                     Fields::Named(_) => {
                         if !inline_data {
-                            return differ_err(variant);
+                            differ_err(variant);
                         }
                     }
                     Fields::Unnamed(f) => {
                         if f.unnamed.len() == 1 {
                             if inline_data {
-                                return differ_err(variant);
+                                differ_err(variant);
                             }
                         } else if !inline_data {
-                            return differ_err(variant);
+                            differ_err(variant);
                         }
                     }
                     // just skip unit structs
@@ -294,12 +216,9 @@ impl Enum {
         }
 
         match inline_data {
-            None => Err(syn::Error::new(
-                Span::call_site(),
-                "Empty enums can't be Command Data",
-            )),
-            Some(true) => Ok(self.inline_structs(ty)),
-            Some(false) => Ok(self.newtype_structs(ty)),
+            None => abort_call_site!("Empty enums can't be Command Data"),
+            Some(true) => self.inline_structs(ty),
+            Some(false) => self.newtype_structs(ty),
         }
     }
 
@@ -322,9 +241,13 @@ impl Enum {
     /// This also works if the inner of the newtype is an enum, as long as you `#[derive(CommandData)]`
     fn newtype_structs(&self, ty: &Ident) -> TokenStream2 {
         let (args_impl_statement, c_ty) = command_data_impl(self.command_type.as_ref());
-        let first_variant_ty = &self.variants.get(0).expect("Enum is not empty")
-            // todo some can be units, have to skip past that
-            .fields.iter().next().expect("All variants are newtypes").ty;
+        let first_variant_ty = &self.variants.iter()
+            .find(|v| !matches!(&v.fields, Fields::Unit))
+            .expect("Enum is not empty")
+            .fields.iter()
+            .next()
+            .expect("All newtype enums have at least one newtype")
+            .ty;
         let args = self.variants.iter().map(|v| {
             let name = v.name(self.rename_all);
             let desc = v.description(&name);

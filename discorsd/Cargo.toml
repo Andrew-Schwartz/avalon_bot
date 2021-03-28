@@ -21,6 +21,7 @@ regex = "1.4.2"
 thiserror = "1.0.22"
 dyn-clone = "1.0.3"
 downcast-rs = "1.2.0"
+array-init = "1.1.0"
 
 [dependencies.tokio]
 version = "0.2.24"

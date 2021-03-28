@@ -42,7 +42,7 @@ impl SlashCommandData for AddMeCommand {
 
 #[derive(CommandData)]
 pub struct AddMeData {
-    #[command(default, choices, desc = "The game to add you to, or Avalon if not specified")]
+    #[command(default, desc = "The game to add you to, or Avalon if not specified")]
     game: GameType,
     #[command(desc = "Forcibly add someone else to the game")]
     player: Option<UserId>,

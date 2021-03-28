@@ -319,13 +319,6 @@ impl<T> CommandDataOption<T>
     }
 }
 
-// hmm?
-trait EnumChoice {
-    fn choices() -> Vec<CommandChoice<&'static str>>;
-
-    // todo from str
-}
-
 #[derive(Serialize, Debug, Clone, Copy)]
 pub struct CommandChoice<T> {
     /// 1-100 character choice name
@@ -1153,7 +1146,6 @@ pub struct ApplicationCommandInteractionData {
 /// top-level key and another array of `options`.
 ///
 /// `value` and `options` are mutually exclusive.
-// todo rename
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ApplicationCommandInteractionDataOption {
     /// the name of the parameter

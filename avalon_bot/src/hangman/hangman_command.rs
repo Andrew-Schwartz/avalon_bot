@@ -70,23 +70,16 @@ impl SlashCommandData for HangmanCommand {
     }
 }
 
-#[derive(CommandData)]
+#[derive(CommandData, Debug)]
 pub struct HangmanData {
-    // todo: without the default here, the error is that "OptionCtor" might need to be implemented
-    //  can probably make it clearer what's happening
-    #[command(choices, default, desc = "Choose where to get the random word from")]
+    #[command(default, desc = "Choose where to get the random word from")]
     word_source: Source,
 }
 
-#[derive(CommandDataOption)]
+#[derive(CommandDataOption, Debug)]
 pub enum Source {
     Guild,
+    // todo: change to guild when that's done
+    #[command(default)]
     Wordnik,
-}
-
-impl Default for Source {
-    fn default() -> Self {
-        // todo: change to guild when that's done
-        Self::Wordnik
-    }
 }
