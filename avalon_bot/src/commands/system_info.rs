@@ -96,6 +96,7 @@ impl SlashCommandData for SysInfoCommand {
 }
 
 #[derive(CommandData, Debug)]
+// todo make required = 0 work with default
 pub struct Data(#[command(vararg = "data", va_count = 3, required = 1)] HashSet<Choices>);
 
 #[derive(CommandDataOption, Debug, Copy, Clone, Eq, PartialEq, Hash)]

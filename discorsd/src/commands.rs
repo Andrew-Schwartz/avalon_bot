@@ -87,51 +87,19 @@ impl<Scd: SlashCommandData> SlashCommand for Scd
             Ok(options) => match <Self as SlashCommandData>::Data::from_options(options) {
                 Ok(data) => SlashCommandData::run(self, state, interaction, data).await,
                 Err(error) => Err(CommandParseErrorInfo {
-                    guild: interaction.guild().expect("Will be source later"),
+                    guild: interaction.guild().expect(&format!("Will be source later, {:?}", error)),
                     name: interaction.command_name,
                     id: interaction.command,
                     error,
                 }.into())
             },
             Err(error) => Err(CommandParseErrorInfo {
-                guild: interaction.guild().expect("Will be source later"),
+                guild: interaction.guild().expect(&format!("Will be source later, {:?}", error)),
                 name: interaction.command_name,
                 id: interaction.command,
                 error,
             }.into())
         }
-        // match <Self as SlashCommandData>::Data::from_data(data) {
-        //     Ok(data) => SlashCommandData::run(self, state, interaction, data).await,
-        //     Err(error) => Err(CommandParseErrorInfo {
-        //         guild: interaction.guild().expect("I'll make this Source later :)"),
-        //         name: interaction.command_name,
-        //         id: interaction.command,
-        //         error
-        //     }.into())
-        // }
-        // let data = <<Self as SlashCommandData>::Data as CommandData<Self>>::Data::from_data_option(data);
-        // match data {
-        //     Ok(data) => {
-        //         match <Self as SlashCommandData>::Data::from_data(data) {
-        //             Ok(data) => SlashCommandData::run(self, state, interaction, data).await,
-        //             // error in the actual contents of the data, though it was the right type
-        //             Err(error) => Err(CommandParseErrorInfo {
-        //                 guild: interaction.guild().expect("I'll do the Source thing later"),
-        //                 name: interaction.command_name,
-        //                 id: interaction.command,
-        //                 error,
-        //             }.into()),
-        //         }
-        //     }
-        //     // error getting to right type of data (eg the InteractionDataOption wasn't a
-        //     // CommandOption or whatever type it was supposed to be)
-        //     Err(error) => Err(CommandParseErrorInfo {
-        //         guild: interaction.guild().expect("I'll do this later"),
-        //         name: interaction.command_name,
-        //         id: interaction.command,
-        //         error,
-        //     }.into())
-        // }
     }
 }
 
