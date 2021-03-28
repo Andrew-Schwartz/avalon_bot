@@ -62,7 +62,7 @@ impl SlashCommandData for SysInfoCommand {
                 embed.field(("CPU Usage", value))
             }
             if data.0.iter().any(|it| matches!(it, Choices::Memory | Choices::All)) {
-                let used = sys.get_available_memory();
+                let used = sys.get_used_memory();
                 let total = sys.get_total_memory();
                 let string = format!(
                     "{:.2}% used\n\
