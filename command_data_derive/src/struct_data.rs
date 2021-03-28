@@ -96,7 +96,9 @@ handle_attribute!(self Field =>
         ["va_count" => self.vararg.num = VarargNum::Function(str.parse()?)]
         /// How to name the vararg options.
         ["va_names" => self.vararg.names = VarargNames::Function(str.parse()?)]
-        /// What to rename this field as in the Command.
+        /// What to rename this field as in the Command. Must be callable as
+        /// `fn<C>(n: usize) -> C where C: Into<Cow<'static, str>` (commonly `C` will be `&str` or
+        /// `String`.
         ["rename" => {
             if let FieldIdent::Named(named) = &mut self.name {
                 named.rename = Some(str);
@@ -106,6 +108,8 @@ handle_attribute!(self Field =>
     " = {int}": Meta::NameValue(MetaNameValue { path, lit: Lit::Int(int), .. }), path =>
         /// The number of vararg options to show.
         ["va_count" => self.vararg.num = VarargNum::Count(int.base10_parse()?)]
+        /// The number of vararg options required.
+        ["required" => self.vararg.required = Some(int.base10_parse()?)]
 );
 
 #[derive(Debug)]
@@ -114,18 +118,20 @@ pub enum FieldIdent {
     Unnamed(UnnamedField),
 }
 
+impl Spanned for FieldIdent {
+    fn span(&self) -> Span {
+        match self {
+            Self::Named(named) => named.ident.span(),
+            Self::Unnamed(unnamed) => unnamed.index.span,
+        }
+    }
+}
+
 impl FieldIdent {
     fn builder_ident(&self) -> Ident {
         match self {
             Self::Named(named) => Ident::new(&named.ident.to_string(), named.ident.span()),
             Self::Unnamed(UnnamedField { index }) => Ident::new(&format!("_{}", index.index), index.span)
-        }
-    }
-
-    fn span(&self) -> Span {
-        match self {
-            Self::Named(named) => named.ident.span(),
-            Self::Unnamed(unnamed) => unnamed.index.span,
         }
     }
 }
@@ -150,6 +156,8 @@ struct Vararg {
     num: VarargNum,
     /// how to name the vararg options
     names: VarargNames,
+    /// how many varargs are required. If `None`, all are required
+    required: Option<usize>,
 }
 
 impl Vararg {
@@ -167,12 +175,8 @@ enum VarargNum {
 impl VarargNum {
     fn take_fn(&self) -> TokenStream2 {
         match self {
-            VarargNum::Count(n) => {
-                quote! { (|_| n) }
-            }
-            VarargNum::Function(path) => {
-                quote! { path }
-            }
+            VarargNum::Count(n) => quote! { (|_| #n) },
+            VarargNum::Function(path) => quote! { #path },
         }
     }
 }
@@ -187,7 +191,7 @@ impl Default for VarargNum {
 enum VarargNames {
     /// if root is `player`, names will be `player1`, `player2`, etc
     Count,
-    /// names will be `First`, `Second`, `Third`, etc (up to 20)
+    /// names will be `first`, `second`, `third`, etc (up to 20)
     Ordinals,
     /// names given by this function, callable as `fn<C: Into<Cow<'static, str>>(n: usize) -> C`
     Function(Path),
@@ -203,22 +207,20 @@ impl VarargNames {
     fn names(&self, root: &LitStr) -> TokenStream2 {
         match self {
             VarargNames::Count => {
-                let names = (1..).map(|i| format!("{}{}", root.value(), i));
                 quote! {
-                    [#(#names),*].iter()
+                    (1..).map(|i| format!(concat!(#root, "{}"), i))
                 }
             }
             VarargNames::Ordinals => quote! {
-                [
-                    "First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth",
-                    "Ninth", "Tenth", "Eleventh", "Twelfth", "Thirteenth", "Fourteenth",
-                    "Fifteenth", "Sixteenth", "Seventeenth", "Eighteenth", "Nineteenth", "Twentieth"
-                ].iter()
+                ::std::array::IntoIter::new([
+                    "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth",
+                    "ninth", "tenth", "eleventh", "twelfth", "thirteenth", "fourteenth",
+                    "fifteenth", "sixteenth", "seventeenth", "eighteenth", "nineteenth", "twentieth"
+                ])
             },
             VarargNames::Function(fun) => {
-                let names = (1..).map(|i| quote! { #fun(#i) });
                 quote! {
-                    [#(#names),*].iter()
+                    (1..).map(|i| #fun(i))
                 }
             }
         }
@@ -509,22 +511,47 @@ impl Struct {
     }
 
     pub fn data_options(&self) -> TokenStream2 {
-        let options = self.fields.iter().map(|f|
-            // if f.vararg.is_some() {
-            //     Struct::vararg_option(f)
-            // } else {
-            //     Struct::single_option(f)
-            // }
-            Struct::single_option(f)
-        );
-        quote! { vec![#(#options),*] }
+        let chain = self.fields.iter().map(|f| {
+            if f.vararg.is_some() {
+                Struct::vararg_option(f)
+            } else {
+                let name = f.arg_name();
+                let desc = f.desc.as_ref()
+                    .map_or_else(|| f.arg_name(), LitStr::value);
+                let single_option = Struct::single_option(f, Some((name, desc)), None);
+                quote_spanned! { single_option.span() =>
+                    ::std::iter::once(#single_option)
+                }
+            }
+            // Struct::single_option(f)
+        }).reduce(|a, b| {
+            quote_spanned! { a.span() =>
+                #a.chain(#b)
+            }
+        }).expect("Is not a unit struct");
+        // todo ^ actually can be a unit struct at this point :(
+        quote_spanned! { chain.span() => #chain.collect() }
+        // quote! { vec![#(#options),*] }
     }
 
-    fn single_option(f: &Field) -> TokenStream2 {
-        let name = f.arg_name();
-        let desc = f.desc.as_ref()
-            .map_or_else(|| f.arg_name(), LitStr::value);
-        let required = if f.default.is_none() {
+    fn single_option(
+        f: &Field,
+        name_desc: Option<(String, String)>,
+        required_if_i_less_than: Option<usize>,
+    ) -> TokenStream2 {
+        let let_name_desc = if let Some((name, desc)) = name_desc {
+            quote! {
+                let name = #name;
+                let desc = #desc;
+            }
+        } else {
+            TokenStream2::new()
+        };
+        let required = if let Some(less_than) = required_if_i_less_than {
+            quote! {
+                if i < #less_than { option = option.required() }
+            }
+        } else if f.default.is_none() {
             quote! {
                 option = option.required();
             }
@@ -548,17 +575,19 @@ impl Struct {
         };
         quote_spanned! { f.name.span() =>
             {
+                #let_name_desc
                 #[allow(unused_mut)]
                 let mut choices = #ty::make_choices(command);
                 #retain
                 if choices.is_empty() {
                     #[allow(unused_mut)]
-                    let mut option = ::discorsd::commands::CommandDataOption::new(#name, #desc);
+                    let mut option = ::discorsd::commands::CommandDataOption::new(name, desc);
                     #required
                     #ty::option_ctor(option)
                 } else {
-                    let mut option = ::discorsd::commands::CommandDataOption::new_str(#name, #desc);
-                    option = option.choices(choices);
+                    #[allow(unused_mut)]
+                    let mut option = ::discorsd::commands::CommandDataOption::new_str(name, desc)
+                                        .choices(choices);
                     #required
                     ::discorsd::commands::DataOption::String(option)
                 }
@@ -566,17 +595,21 @@ impl Struct {
         }
     }
 
+    // make this be a method on `Field`
     fn vararg_option(f: &Field) -> TokenStream2 {
         let root = f.vararg.root.as_ref().unwrap();
         let names = f.vararg.names.names(root);
         let take = f.vararg.num.take_fn();
         let descriptions = VarargNames::Count.names(root);
+        let single_opt = Self::single_option(f, None, f.vararg.required);
+
         quote! {
-            // `command` is in scope from `CommandArgs` impl
+            // `command` is in scope from `CommandData::make_args` param
             #names
                 .take(#take(command))
                 .zip(#descriptions)
-                .map
+                .enumerate()
+                .map(|(i, (name, desc))| #single_opt)
         }
     }
 }

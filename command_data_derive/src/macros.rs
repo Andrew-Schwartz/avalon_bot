@@ -4,6 +4,7 @@ macro_rules! handle_attribute {
         $(
             $group_name:literal: $nested_meta_pattern:pat, $path:ident =>
             $(
+                // todo generate a struct that has all the documentation
                 $(#[doc = $doc:literal])+
                 [$str:literal => $($str_effect:tt)*]
             )+

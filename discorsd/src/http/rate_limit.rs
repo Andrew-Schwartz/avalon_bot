@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use reqwest::header::HeaderMap;
 
-use crate::model::ids::*;
 use crate::http::routes::Route;
+use crate::model::ids::*;
 
 #[derive(Debug, Default)]
 pub struct RateLimit {
@@ -116,7 +116,7 @@ impl RateLimiter {
     pub async fn rate_limit(&self, key: &BucketKey) {
         if let Some(rate_limit) = self.0.get(key) {
             if let Some(duration) = rate_limit.limit() {
-                // log::info!("{} -> {}", key, rate_limit);
+                // log::info!("{:?} -> {}", key, rate_limit);
                 tokio::time::delay_for(duration).await;
             }
         }

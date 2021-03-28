@@ -28,20 +28,6 @@ impl SlashCommandData for QuestCommand {
         "Choose who will go on the quest! Only the current leader can use this.".into()
     }
 
-    fn options(&self) -> TopLevelOption {
-        println!("QuestData::make_args(self) = {:#?}", QuestData::make_args(self));
-        let data = ["First", "Second", "Third", "Fourth", "Fifth"].iter()
-            .take(self.0)
-            .enumerate()
-            .map(|(i, s)| CommandDataOption::<UserId>::new(
-                format!("player{}", i + 1), *s,
-            ))
-            .map(CommandDataOption::required)
-            .map(DataOption::User)
-            .collect();
-        TopLevelOption::Data(data)
-    }
-
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
@@ -173,7 +159,7 @@ enum QuestUserError {
     Duplicate,
 }
 
-#[derive(CommandData)]
+#[derive(CommandData, Debug)]
 #[command(type = "QuestCommand")]
 pub struct QuestData(
     #[command(vararg = "player", va_count = "num_players", ordinals)]

@@ -270,7 +270,7 @@ impl<T> CommandDataOption<T> {
 }
 
 impl CommandDataOption<&'static str> {
-    pub fn new_str(name: &'static str, description: &'static str) -> Self {
+    pub fn new_str<N: Into<Cow<'static, str>>, D: Into<Cow<'static, str>>>(name: N, description: D) -> Self {
         Self::new(name, description)
     }
 
@@ -283,7 +283,7 @@ impl CommandDataOption<&'static str> {
 }
 
 impl CommandDataOption<i64> {
-    pub fn new_int(name: &'static str, description: &'static str) -> Self {
+    pub fn new_int<N: Into<Cow<'static, str>>, D: Into<Cow<'static, str>>>(name: N, description: D) -> Self {
         Self::new(name, description)
     }
 

@@ -52,7 +52,6 @@ use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, Updat
 
 use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
-use crate::avalon::quest::QuestCommand;
 pub use crate::commands::{addme::AddMeCommand};
 use crate::commands::rules::RulesCommand;
 use crate::commands::start::StartCommand;
@@ -215,17 +214,14 @@ impl discorsd::Bot for Bot {
             let mut commands = state.commands.write().await;
             let commands = commands.entry(guild.id).or_default().write().await;
             let rcs = state.reaction_commands.write().await;
-            // println!("bruh");
             Self::reset_guild_commands(guild.id, &state, commands, rcs).await;
         }
 
-        // if Utc::now().signed_duration_since(self.most_recent_login().await.unwrap()).num_seconds() >= 20 {
         self.config.channel.send(&state, format!(
             "🎉 Joined new guild **{}** (`{}`) 🎉",
             guild.name.as_ref().unwrap(),
             guild.id,
         )).await?;
-        // }
 
         Ok(())
     }
@@ -407,9 +403,6 @@ impl Bot {
             }
         }
         let new: Vec<Box<dyn SlashCommand<Bot=Self>>> = vec![
-            Box::new(QuestCommand(3)),
-            Box::new(SysInfoCommand),
-            Box::new(RulesCommand),
             Box::new(RolesCommand(vec![])),
             Box::new(AddMeCommand),
             Box::new(ToggleLady),
