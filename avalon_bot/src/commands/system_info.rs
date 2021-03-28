@@ -100,8 +100,8 @@ pub struct Data(#[command(vararg = "data", va_count = 3, required = 1)] HashSet<
 
 #[derive(CommandDataOption, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Choices {
+    All,
     Cpu,
     Memory,
     Temperature,
-    All,
 }

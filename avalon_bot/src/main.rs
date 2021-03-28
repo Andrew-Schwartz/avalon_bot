@@ -53,9 +53,7 @@ use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, Updat
 use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
 pub use crate::commands::{addme::AddMeCommand};
-use crate::commands::rules::RulesCommand;
 use crate::commands::start::StartCommand;
-use crate::commands::system_info::SysInfoCommand;
 use crate::games::GameType;
 use crate::hangman::Hangman;
 use crate::hangman::hangman_command::HangmanCommand;
