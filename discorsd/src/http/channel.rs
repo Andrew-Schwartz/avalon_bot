@@ -59,11 +59,7 @@ impl DiscordClient {
         self.send_message_with_files(PostMessage(channel), message).await
     }
 
-    /// [content](content): the new message contents (up to 2000 characters)
-    ///
-    /// [embed](embed): embedded rich content
-    ///
-    /// [flags](flags): edit the flags of a message (only `SUPPRESS_EMBEDS` can currently be set/unset)
+    /// Edits the specified message according to [edit](edit)
     ///
     /// # Errors
     ///
@@ -77,8 +73,8 @@ impl DiscordClient {
     /// Delete a message. If operating on a guild channel and trying to delete a message that was
     /// not sent by the current user, this endpoint requires the `MANAGE_MESSAGES` permission.
     ///
-    /// Fires a [`MessageDelete`](crate::shard::dispatch::DispatchPayload::MessageDelete) event.
-
+    /// Fires a [`MessageDelete`](crate::shard::dispatch::MessageDelete) event.
+    ///
     /// # Errors
     ///
     /// If the http request fails
@@ -121,7 +117,7 @@ impl DiscordClient {
     /// route. However, if a bot is responding to a command and expects the computation to take a
     /// few seconds, this endpoint may be called to let the user know that the bot is processing
     /// their message. Returns a 204 empty response on success. Fires a
-    /// [`TypingStart`](crate::shard::dispatch::DispatchPayload::TypingStart) event.
+    /// [`TypingStart`](crate::shard::dispatch::TypingStart) event.
     ///
     /// # Errors
     ///

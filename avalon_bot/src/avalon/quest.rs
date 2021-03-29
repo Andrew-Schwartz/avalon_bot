@@ -160,7 +160,7 @@ enum QuestUserError {
 }
 
 #[derive(CommandData, Debug)]
-#[command(type = "QuestCommand")]
+#[command(command = "QuestCommand")]
 pub struct QuestData(
     #[command(vararg = "player", va_count = "num_players", ordinals)]
     Vec<UserId>

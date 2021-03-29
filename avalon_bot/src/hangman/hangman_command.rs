@@ -76,7 +76,7 @@ pub struct HangmanData {
     word_source: Source,
 }
 
-#[derive(CommandDataOption, Debug)]
+#[derive(CommandDataChoices, Debug)]
 pub enum Source {
     Guild,
     // todo: change to guild when that's done

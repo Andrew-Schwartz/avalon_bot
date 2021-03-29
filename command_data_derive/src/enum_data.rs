@@ -1,10 +1,10 @@
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::iter::FromIterator;
 
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_error::*;
 use quote::{quote, quote_spanned};
-use syn::{Attribute, DataEnum, Fields, Ident, Lit, LitStr, Meta, MetaList, MetaNameValue, NestedMeta, Type};
+use syn::{Attribute, DataEnum, Fields, Ident, LitStr, Type};
 use syn::spanned::Spanned;
 
 use crate::struct_data::Struct;
@@ -23,20 +23,13 @@ pub fn enum_impl(ty: &Ident, data: DataEnum, attrs: &[Attribute]) -> TokenStream
 }
 
 #[derive(Debug)]
-struct Variant {
+pub struct Variant {
     attrs: Vec<Attribute>,
     ident: Ident,
-    rename: Option<LitStr>,
+    pub rename: Option<LitStr>,
     fields: Fields,
-    desc: Option<LitStr>,
+    pub desc: Option<LitStr>,
 }
-handle_attribute!(self Variant =>
-    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
-        /// The description of this command option.
-        ["desc" => self.desc = Some(str)]
-        /// What to rename this field as in the Command.
-        ["rename" => self.rename = Some(str)]
-);
 
 impl Variant {
     fn name(&self, rename_all: Option<RenameAll>) -> String {
@@ -79,24 +72,16 @@ impl From<syn::Variant> for Variant {
 }
 
 #[derive(Debug)]
-struct Enum {
+pub struct Enum {
     variants: Vec<Variant>,
     /// settable with `#[command(type = MyCommand)]` on an enum
-    command_type: Option<Type>,
-    rename_all: Option<RenameAll>,
+    pub command_type: Option<Type>,
+    pub rename_all: Option<RenameAll>,
 }
-handle_attribute!(self Enum =>
-    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
-        /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
-        /// can make decisions at runtime by taking functions callable as `fn(CommandType) -> SomeType`.
-        ["type" => self.command_type = Some(str.parse()?)]
-        /// How to rename all of the variants of this enum. Acceptable options are `lowercase`
-        ["rename_all" => self.rename_all = Some(str.try_into()?)]
-);
 
 // todo more of these ig
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum RenameAll {
+pub enum RenameAll {
     Lowercase,
 }
 
@@ -223,13 +208,19 @@ impl Enum {
     }
 
     /// Enums where each variant is a newtype
-    /// ```rust
+    /// ```
+    /// # const IGNORE1: &str = stringify!(
     /// #[derive(CommandData)]
+    /// # );
     /// struct Color { hex: String }
+    /// # const IGNORE2: &str = stringify!(
     /// #[derive(CommandData)]
+    /// # );
     /// struct Person { name: String, age: u32 }
     ///
+    /// # const IGNORE3: &str = stringify!(
     /// #[derive(CommandData)]
+    /// # );
     /// enum Data {
     ///     ColorCommand(String),
     ///     PersonCommand(Person),
@@ -320,12 +311,24 @@ impl Enum {
         }
     }
 
-    /// Enums where each variant is a struct or a tuple with 2+ fields
+    /// Enums where each variant is either a struct or a tuple with 2+ fields (that tuple thing
+    /// might be a lie as to how well it works for tuples...)
     /// ```
+    /// # const IGNORE: &str = stringify!(
     /// #[derive(CommandData)]
+    /// # );
     /// enum InlineStructs {
     ///     ColorCommand { hex: String },
-    ///     PersonCommand(#[command(rename = "name")] String, #[command(rename = "age")] u32)
+    ///     PersonCommand(
+    /// # #[doc = r#"
+    ///         #[command(rename = "name")]
+    /// # "#]
+    ///         String,
+    /// # #[doc = r#"
+    ///         #[command(rename = "age")]
+    /// # "#]
+    ///         u32
+    ///     )
     /// }
     /// ```
     fn inline_structs(&self, ty: &Ident) -> TokenStream2 {

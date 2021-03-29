@@ -13,21 +13,27 @@
 // @formatter:on
 
 use proc_macro::TokenStream;
+use std::convert::TryInto;
 
 use proc_macro2::{Ident, Span};
 use proc_macro_error::*;
 use quote::quote;
 use syn::{Data, DeriveInput, parse_macro_input};
+// for handle_attributes!
+use syn::{Lit, Meta, MetaList, MetaNameValue, NestedMeta};
+
+use enum_choices::Variant as ChoicesVariant;
+use enum_data::{Enum as DataEnum, Variant as DataVariant};
+use struct_data::*;
 
 #[macro_use]
 mod macros;
 pub(crate) mod utils;
 mod struct_data;
 mod enum_data;
-mod enum_option;
+mod enum_choices;
 
-/// Todo document these
-/// asdasdhasdha
+/// See Documentation macros
 #[proc_macro_derive(CommandData, attributes(command))]
 #[proc_macro_error]
 pub fn derive_data(input: TokenStream) -> TokenStream {
@@ -44,7 +50,8 @@ pub fn derive_data(input: TokenStream) -> TokenStream {
     tokens.into()
 }
 
-#[proc_macro_derive(CommandDataOption, attributes(command))]
+/// See Documentation macros
+#[proc_macro_derive(CommandDataChoices, attributes(command))]
 #[proc_macro_error]
 pub fn derive_option(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -54,12 +61,12 @@ pub fn derive_option(input: TokenStream) -> TokenStream {
     let tokens = match input.data {
         Data::Struct(_) => abort!(
             ty,
-            "Can't derive `CommandDataOption` on a Struct (yet?)",
+            "Can't derive `CommandDataChoices` on a Struct (yet?)",
         ),
-        Data::Enum(data) => enum_option::enum_impl(&ty, data),
+        Data::Enum(data) => enum_choices::enum_impl(&ty, data),
         Data::Union(_) => abort!(
             ty,
-            "Can't derive `CommandDataOption` on a Union",
+            "Can't derive `CommandDataChoices` on a Union",
         ),
     };
 
@@ -104,3 +111,196 @@ fn dummy_impl(ty: &Ident) {
         }
     });
 }
+
+// handle_attributes! invoked here to generate documentation
+handle_attribute!(
+    /// Attributes on a struct field, for example `desc` on `MyData.user`:
+    /// ```
+    /// # struct UserId;
+    /// # const IGNORE: &str = stringify!(
+    /// #[derive(CommandData)]
+    /// # );
+    /// pub struct MyData {
+    /// # #[doc = r#"
+    ///     #[command(desc = "Pick a user")]
+    /// # "#]
+    ///     user: UserId,
+    /// }
+    /// ```
+    self Field =>
+
+    "": Meta::Path(path), path =>
+        /// Marks this field as optional in the Command in Discord, and if the use omits it, will use
+        /// this field's type's `Default` implementation to create it.
+        ["default" => self.default = Some(syn::parse_str("::std::default::Default::default").unwrap())]
+        // todo is this necessary?
+        /// Make this field required (note: fields are required by default, unless they are an `Option`).
+        ["required" => self.default = None]
+        /// Only applicable for `vararg` fields. Name the command options "One", "Two", "Three", etc.
+        ["ordinals" => self.vararg.names = VarargNames::Ordinals]
+        /// Only applicable for `vararg` fields. Name this vararg field "{vararg}1", "{vararg}2",
+        /// where {vararg} is the key on the `vararg` option.
+        ["counts" => self.vararg.names = VarargNames::Count],
+
+    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
+        /// The description of this command option. If omitted, will use the field's name as the
+        /// description.
+        ["desc" => self.desc = Some(str)]
+        /// Marks this field as optional in the Command in Discord, and if the use omits it, will use
+        /// this function to provide the default if this field is missing. Must be callable as
+        /// `fn() -> T`, where `T` is this field's type.
+        ["default" => self.default = Some(str.parse()?)]
+        // todo make a va_desc_name thing
+        /// Marks this field as a vararg argument to the command, with the name and description
+        /// created by appending a counting integer to `{str}`. Allows the user to chose multiple
+        /// options of this field's type.
+        /// See also `ordinals`, `counts`, `va_count`, and `va_names`.
+        ["vararg" => self.vararg.root = Some(str)]
+        // todo reorder doc so the type = ... part comes first cuz its basically always going to be
+        //  set if you're doing this
+        /// How to filter the choices, if `choices` is true.
+        ///
+        /// Must be a function callable as
+        /// `fn<C: SlashCommand>(&C, &CommandChoice<&'static str>) -> bool`
+        /// if the type for this data is not set, or as
+        /// `fn(&Command, &CommandChoice<&'static str) -> bool`
+        /// where `Command` is the right hand side of `#[command(command = ...)]` on the struct if it is.
+        ["retain" => self.retain = Some(str.parse()?)]
+        /// Function to determine if this field is required, must be callable as
+        /// `fn<C: SlashCommand>(&C) -> bool`, where the generic is not necessary if the
+        /// struct's type is specified (with `#[command(command = "MyCommand")]` as above).
+        ["required" => self.required = Some(str.parse()?)]
+        /// `fn<C: SlashCommand>(&C) -> usize` to pick how many vararg options to display.
+        /// The the same generic rules apply as above. If you want a fixed number of varargs in the
+        /// command, set `required` to an int.
+        ["va_count" => self.vararg.num = VarargNum::Function(str.parse()?)]
+        /// How to name the vararg options. Must be callable as a function
+        /// `fn<N>(usize) -> N where N: Into<Cow<'static, str>`.
+        ["va_names" => self.vararg.names = VarargNames::Function(str.parse()?)]
+        /// What to rename this field as in the Command.
+        ["rename" => {
+            if let FieldIdent::Named(named) = &mut self.name {
+                named.rename = Some(str);
+            }
+        }],
+
+    " = {int}": Meta::NameValue(MetaNameValue { path, lit: Lit::Int(int), .. }), path =>
+        /// The number of vararg options to show.
+        ["va_count" => self.vararg.num = VarargNum::Count(int.base10_parse()?)]
+        /// The number of vararg options required. If `va_count` is greater than this, the excess
+        /// options will be optional.
+        ["required" => self.vararg.required = Some(int.base10_parse()?)]
+);
+
+handle_attribute!(
+    /// Attributes on a struct, for example `type` on `MyData`:
+    /// ```
+    /// # struct UserId;
+    /// # trait SlashCommand { const IGNORE: &'static str; }
+    /// #[derive(Debug, Clone)]
+    /// struct MyCommand;
+    /// impl SlashCommand for MyCommand {
+    /// #   const IGNORE: &'static str = stringify!(
+    ///     ...
+    /// #   );
+    /// }
+    ///
+    /// # const IGNORE: &str = stringify!(
+    /// #[derive(CommandData)]
+    /// #[command(command = "MyCommand")]
+    /// # );
+    /// pub struct MyData {
+    ///     user: UserId,
+    /// }
+    /// ```
+    self Struct =>
+
+    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
+        /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
+        /// can make decisions at runtime by taking functions callable as `fn(&CommandType) -> SomeType`.
+        ["command" => self.command_type = Some(str.parse()?)]
+);
+
+handle_attribute!(
+    /// Attributes on a Data enum variant, for example `desc` on `MyData::Add`:
+    /// ```
+    /// # struct UserId;
+    /// # const IGNORE: &str = stringify!(
+    /// #[derive(CommandData)]
+    /// # );
+    /// pub enum MyData {
+    /// # #[doc = r#"
+    ///     #[command(desc = "Pick a user")]
+    /// # "#]
+    ///     Add(UserId),
+    ///     Remove(UserId),
+    ///     Clear,
+    /// }
+    /// ```
+    self DataVariant =>
+    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
+        /// The description of this command option.
+        ["desc" => self.desc = Some(str)]
+        /// What to rename this field as in the Command.
+        ["rename" => self.rename = Some(str)]
+);
+
+handle_attribute!(
+    /// Attributes on a Data enum variant, for example `desc` on `MyData::Add`:
+    /// ```
+    /// # struct UserId;
+    /// # trait SlashCommand { const IGNORE: &'static str; }
+    /// #[derive(Debug, Clone)]
+    /// struct MyCommand;
+    /// impl SlashCommand for MyCommand {
+    /// # const IGNORE: &'static str = stringify!(
+    ///     ...
+    /// # );
+    /// }
+    ///
+    /// # const IGNORE: &str = stringify!(
+    /// #[derive(CommandData)]
+    /// #[command(command = "MyCommand")]
+    /// # );
+    /// pub enum MyData {
+    ///     Add(UserId),
+    ///     Remove(UserId),
+    ///     Clear,
+    /// }
+    /// ```
+    self DataEnum =>
+    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
+        /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
+        /// can make decisions at runtime by taking functions callable as `fn(CommandType) -> SomeType`.
+        ["command" => self.command_type = Some(str.parse()?)]
+        /// How to rename all of the variants of this enum. Acceptable options are `lowercase`.
+        ["rename_all" => self.rename_all = Some(str.try_into()?)]
+);
+
+handle_attribute!(
+    /// Attributes on a Choices enum variant, for example `default` on `MyData::OptionB`:
+    /// ```
+    /// # const IGNORE: &str = stringify!(
+    /// #[derive(CommandDataChoices)]
+    /// # );
+    /// pub enum MyData {
+    ///     OptionA,
+    /// # #[doc = r#"
+    ///     #[command(default)]
+    /// # "#]
+    ///     OptionB,
+    ///     OptionC,
+    /// }
+    /// ```
+    /// All variants must be unit structs.
+    ///
+    self ChoicesVariant =>
+    "": Meta::Path(path), path =>
+        /// Implement `Default` for this enum, with this field as the default.
+        ["default" => self.default = true],
+
+    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
+        /// The string to show in Discord for this choice. Useful when you want to display a multiple
+        /// word long choice.
+        ["choice" => self.choice = Some(str)]
+);

@@ -3,7 +3,7 @@ use std::iter::FromIterator;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_error::*;
 use quote::{quote, quote_spanned};
-use syn::{DataEnum, Ident, Lit, LitStr, Meta, MetaList, MetaNameValue, NestedMeta};
+use syn::{DataEnum, Ident, LitStr};
 
 use crate::utils::IteratorJoin;
 
@@ -88,20 +88,11 @@ pub fn enum_impl(ty: &Ident, data: DataEnum) -> TokenStream2 {
 }
 
 #[derive(Debug)]
-struct Variant {
+pub struct Variant {
     ident: Ident,
-    choice: Option<LitStr>,
-    default: bool,
+    pub choice: Option<LitStr>,
+    pub default: bool,
 }
-handle_attribute!(self Variant =>
-    " (without a value)": Meta::Path(path), path =>
-        /// default doc
-        ["default" => self.default = true],
-
-    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
-        /// choice doc
-        ["choice" => self.choice = Some(str)]
-);
 
 impl Variant {
     fn name(&self) -> LitStr {

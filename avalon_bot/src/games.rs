@@ -1,7 +1,8 @@
-use command_data_derive::CommandDataOption;
-use std::fmt::{Display, self};
+use std::fmt::{self, Display};
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, CommandDataOption)]
+use command_data_derive::CommandDataChoices;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, CommandDataChoices)]
 pub enum GameType {
     #[command(default)]
     Avalon,

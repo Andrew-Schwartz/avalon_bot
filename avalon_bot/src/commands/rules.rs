@@ -47,7 +47,7 @@ pub struct RulesData {
     channel: Where,
 }
 
-#[derive(Debug, CommandDataOption)]
+#[derive(Debug, CommandDataChoices)]
 pub enum Where {
     #[command(choice = "In this channel", default)]
     Here,

@@ -6,10 +6,10 @@ use once_cell::sync::Lazy;
 use strum::{EnumCount, EnumIter, EnumString};
 
 use Character::*;
-use command_data_derive::CommandDataOption;
+use command_data_derive::CommandDataChoices;
 use discorsd::model::message::Color;
 
-#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, EnumIter, EnumString, EnumCount, CommandDataOption)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, EnumIter, EnumString, EnumCount, CommandDataChoices)]
 pub enum Character {
     LoyalServant,
     MinionOfMordred,

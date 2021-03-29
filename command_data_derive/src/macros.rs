@@ -1,10 +1,10 @@
 macro_rules! handle_attribute {
     (
+        $(#[doc = $type_doc:literal])+
         $self:ident $ty:ty =>
         $(
             $group_name:literal: $nested_meta_pattern:pat, $path:ident =>
             $(
-                // todo generate a struct that has all the documentation
                 $(#[doc = $doc:literal])+
                 [$str:literal => $($str_effect:tt)*]
             )+
@@ -123,6 +123,30 @@ macro_rules! handle_attribute {
                         &other,
                         format!("Unexpected meta `{}`", other.to_token_stream()),
                     ),
+                }
+            }
+        }
+
+        paste::paste! {
+            doc_comment::doc_comment! {
+                concat!(
+                    "# Documentation for `#[command(...)]` options on a ", stringify!($ty), "\n\n",
+                    $($type_doc, "\n",)+
+                    "Note: this macro only exists as documentation, using it will unconditionally cause\n\
+                     a compile error.\n\n",
+                    $(
+                        "## `#[command(key", $group_name, ")]` options\n\n",
+                        $(
+                            "`", $str, "`", " - ", $($doc),+, "\n\n"
+                        ),+, "\n\n",
+                    )+
+                ),
+                #[proc_macro]
+                #[allow(non_snake_case)]
+                pub fn [<$ty Documentation>](_: proc_macro::TokenStream) -> proc_macro::TokenStream {
+                    (quote::quote! {
+                        compile_error!("this macro is just for documentation, don't use it you dum dum :)")
+                    }).into()
                 }
             }
         }

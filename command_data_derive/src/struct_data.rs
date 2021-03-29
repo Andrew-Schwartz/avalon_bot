@@ -1,9 +1,8 @@
 use std::iter::FromIterator;
 
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use proc_macro_error::*;
 use quote::{quote, quote_spanned};
-use syn::{Attribute, Fields, Ident, Index, Lifetime, Lit, LitStr, Meta, MetaList, MetaNameValue, NestedMeta, Path, Type};
+use syn::{Attribute, Fields, Ident, Index, Lifetime, LitStr, Path, Type};
 use syn::spanned::Spanned;
 
 use crate::utils::*;
@@ -38,16 +37,16 @@ pub fn struct_impl(ty: &Ident, fields: Fields, attributes: &[Attribute]) -> Toke
 
 #[derive(Debug)]
 pub struct Field {
-    name: FieldIdent,
+    pub name: FieldIdent,
     ty: Type,
     /// for example, Default::default or Instant::now
-    default: Option<Path>,
+    pub default: Option<Path>,
     /// function to determine if this field is required, must be callable as
     /// `fn<C: SlashCommand>(command: &C) -> bool`, where the generic is not necessary if the
     /// struct's type is specified (`#[command(type = "MyCommand")]`
-    required: Option<Path>,
+    pub required: Option<Path>,
     /// see [Vararg] for details
-    vararg: Vararg,
+    pub vararg: Vararg,
     /// how to filter the choices, if `choices` is true
     ///
     /// must be a function callable as
@@ -55,62 +54,10 @@ pub struct Field {
     /// if the type for this data is not set, or as
     /// `fn(command: &C, choice: &CommandChoice<&'static str) -> bool`
     /// where `C` is the right hand side of `#[command(type = ...)]` on the struct if
-    retain: Option<Path>,
+    pub retain: Option<Path>,
     /// The description of this `DataOption`
-    desc: Option<LitStr>,
+    pub desc: Option<LitStr>,
 }
-handle_attribute!(self Field =>
-    " (without a value)": Meta::Path(path), path =>
-        /// Uses this field's `Default` implementation if this field is missing.
-        ["default" => self.default = Some(syn::parse_str("::std::default::Default::default").unwrap())]
-        // todo is this necessary?
-        /// Make this field required (note: fields are required by default, unless they are an `Option`.
-        ["required" => self.default = None]
-        /// Name this vararg field One, Two, Three, etc.
-        ["ordinals" => self.vararg.names = VarargNames::Ordinals]
-        /// Name this vararg field <vararg>1, <vararg>2, where <vararg> is the key on the `vararg` option.
-        ["counts" => self.vararg.names = VarargNames::Count],
-
-    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
-        /// The description of this command option.
-        ["desc" => self.desc = Some(str)]
-        /// Use this path to provide the default if this field is missing.
-        /// Must be callable as `fn() -> T`
-        ["default" => self.default = Some(str.parse()?)]
-        /// Marks this field as a vararg argument to the command, with the name `{str}`.
-        /// See also `ordinals`, `counts`, `va_count`, and `va_names`
-        ["vararg" => self.vararg.root = Some(str)]
-        /// How to filter the choices, if `choices` is true.
-        ///
-        /// Must be a function callable as
-        /// `fn<C: SlashCommand>(command: &C, choice: &CommandChoice<&'static str>) -> bool`
-        /// if the type for this data is not set, or as
-        /// `fn(command: &C, choice: &CommandChoice<&'static str) -> bool`
-        /// where `C` is the right hand side of `#[command(type = ...)]` on the struct if it is.
-        ["retain" => self.retain = Some(str.parse()?)]
-        /// Function to determine if this field is required, must be callable as
-        /// `fn<C: SlashCommand>(command: &C) -> bool`, where the generic is not necessary if the
-        /// struct's type is specified (`#[command(type = "MyCommand")]`.
-        ["required" => self.required = Some(str.parse()?)]
-        /// `fn<C: SlashCommand>(command: &C) -> usize` to pick how many vararg options to display.
-        ["va_count" => self.vararg.num = VarargNum::Function(str.parse()?)]
-        /// How to name the vararg options.
-        ["va_names" => self.vararg.names = VarargNames::Function(str.parse()?)]
-        /// What to rename this field as in the Command. Must be callable as
-        /// `fn<C>(n: usize) -> C where C: Into<Cow<'static, str>` (commonly `C` will be `&str` or
-        /// `String`.
-        ["rename" => {
-            if let FieldIdent::Named(named) = &mut self.name {
-                named.rename = Some(str);
-            }
-        }],
-
-    " = {int}": Meta::NameValue(MetaNameValue { path, lit: Lit::Int(int), .. }), path =>
-        /// The number of vararg options to show.
-        ["va_count" => self.vararg.num = VarargNum::Count(int.base10_parse()?)]
-        /// The number of vararg options required.
-        ["required" => self.vararg.required = Some(int.base10_parse()?)]
-);
 
 #[derive(Debug)]
 pub enum FieldIdent {
@@ -139,7 +86,7 @@ impl FieldIdent {
 #[derive(Debug)]
 pub struct NamedField {
     ident: Ident,
-    rename: Option<LitStr>,
+    pub rename: Option<LitStr>,
 }
 
 #[derive(Debug)]
@@ -149,15 +96,15 @@ pub struct UnnamedField {
 }
 
 #[derive(Debug, Default)]
-struct Vararg {
+pub struct Vararg {
     /// the root of the vararg parameter, for example `player` for player1, player2, player3, ...
-    root: Option<LitStr>,
+    pub root: Option<LitStr>,
     /// `fn<C: SlashCommand>(command: &C) -> usize` to pick how many vararg options to display
-    num: VarargNum,
+    pub num: VarargNum,
     /// how to name the vararg options
-    names: VarargNames,
+    pub names: VarargNames,
     /// how many varargs are required. If `None`, all are required
-    required: Option<usize>,
+    pub required: Option<usize>,
 }
 
 impl Vararg {
@@ -167,7 +114,7 @@ impl Vararg {
 }
 
 #[derive(Debug)]
-enum VarargNum {
+pub enum VarargNum {
     Count(usize),
     Function(Path),
 }
@@ -188,7 +135,7 @@ impl Default for VarargNum {
 }
 
 #[derive(Debug)]
-enum VarargNames {
+pub enum VarargNames {
     /// if root is `player`, names will be `player1`, `player2`, etc
     Count,
     /// names will be `first`, `second`, `third`, etc (up to 20)
@@ -303,14 +250,8 @@ impl From<(usize, syn::Field)> for Field {
 pub struct Struct {
     fields: Vec<Field>,
     /// settable with `#[command(type = MyCommand)]` on a struct
-    command_type: Option<Type>,
+    pub command_type: Option<Type>,
 }
-handle_attribute!(self Struct =>
-    " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
-        /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
-        /// can make decisions at runtime by taking functions callable as `fn(CommandType) -> SomeType`.
-        ["type" => self.command_type = Some(str.parse()?)]
-);
 
 impl Struct {
     const UNIT: Self = Self { fields: Vec::new(), command_type: None };
@@ -568,8 +509,8 @@ impl Struct {
         let ty = f.ty.generic_type().unwrap_or(&f.ty);
         let retain = if let Some(path) = &f.retain {
             quote_spanned! { path.span() =>
-                    choices.retain(|choice| #path(command, choice));
-                }
+                choices.retain(|choice| #path(command, choice));
+            }
         } else {
             TokenStream2::new()
         };

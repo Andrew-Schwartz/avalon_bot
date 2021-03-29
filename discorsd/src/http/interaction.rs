@@ -1,16 +1,15 @@
+use std::borrow::Cow;
 use std::collections::HashSet;
 
 use serde::Serialize;
 
-use crate::model::ids::*;
 use crate::http::{ClientResult, DiscordClient};
-use crate::http::channel::{RichEmbed, MessageAttachment, embed};
+use crate::http::channel::{embed, MessageAttachment, RichEmbed};
 use crate::http::routes::Route::*;
-
+use crate::model::ids::*;
+use crate::model::interaction::{ApplicationCommand, Command, InteractionMessage, InteractionResponse, TopLevelOption};
 pub use crate::model::interaction::message;
-use std::borrow::Cow;
 use crate::model::message::{AllowedMentions, Message};
-use crate::model::interaction::{ApplicationCommand, Command, TopLevelOption, InteractionResponse, InteractionMessage};
 
 impl DiscordClient {
     /// Fetch all of the global commands for your application.
@@ -293,7 +292,8 @@ impl WebhookMessage {
     }
 
     // todo error, don't panic
-    /// add [n](n) embed to the [WebhookMessage](WebhookMessage)
+    /// Add [n](n) embeds to this [WebhookMessage](WebhookMessage), by invoking a builder function
+    /// that takes the embed number.
     ///
     /// # Panics
     ///
