@@ -55,10 +55,14 @@ impl SlashCommandData for SysInfoCommand {
                     let value = processors.iter()
                         .map(|p| format!("{}: {:.2}%", p.get_name(), p.get_cpu_usage()))
                         .join("\n");
-                    let avg: f32 = processors.iter()
-                        .map(ProcessorExt::get_cpu_usage)
-                        .sum();
-                    format!("{}\n**Average**: {:.2}%", value, avg / processors.len() as f32)
+                    if processors.len() == 1 {
+                        value
+                    } else {
+                        let avg: f32 = processors.iter()
+                            .map(ProcessorExt::get_cpu_usage)
+                            .sum();
+                        format!("{}\n**Average**: {:.2}%", value, avg / processors.len() as f32)
+                    }
                 };
                 embed.field(("CPU Usage", value))
             }
@@ -83,10 +87,14 @@ impl SlashCommandData for SysInfoCommand {
                     let value = components.iter()
                         .map(|c| format!("{}: {:.2} °C", c.get_label(), c.get_temperature()))
                         .join("\n");
-                    let avg: f32 = components.iter()
-                        .map(ComponentExt::get_temperature)
-                        .sum();
-                    format!("{}\n**Average**: {:.2} °C", value, avg / components.len() as f32)
+                    if components.len() == 1 {
+                        value
+                    } else {
+                        let avg: f32 = components.iter()
+                            .map(ComponentExt::get_temperature)
+                            .sum();
+                        format!("{}\n**Average**: {:.2} °C", value, avg / components.len() as f32)
+                    }
                 };
                 embed.field(("Component Temperature", value));
             }

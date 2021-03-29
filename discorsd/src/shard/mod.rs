@@ -8,7 +8,7 @@ use async_tungstenite::{
     tungstenite::protocol::frame::coding::CloseCode,
     WebSocketStream,
 };
-use futures::{SinkExt, TryStreamExt, StreamExt};
+use futures::{SinkExt, StreamExt, TryStreamExt};
 use log::{error, info, warn};
 use rand::Rng;
 use thiserror::Error;
@@ -34,6 +34,7 @@ type WsStream = WebSocketStream<ConnectStream>;
 type WsError = async_tungstenite::tungstenite::Error;
 
 // todo prune
+//  huh what's that mean?
 #[derive(Debug, Error)]
 pub enum ShardError {
     #[error("http error: {0}")]

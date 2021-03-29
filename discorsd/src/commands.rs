@@ -88,16 +88,16 @@ impl<Scd: SlashCommandData> SlashCommand for Scd
                     self_use.finalize(&state).await.map_err(|e| e.into())
                 }
                 Err(error) => Err(CommandParseErrorInfo {
-                    guild: interaction.guild().expect(&format!("Will be source later, {:?}", error)),
                     name: interaction.command_name,
                     id: interaction.command,
+                    source: interaction.source,
                     error,
                 }.into())
             },
             Err(error) => Err(CommandParseErrorInfo {
-                guild: interaction.guild().expect(&format!("Will be source later, {:?}", error)),
                 name: interaction.command_name,
                 id: interaction.command,
+                source: interaction.source,
                 error,
             }.into())
         }

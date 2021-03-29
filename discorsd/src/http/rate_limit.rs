@@ -19,7 +19,7 @@ impl RateLimit {
         match self.remaining {
             Some(remaining) if remaining == 0 => {
                 let duration = self.reset.and_then(|reset| reset.checked_duration_since(Instant::now()))
-                    // todo can be uoe(Duration::zero) when that's stabilized
+                    // todo can be uoe(Duration::ZERO) when that's stabilized
                     .unwrap_or_else(|| Duration::new(0, 0));
                 Some(duration)
             }

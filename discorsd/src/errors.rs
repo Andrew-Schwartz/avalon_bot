@@ -4,9 +4,10 @@ use std::ops::Range;
 use thiserror::Error;
 
 use crate::BotState;
+use crate::commands::{DmSource, GuildSource, SlashCommand};
 use crate::http::{ClientError, DisplayClientError};
 use crate::model::ids::*;
-use crate::model::interaction::{ApplicationCommandOptionType, OptionValue};
+use crate::model::interaction::{ApplicationCommandOptionType, InteractionSource, OptionValue};
 
 #[derive(Error, Debug)]
 pub enum BotError {
@@ -95,36 +96,59 @@ impl Display for AvalonError {
 pub struct CommandParseErrorInfo {
     pub name: String,
     pub id: CommandId,
-    // todo replace with Source
-    pub guild: GuildId,
+    pub source: InteractionSource,
     pub error: CommandParseError,
 }
 
 impl CommandParseErrorInfo {
     pub async fn display_error<B: Send + Sync>(&self, state: &BotState<B>) -> String {
-        let guild = if let Some(guild) = state.cache.guild(self.guild).await {
-            format!("guild `{}` ({})", guild.name.as_deref().unwrap_or("null"), self.guild)
-        } else {
-            format!("unknown guild `{}`", self.guild)
-        };
-        let guard = state.commands.read().await;
-        if let Some(guild_lock) = guard.get(&self.guild) {
-            let guard = guild_lock.read().await;
-            if let Some(command) = guard.get(&self.id).cloned() {
+        let source = match &self.source {
+            InteractionSource::Guild(GuildSource { id, member }) => if let Some(guild) = state.cache.guild(id).await {
                 format!(
-                    "Failed to parse command `{}` ({}) in {}: {:?}",
-                    command.name(), self.id, guild, self.error
+                    "guild `{}` ({}), used by `{}` ({})",
+                    guild.name.as_deref().unwrap_or("null"), guild.id, member.nick_or_name(), member.id()
                 )
             } else {
                 format!(
-                    "Failed to parse unknown command `{}` in {}: {:?}",
-                    self.id, guild, self.error,
+                    "unknown guild `{}`, used by `{}` ({})",
+                    id, member.nick_or_name(), member.id()
                 )
+            },
+            InteractionSource::Dm(DmSource { user }) => format!(
+                "dm with `{}#{}` ({})",
+                user.username, user.discriminator, user.id
+            ),
+        };
+        match &self.source {
+            InteractionSource::Guild(GuildSource { id, .. }) => {
+                let guard = state.commands.read().await;
+                if let Some(guild_lock) = guard.get(&id) {
+                    let guard = guild_lock.read().await;
+                    self.command_fail_message(source, guard.get(&self.id).map(|c| &**c))
+                } else {
+                    format!(
+                        "Failed to parse command `{}` in {}, which has no commands: {:?}",
+                        self.id, source, self.error,
+                    )
+                }
             }
+            InteractionSource::Dm(_) => {
+                let global = state.global_commands.get().unwrap();
+                self.command_fail_message(source, global.get(&self.id).map(|c| *c))
+            }
+        }
+    }
+
+    fn command_fail_message<B: Send + Sync>(&self, source: String, command: Option<&dyn SlashCommand<Bot=B>>) -> String {
+        if let Some(command) = command {
+            format!(
+                "Failed to parse command `{}` ({}) in {}: {:?}",
+                command.name(), self.id, source, self.error
+            )
         } else {
             format!(
-                "Failed to parse command `{}` in {}, which has no commands: {:?}",
-                self.id, guild, self.error,
+                "Failed to parse unknown command `{}` in {}: {:?}",
+                self.id, source, self.error,
             )
         }
     }

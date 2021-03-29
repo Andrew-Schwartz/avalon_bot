@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::fmt::Debug;
+use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
@@ -71,6 +71,7 @@ impl TopLevelOption {
 
     // todo other ctors, doc for TLO saying to use the functions
     //  (maybe TLO should be private, then these are different functions on Command? but then edit...)
+    //  what this should really be is instead of Vec<Blah> have 3 separate wrapper classes
     pub fn options(options: Vec<DataOption>) -> Self {
         assert!(
             options.iter()
@@ -899,52 +900,66 @@ pub struct Interaction {
     ///
     /// This is always present on ApplicationCommand interaction types.
     /// It is optional for future-proofing against new interaction types (according to docs, but I'm
-    /// cool and can just change it to be optional then :). Also will probably just be a tagged enum)
+    /// cool and can just change it to be optional then :). Also will probably just be a enum)
     pub data: InteractionData,
-    // pub data: InteractionData,
-    // todo document with the comments down there :)
     #[serde(flatten)]
+    /// information about where this interaction was sent, whether in a guild channel or in a dm
     pub source: InteractionSource,
     /// the channel it was sent from
     pub channel_id: ChannelId,
-    // /// the guild it was sent from
-    // pub guild_id: Option<GuildId>,
-    // /// guild member data for the invoking user
-    // // todo make this & user be a 2 variant enum
-    // pub member: Option<GuildMember>,
-    // /// user object for the invoking user, if invoked in a DM
-    // pub user: Option<User>,
     /// a continuation token for responding to the interaction
     pub token: String,
     // /// read-only property, always 1
     // pub version: u8,
 }
 
+/// Information about the guild and guild member that invoked this interaction
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct GuildSource {
+    /// The guild the interaction was sent from
     #[serde(rename = "guild_id")]
     pub id: GuildId,
+    /// Guild member data for the invoking user
     pub member: GuildMember,
 }
 
+/// Information about the user that invoked this interaction
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct DmSource {
+    /// The user that invoked this interaction
+    pub user: User
+}
+
+/// Information about where this interaction occurred, whether in a guild channel or in a dm
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum InteractionSource {
+    /// This interaction was sent in a guild, see [GuildSource](GuildSource)
     Guild(GuildSource),
-    Dm { user: User },
+    /// This interaction was sent in a dm, see [DmSource](DmSource)
+    Dm(DmSource),
 }
+
+// for Error usage
+impl Display for InteractionSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for InteractionSource {}
 
 impl InteractionSource {
     pub fn guild(self) -> Option<GuildSource> {
         match self {
             Self::Guild(gs) => Some(gs),
-            Self::Dm { .. } => None,
+            Self::Dm(_) => None,
         }
     }
     pub fn user(self) -> Option<User> {
         match self {
             Self::Guild(_) => None,
-            Self::Dm { user } => Some(user),
+            Self::Dm(DmSource { user }) => Some(user),
         }
     }
 }
@@ -1185,7 +1200,6 @@ pub enum ApplicationCommandInteractionDataValue {
         #[serde(default)]
         options: Vec<ApplicationCommandInteractionDataOption>,
     },
-    // None,
 }
 
 /// After receiving an interaction, you must respond to acknowledge it. This may be a `pong` for a

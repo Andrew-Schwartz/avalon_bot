@@ -133,7 +133,7 @@ handle_attribute!(
         /// Marks this field as optional in the Command in Discord, and if the use omits it, will use
         /// this field's type's `Default` implementation to create it.
         ["default" => self.default = Some(syn::parse_str("::std::default::Default::default").unwrap())]
-        // todo is this necessary?
+        // todo is this necessary? it's never used
         /// Make this field required (note: fields are required by default, unless they are an `Option`).
         ["required" => self.default = None]
         /// Only applicable for `vararg` fields. Name the command options "One", "Two", "Three", etc.

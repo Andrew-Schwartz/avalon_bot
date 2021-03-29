@@ -86,21 +86,21 @@ impl<U: Usability> InteractionUse<U> {
     pub fn guild(&self) -> Option<GuildId> {
         match &self.source {
             InteractionSource::Guild(gs) => Some(gs.id),
-            InteractionSource::Dm { .. } => None
+            InteractionSource::Dm(_) => None
         }
     }
 
     pub fn user(&self) -> &User {
         match &self.source {
             InteractionSource::Guild(GuildSource { member, .. }) => &member.user,
-            InteractionSource::Dm { user } => user,
+            InteractionSource::Dm(DmSource { user }) => user,
         }
     }
 
     pub fn member(&self) -> Option<&GuildMember> {
         match &self.source {
             InteractionSource::Guild(GuildSource { member, .. }) => Some(member),
-            InteractionSource::Dm { .. } => None,
+            InteractionSource::Dm(_) => None,
         }
     }
 }
@@ -587,8 +587,6 @@ impl<T, C, const N: usize> CommandData<C> for [T; N]
     type VecArg = DataOption;
 
     fn make_args(command: &C) -> Vec<Self::VecArg> {
-        // todo repeat N times?
-        // T::make_args(command).into_iter().cycle().take(N)
         T::make_args(command)
     }
 
