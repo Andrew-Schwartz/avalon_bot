@@ -99,7 +99,7 @@ impl AvalonConfig {
     pub async fn update_embed(
         &mut self,
         state: &BotState<Bot>,
-        interaction: &InteractionUse<Used>,
+        interaction: &InteractionUse<Deferred>,
     ) -> http::ClientResult<()> {
         let embed = self.embed();
         match &mut self.message {

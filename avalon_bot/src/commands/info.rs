@@ -16,6 +16,7 @@ pub struct InfoCommand;
 impl SlashCommandData for InfoCommand {
     type Bot = Bot;
     type Data = ();
+    type Use = Used;
     const NAME: &'static str = "info";
 
     fn description(&self) -> Cow<'static, str> {

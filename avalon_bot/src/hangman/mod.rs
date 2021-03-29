@@ -5,7 +5,7 @@ use std::mem;
 use itertools::Itertools;
 use tokio::sync::RwLockWriteGuard;
 
-use discorsd::{GuildCommands, http, UserMarkupExt, IdMap};
+use discorsd::{GuildCommands, http, IdMap, UserMarkupExt};
 use discorsd::http::channel::{ChannelExt, embed, RichEmbed};
 use discorsd::http::ClientResult;
 use discorsd::model::ids::{ChannelId, GuildId, UserId};
@@ -180,7 +180,7 @@ impl HangmanConfig {
                 self.message = Some(new);
             }
         }
-        interaction.defer(state).await
+        interaction.delete(&state).await
     }
 }
 

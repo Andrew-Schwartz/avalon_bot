@@ -8,7 +8,7 @@ use discorsd::http::channel::{ChannelExt, embed};
 use discorsd::model::message::Color;
 
 use crate::{Bot, hangman};
-use crate::avalon::{BotError, BotState, InteractionUse, Unused, Used};
+use crate::avalon::{BotError, BotState, InteractionUse, Unused};
 use crate::hangman::random_words::{GuildHist, Wordnik};
 use crate::hangman::RandomWord;
 
@@ -19,6 +19,7 @@ pub struct HangmanCommand;
 impl SlashCommandData for HangmanCommand {
     type Bot = Bot;
     type Data = HangmanData;
+    type Use = Deferred;
     const NAME: &'static str = "hangman";
 
     fn description(&self) -> Cow<'static, str> {
@@ -29,8 +30,10 @@ impl SlashCommandData for HangmanCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
                  data: Self::Data,
-    ) -> Result<InteractionUse<Used>, BotError> {
+    ) -> Result<InteractionUse<Self::Use>, BotError> {
         let guild = interaction.guild().unwrap();
+        let deferred = interaction.defer(&state).await?;
+
         {
             let mut guard = state.bot.hangman_games.write().await;
             let config = guard
@@ -54,11 +57,10 @@ impl SlashCommandData for HangmanCommand {
             }
         }
 
-        let used = interaction.defer(&state).await?;
         // todo this should be how more errors are handled, should have a nice way of doing this all at once
-        if let Err(err) = hangman::start::start(Arc::clone(&state), &used).await {
+        if let Err(err) = hangman::start::start(&state, &deferred).await {
             let error = err.display_error(&state).await;
-            used.channel.send(&state, embed(|e| {
+            deferred.channel.send(&state, embed(|e| {
                 e.title("Error starting Hangman!");
                 e.color(Color::RED);
                 e.description(error.to_string());
@@ -66,7 +68,7 @@ impl SlashCommandData for HangmanCommand {
             return Err(err);
         }
 
-        Ok(used)
+        Ok(deferred)
     }
 }
 

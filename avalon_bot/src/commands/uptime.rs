@@ -20,6 +20,7 @@ pub struct UptimeCommand;
 impl SlashCommandData for UptimeCommand {
     type Bot = Bot;
     type Data = ();
+    type Use = Used;
     const NAME: &'static str = "uptime";
 
     fn description(&self) -> Cow<'static, str> {

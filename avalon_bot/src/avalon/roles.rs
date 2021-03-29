@@ -16,6 +16,7 @@ pub struct RolesCommand(pub Vec<Character>);
 impl SlashCommandData for RolesCommand {
     type Bot = Bot;
     type Data = RoleData;
+    type Use = Deferred;
     const NAME: &'static str = "roles";
 
     fn description(&self) -> Cow<'static, str> {
@@ -79,7 +80,7 @@ impl SlashCommandData for RolesCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
                  data: RoleData,
-    ) -> Result<InteractionUse<Used>, BotError> {
+    ) -> Result<InteractionUse<Self::Use>, BotError> {
         let interaction = interaction.defer(&state).await?;
         let guild = interaction.guild().unwrap();
         let mut guard = state.bot.avalon_games.write().await;

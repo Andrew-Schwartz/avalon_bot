@@ -17,45 +17,11 @@ use crate::games::GameType;
 #[derive(Clone, Debug)]
 pub struct StartCommand(pub HashSet<GameType>);
 
-// todo is there any way to make SlashCommandData work for this? probably will have to make
-//  StartData more complicated, perhaps the proc macro too
-// #[async_trait]
-// impl SlashCommand<Bot> for StartCommand {
-//     fn name(&self) -> &'static str { "start" }
-//
-//     fn command(&self) -> Command {
-//         let (description, options): (Cow<'static, str>, _) = match self.0.iter().exactly_one() {
-//             Ok(game) => (format!("Starts {} immediately in this channel", game).into(), TopLevelOption::Empty),
-//             Err(_) => ("Choose a game to start in this channel".into(), StartData::args::<Self, _>(&self)),
-//         };
-//         Command::new(self.name(), description, options)
-//     }
-//
-//     async fn run(&self,
-//                  state: Arc<BotState<Bot>>,
-//                  interaction: InteractionUse<Unused>,
-//                  data: InteractionData,
-//     ) -> Result<InteractionUse<Used>, BotError> {
-//         let game = match self.0.iter().exactly_one() {
-//             Ok(game) => *game,
-//             Err(_) => StartData::from_data(data, interaction.guild().unwrap())?.game.unwrap(),
-//         };
-//         let used = interaction.defer(&state).await?;
-//
-//         match game {
-//             GameType::Avalon => avalon::start::start(state, &used).await?,
-//             GameType::Hangman => hangman::start::start(state, &used).await?,
-//             GameType::Kittens => todo!(),
-//         }
-//
-//         Ok(used)
-//     }
-// }
-
 #[async_trait]
 impl SlashCommandData for StartCommand {
     type Bot = Bot;
     type Data = StartData;
+    type Use = Deferred;
     const NAME: &'static str = "start";
 
     fn description(&self) -> Cow<'static, str> {
@@ -68,18 +34,18 @@ impl SlashCommandData for StartCommand {
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
-                 data: StartData
-    ) -> Result<InteractionUse<Used>, BotError> {
+                 data: StartData,
+    ) -> Result<InteractionUse<Self::Use>, BotError> {
         let game = data.game;
-        let used = interaction.defer(&state).await?;
+        let deferred = interaction.defer(&state).await?;
 
         match game.unwrap_or_else(|| *self.0.iter().next().unwrap()) {
-            GameType::Avalon => avalon::start::start(state, &used).await?,
-            GameType::Hangman => hangman::start::start(state, &used).await?,
+            GameType::Avalon => avalon::start::start(&state, &deferred).await?,
+            GameType::Hangman => hangman::start::start(&state, &deferred).await?,
             GameType::Kittens => todo!(),
         }
 
-        Ok(used)
+        Ok(deferred)
     }
 }
 

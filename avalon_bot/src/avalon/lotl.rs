@@ -14,6 +14,7 @@ pub struct LotlCommand(pub UserId);
 impl SlashCommandData for LotlCommand {
     type Bot = Bot;
     type Data = LadyData;
+    type Use = Used;
     const NAME: &'static str = "lotl";
 
     fn description(&self) -> Cow<'static, str> {
@@ -79,7 +80,7 @@ impl SlashCommandData for LotlCommand {
                         game.round += 1;
                         AvalonGame::next_leader(&mut game.leader, game.players.len());
                         game.start_round(&*state, guild, &mut commands).await?;
-                        interaction.defer(&state.client).await
+                        interaction.delete(&state).await
                     }
                 }
             }
@@ -106,6 +107,7 @@ pub struct ToggleLady;
 impl SlashCommandData for ToggleLady {
     type Bot = Bot;
     type Data = ToggleData;
+    type Use = Deferred;
     const NAME: &'static str = "lady";
 
     fn description(&self) -> Cow<'static, str> {
@@ -116,7 +118,7 @@ impl SlashCommandData for ToggleLady {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
                  data: ToggleData,
-    ) -> Result<InteractionUse<Used>, BotError> {
+    ) -> Result<InteractionUse<Self::Use>, BotError> {
         let interaction = interaction.defer(&state).await?;
         let mut guard = state.bot.avalon_games.write().await;
         let guild = interaction.guild().unwrap();

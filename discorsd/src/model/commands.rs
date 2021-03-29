@@ -2,31 +2,66 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
+use std::sync::Arc;
 
+use async_trait::async_trait;
 use log::warn;
 
 use crate::{BotState, utils};
 use crate::commands::{Interaction, SlashCommand};
 use crate::errors::*;
-use crate::http::{ClientError, DiscordClient};
+use crate::http::{ClientResult, DiscordClient};
 use crate::model::{ids::*, interaction::*};
 use crate::model::guild::GuildMember;
 use crate::model::user::User;
+
+pub trait Usability {}
+
+pub trait NotUnused: Usability {}
 
 #[allow(clippy::empty_enum)]
 #[derive(Debug, PartialEq)]
 pub enum Unused {}
 
+impl Usability for Unused {}
+
 #[allow(clippy::empty_enum)]
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Deferred {}
+
+impl Usability for Deferred {}
+
+impl NotUnused for Deferred {}
 
 #[allow(clippy::empty_enum)]
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Used {}
 
+impl Usability for Used {}
+
+impl NotUnused for Used {}
+
+#[async_trait]
+pub trait FinalizeInteraction {
+    async fn finalize<B: Send + Sync + 'static>(self, state: &Arc<BotState<B>>) -> ClientResult<InteractionUse<Used>>;
+}
+
+#[async_trait]
+impl FinalizeInteraction for InteractionUse<Used> {
+    async fn finalize<B: Send + Sync + 'static>(self, _: &Arc<BotState<B>>) -> ClientResult<InteractionUse<Used>> {
+        Ok(self)
+    }
+}
+
+#[async_trait]
+impl FinalizeInteraction for InteractionUse<Deferred> {
+    async fn finalize<B: Send + Sync + 'static>(self, state: &Arc<BotState<B>>) -> ClientResult<InteractionUse<Used>> {
+        self.delete(state).await
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct InteractionUse<Usability> {
+pub struct InteractionUse<Usability: self::Usability> {
     /// id of the interaction
     pub id: InteractionId,
     /// the id of the command being invoked
@@ -47,7 +82,7 @@ pub struct InteractionUse<Usability> {
     _priv: PhantomData<Usability>,
 }
 
-impl<U> InteractionUse<U> {
+impl<U: Usability> InteractionUse<U> {
     pub fn guild(&self) -> Option<GuildId> {
         match &self.source {
             InteractionSource::Guild(gs) => Some(gs.id),
@@ -79,19 +114,7 @@ impl InteractionUse<Unused> {
         (this, options)
     }
 
-    // pub async fn respond<Client, Message>(self, client: Client, message: Message) -> Result<InteractionUse<Used>, ClientError>
-    //     where Client: AsRef<DiscordClient> + Send,
-    //           Message: Into<InteractionMessage> + Send
-    // {
-    //     let client = client.as_ref();
-    //     client.create_interaction_response(
-    //         self.id,
-    //         &self.token,
-    //         InteractionResponse::ChannelMessageWithSource(message.into()),
-    //     ).await.map(|_| self.into())
-    // }
-
-    pub async fn respond<Client, Message>(self, client: Client, message: Message) -> Result<InteractionUse<Used>, ClientError>
+    pub async fn respond<Client, Message>(self, client: Client, message: Message) -> ClientResult<InteractionUse<Used>>
         where Client: AsRef<DiscordClient> + Send,
               Message: Into<InteractionMessage> + Send,
     {
@@ -103,17 +126,7 @@ impl InteractionUse<Unused> {
         ).await.map(|_| self.into())
     }
 
-    // pub async fn ack<Client: AsRef<DiscordClient> + Send>(self, client: Client) -> Result<InteractionUse<Used>, ClientError> {
-    //     let client = client.as_ref();
-    //     client.create_interaction_response(
-    //         self.id,
-    //         &self.token,
-    //         InteractionResponse::Acknowledge,
-    //     ).await.map(|_| self.into())
-    // }
-
-    // todo change this to Deferred
-    pub async fn defer<Client: AsRef<DiscordClient> + Send>(self, client: Client) -> Result<InteractionUse<Used>, ClientError> {
+    pub async fn defer<Client: AsRef<DiscordClient> + Send>(self, client: Client) -> ClientResult<InteractionUse<Deferred>> {
         let client = client.as_ref();
         client.create_interaction_response(
             self.id,
@@ -121,10 +134,18 @@ impl InteractionUse<Unused> {
             InteractionResponse::DeferredChannelMessageWithSource,
         ).await.map(|_| self.into())
     }
+
+    pub async fn delete<B, State>(self, state: State) -> ClientResult<InteractionUse<Used>>
+        where B: Send + Sync + 'static,
+              State: AsRef<BotState<B>> + Send,
+    {
+        let client = state.as_ref();
+        self.defer(client).await?.delete(&client).await
+    }
 }
 
 impl InteractionUse<Used> {
-    pub async fn edit<B, State, Message>(&mut self, state: State, message: Message) -> Result<(), ClientError>
+    pub async fn edit<B, State, Message>(&mut self, state: State, message: Message) -> ClientResult<()>
         where B: Send + Sync + 'static,
               State: AsRef<BotState<B>> + Send + Sync,
               Message: Into<InteractionMessage> + Send,
@@ -139,7 +160,7 @@ impl InteractionUse<Used> {
     }
 
     #[allow(dead_code)]
-    pub async fn delete<B, State>(self, state: State) -> Result<(), ClientError>
+    pub async fn delete<B, State>(self, state: State) -> ClientResult<()>
         where B: Send + Sync + 'static,
               State: AsRef<BotState<B>> + Send + Sync
     {
@@ -153,7 +174,7 @@ impl InteractionUse<Used> {
 
 #[allow(clippy::use_self)]
 impl InteractionUse<Deferred> {
-    pub async fn edit<B, State, Message>(self, state: State, message: Message) -> Result<InteractionUse<Used>, ClientError>
+    pub async fn edit<B, State, Message>(self, state: State, message: Message) -> ClientResult<InteractionUse<Used>>
         where B: Send + Sync + 'static,
               State: AsRef<BotState<B>> + Send + Sync,
               Message: Into<InteractionMessage> + Send,
@@ -167,7 +188,17 @@ impl InteractionUse<Deferred> {
         Ok(self.into())
     }
 
-    // todo probably can't be deleted?
+    pub async fn delete<B, State>(self, state: State) -> ClientResult<InteractionUse<Used>>
+        where B: Send + Sync + 'static,
+              State: AsRef<BotState<B>> + Send + Sync
+    {
+        let state = state.as_ref();
+        state.client.delete_interaction_response(
+            state.application_id().await,
+            &self.token,
+        ).await?;
+        Ok(self.into())
+    }
 }
 
 #[allow(clippy::use_self)]

@@ -1,7 +1,8 @@
+use std::borrow::Cow;
+
 use discorsd::model::message::Color;
 
 use super::*;
-use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub struct Assassinate(pub UserId);
@@ -10,6 +11,7 @@ pub struct Assassinate(pub UserId);
 impl SlashCommandData for Assassinate {
     type Bot = Bot;
     type Data = AssassinateData;
+    type Use = Used;
     const NAME: &'static str = "assassinate";
 
     fn description(&self) -> Cow<'static, str> {
@@ -41,7 +43,7 @@ impl SlashCommandData for Assassinate {
                     })).await
                 }
                 Some(guess) => {
-                    let interaction = interaction.defer(&state.client).await?;
+                    let interaction = interaction.delete(&state).await?;
                     let game_over = embed(|e| {
                         if guess.role == Merlin {
                             e.color(Color::RED);

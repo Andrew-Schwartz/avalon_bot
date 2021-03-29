@@ -16,6 +16,7 @@ pub struct PingCommand;
 impl SlashCommandData for PingCommand {
     type Bot = Bot;
     type Data = ();
+    type Use = Used;
     const NAME: &'static str = "ping";
 
     fn description(&self) -> Cow<'static, str> {

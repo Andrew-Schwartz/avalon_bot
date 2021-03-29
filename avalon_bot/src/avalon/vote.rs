@@ -294,6 +294,7 @@ pub struct VoteStatus;
 impl SlashCommandData for VoteStatus {
     type Bot = Bot;
     type Data = ();
+    type Use = Used;
     const NAME: &'static str = "vote-status";
 
     fn description(&self) -> Cow<'static, str> {

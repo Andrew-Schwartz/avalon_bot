@@ -9,6 +9,7 @@ use dyn_clone::{clone_trait_object, DynClone};
 use futures::StreamExt;
 
 use crate::BotState;
+use crate::commands::FinalizeInteraction;
 use crate::errors::{BotError, CommandParseErrorInfo};
 pub use crate::model::commands::*;
 use crate::model::guild::GuildId;
@@ -41,11 +42,10 @@ pub async fn create_guild_commands<B, State>(
 }
 
 #[async_trait]
-pub trait SlashCommandData: Sized + Send + Sync + Debug + Downcast + DynClone
-// where <<Self as SlashCommandData>::Data as CommandData<Self>>::Data: std::marker::Send,
-{
+pub trait SlashCommandData: Sized + Send + Sync + Debug + Downcast + DynClone + SlashCommand {
     type Bot: Send + Sync;
     type Data: CommandData<Self> + Send;
+    type Use: NotUnused + Send;
 
     const NAME: &'static str;
     fn description(&self) -> Cow<'static, str>;
@@ -58,15 +58,13 @@ pub trait SlashCommandData: Sized + Send + Sync + Debug + Downcast + DynClone
                  state: Arc<BotState<<Self as SlashCommand>::Bot>>,
                  interaction: InteractionUse<Unused>,
                  data: Self::Data,
-    ) -> Result<InteractionUse<Used>, BotError>;
+    ) -> Result<InteractionUse<Self::Use>, BotError>;
 }
 
 #[allow(clippy::use_self)]
 #[async_trait]
 impl<Scd: SlashCommandData> SlashCommand for Scd
-// where
-// <Self as SlashCommandData>::Bot: Send + Sync,
-// <<Self as SlashCommandData>::Data as CommandData<Self>>::Options: Send,
+    where InteractionUse<<Self as SlashCommandData>::Use>: FinalizeInteraction
 {
     type Bot = <Self as SlashCommandData>::Bot;
 
@@ -85,7 +83,10 @@ impl<Scd: SlashCommandData> SlashCommand for Scd
     ) -> Result<InteractionUse<Used>, BotError> {
         match <<Self as SlashCommandData>::Data as CommandData<Self>>::Options::from_data_option(data) {
             Ok(options) => match <Self as SlashCommandData>::Data::from_options(options) {
-                Ok(data) => SlashCommandData::run(self, state, interaction, data).await,
+                Ok(data) => {
+                    let self_use = SlashCommandData::run(self, Arc::clone(&state), interaction, data).await?;
+                    self_use.finalize(&state).await.map_err(|e| e.into())
+                }
                 Err(error) => Err(CommandParseErrorInfo {
                     guild: interaction.guild().expect(&format!("Will be source later, {:?}", error)),
                     name: interaction.command_name,

@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Instant;
 
 use itertools::Itertools;
 use log::warn;
@@ -14,7 +13,7 @@ use discorsd::model::message::ChannelMessageId;
 use discorsd::model::message::Color;
 
 use crate::{Bot, create_command, delete_command};
-use crate::avalon::{BotError, InteractionUse, max_evil, Used};
+use crate::avalon::{BotError, Deferred, InteractionUse, max_evil};
 use crate::avalon::characters::{Character, Loyalty};
 use crate::avalon::characters::Character::{LoyalServant, MinionOfMordred};
 use crate::avalon::config::AvalonConfig;
@@ -22,18 +21,18 @@ use crate::avalon::game::AvalonGame;
 use crate::commands::stop::StopCommand;
 use crate::games::GameType;
 
-pub async fn start(state: Arc<BotState<Bot>>, used: &InteractionUse<Used>) -> Result<(), BotError> {
-    let guild = used.guild().unwrap();
+pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Deferred>) -> Result<(), BotError> {
+    let guild = interaction.guild().unwrap();
     let mut guard = state.bot.avalon_games.write().await;
     let avalon = guard.get_mut(&guild).unwrap();
-    let game = avalon.start(used.channel);
+    let game = avalon.start(interaction.channel);
     state.client.trigger_typing(game.channel).await?;
     let board = game.board_image();
     let AvalonGame { channel, players, lotl, .. } = game.clone();
     let players = Arc::new(players);
     let mut handles = Vec::new();
     for player in Vec::clone(&*players) {
-        let state = Arc::clone(&state);
+        let state = Arc::clone(state);
         let players = Arc::clone(&players);
         // task should not panic
         let handle = tokio::spawn(async move {
@@ -77,7 +76,6 @@ pub async fn start(state: Arc<BotState<Bot>>, used: &InteractionUse<Used>) -> Re
         .collect::<ClientResult<HashSet<_>>>()?;
     game.pins.extend(pinned);
 
-    let start = Instant::now();
     channel.send(&state, embed(|e| {
         e.title(format!("Avalon game with {} players", players.len()));
         e.color(Color::GOLD);
@@ -126,7 +124,6 @@ pub async fn start(state: Arc<BotState<Bot>>, used: &InteractionUse<Used>) -> Re
         }
         e.image(board);
     })).await?;
-    println!("message = {:?}", start.elapsed());
 
     let commands = state.commands.read().await;
     let mut commands = commands.get(&guild).unwrap().write().await;

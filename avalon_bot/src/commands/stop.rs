@@ -25,6 +25,7 @@ impl StopCommand {
 impl SlashCommandData for StopCommand {
     type Bot = Bot;
     type Data = ();
+    type Use = Deferred;
     const NAME: &'static str = "stop";
 
     fn description(&self) -> Cow<'static, str> {
@@ -38,10 +39,10 @@ impl SlashCommandData for StopCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
                  _: (),
-    ) -> Result<InteractionUse<Used>, BotError> {
+    ) -> Result<InteractionUse<Self::Use>, BotError> {
         let guild = interaction.guild().unwrap();
-        let used = interaction.defer(&state).await?;
-        let message = used.channel.send(&state, format!(
+        let deferred = interaction.defer(&state).await?;
+        let message = deferred.channel.send(&state, format!(
             "React {} to confirm stopping the game or {} to cancel this.\
                 \nNote: 2 other players must confirm for the game to be stopped.",
             Self::CONFIRM, Self::CANCEL
@@ -61,7 +62,7 @@ impl SlashCommandData for StopCommand {
                 .map(AvalonPlayer::id)
                 .collect();
             let mut reaction_commands = state.reaction_commands.write().await;
-            let vote = StopVoteCommand(id, guild, players, used.user().id, self.0);
+            let vote = StopVoteCommand(id, guild, players, deferred.user().id, self.0);
             reaction_commands.push(Box::new(vote));
         }
         {
@@ -71,11 +72,11 @@ impl SlashCommandData for StopCommand {
             state.client.delete_guild_command(
                 state.application_id().await,
                 guild,
-                used.command,
+                deferred.command,
             ).await?;
-            commands.remove(&used.command);
+            commands.remove(&deferred.command);
         }
-        Ok(used)
+        Ok(deferred)
     }
 }
 

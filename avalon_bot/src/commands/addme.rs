@@ -18,6 +18,7 @@ pub struct AddMeCommand;
 impl SlashCommandData for AddMeCommand {
     type Bot = Bot;
     type Data = AddMeData;
+    type Use = Used;
     const NAME: &'static str = "addme";
 
     fn description(&self) -> Cow<'static, str> {
@@ -28,7 +29,7 @@ impl SlashCommandData for AddMeCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
                  data: AddMeData,
-    ) -> Result<InteractionUse<Used>, BotError> {
+    ) -> Result<InteractionUse<Self::Use>, BotError> {
         let id = data.player.unwrap_or_else(|| interaction.user().id());
         match data.game {
             GameType::Avalon => avalon(&*state, interaction, id).await,
@@ -60,7 +61,7 @@ async fn avalon(
     let config = game.config_mut();
 
     // track which guilds this user is in a game in
-    let used = {
+    let deferred = {
         let mut users = state.bot.user_games.write().await;
         let guilds = users.entry(user).or_default();
 
@@ -94,8 +95,8 @@ async fn avalon(
     let guard = state.commands.read().await;
     let mut commands = guard.get(&guild).unwrap().write().await;
     config.start_command(state, &mut commands, config.startable(), guild).await?;
-    config.update_embed(state, &used).await?;
-    Ok(used)
+    config.update_embed(state, &deferred).await?;
+    deferred.delete(&state).await
 }
 
 async fn hangman(

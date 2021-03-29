@@ -18,6 +18,7 @@ pub struct RulesCommand;
 impl SlashCommandData for RulesCommand {
     type Bot = Bot;
     type Data = RulesData;
+    type Use = Deferred;
     const NAME: &'static str = "rules";
 
     fn description(&self) -> Cow<'static, str> {
@@ -28,14 +29,15 @@ impl SlashCommandData for RulesCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
                  data: RulesData,
-    ) -> Result<InteractionUse<Used>, BotError> {
+    ) -> Result<InteractionUse<Self::Use>, BotError> {
+        let deferred = interaction.defer(&state).await?;
         let channel = match data.channel {
-            Where::Dm => interaction.user().dm(&state).await?.id,
-            Where::Here => interaction.channel,
+            Where::Dm => deferred.user().dm(&state).await?.id,
+            Where::Here => deferred.channel,
         };
         // todo write rules
         channel.send(&state, format!("{} rules (wip still)", data.game)).await?;
-        interaction.defer(&state).await.map_err(|e| e.into())
+        Ok(deferred)
     }
 }
 

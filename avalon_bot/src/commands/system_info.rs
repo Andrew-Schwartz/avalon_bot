@@ -24,6 +24,7 @@ pub struct SysInfoCommand;
 impl SlashCommandData for SysInfoCommand {
     type Bot = Bot;
     type Data = Data;
+    type Use = Used;
     const NAME: &'static str = "system-info";
 
     fn description(&self) -> Cow<'static, str> {

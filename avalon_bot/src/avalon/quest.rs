@@ -22,6 +22,7 @@ pub struct QuestCommand(pub usize);
 impl SlashCommandData for QuestCommand {
     type Bot = Bot;
     type Data = QuestData;
+    type Use = Used;
     const NAME: &'static str = "quest";
 
     fn description(&self) -> Cow<'static, str> {
