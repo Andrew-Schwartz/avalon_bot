@@ -164,7 +164,6 @@ impl Route {
                 "DeleteGuildCommand({}/{})",
                 guild(g).await, command(c).await
             ),
-            // todo do I want to display the token too?
             CreateInteractionResponse(_, _) => format!("CreateInteractionResponse"),
             EditInteractionResponse(_, _) => format!("EditInteractionResponse"),
             DeleteInteractionResponse(_, _) => format!("DeleteInteractionResponse"),

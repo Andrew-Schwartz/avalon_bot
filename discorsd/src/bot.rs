@@ -3,6 +3,7 @@ use std::fmt::{self, Debug};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures::StreamExt;
 use log::error;
 use once_cell::sync::OnceCell;
 use tokio::sync::RwLock;
@@ -94,7 +95,6 @@ pub trait Bot: Send + Sync + Sized {
 
     fn identify(&self) -> Identify { Identify::new(self.token().to_string()) }
 
-    // todo make this const generic array?
     fn global_commands() -> &'static [&'static dyn SlashCommand<Bot=Self>] { &[] }
 
     async fn ready(&self, state: Arc<BotState<Self>>) -> Result<(), BotError> { Ok(()) }
@@ -173,6 +173,28 @@ pub trait BotExt: Bot + 'static {
             }
         };
         Ok(())
+    }
+
+    async fn create_guild_commands<State, const N: usize,>(
+        state: State,
+        guild: GuildId,
+        new: [Box<dyn SlashCommand<Bot=Self>>; N],
+    ) -> HashMap<CommandId, Box<dyn SlashCommand<Bot=Self>>>
+        where
+            State: AsRef<BotState<Self>> + Send,
+    {
+        let state = state.as_ref();
+        let app = state.application_id().await;
+        tokio::stream::iter(std::array::IntoIter::new(new))
+            .then(|command| async move {
+                let resp = state.client
+                    .create_guild_command(app, guild, command.command())
+                    .await
+                    .unwrap_or_else(|_| panic!("when creating `{}`", command.name()));
+                (resp.id, command)
+            })
+            .collect()
+            .await
     }
 }
 

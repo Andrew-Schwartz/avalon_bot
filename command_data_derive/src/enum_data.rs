@@ -1,4 +1,3 @@
-use std::convert::TryFrom;
 use std::iter::FromIterator;
 
 use proc_macro2::TokenStream as TokenStream2;
@@ -32,13 +31,11 @@ pub struct Variant {
 }
 
 impl Variant {
-    fn name(&self, rename_all: Option<RenameAll>) -> String {
+    fn name(&self) -> String {
         if let Some(lit) = &self.rename {
-            lit.value()
-        } else if let Some(rename_all) = rename_all {
-            rename_all.rename(&self.ident)
+            lit.value().to_lowercase()
         } else {
-            self.ident.to_string()
+            self.ident.to_string().to_lowercase()
         }
     }
 
@@ -76,42 +73,13 @@ pub struct Enum {
     variants: Vec<Variant>,
     /// settable with `#[command(type = MyCommand)]` on an enum
     pub command_type: Option<Type>,
-    pub rename_all: Option<RenameAll>,
-}
-
-// todo more of these ig
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum RenameAll {
-    Lowercase,
-}
-
-impl RenameAll {
-    pub fn rename(self, ident: &Ident) -> String {
-        match self {
-            RenameAll::Lowercase => ident.to_string().to_lowercase(),
-        }
-    }
-}
-
-impl TryFrom<LitStr> for RenameAll {
-    type Error = syn::Error;
-
-    fn try_from(value: LitStr) -> Result<Self, Self::Error> {
-        match value.value().as_str() {
-            "lowercase" => Ok(Self::Lowercase),
-            bad => Err(syn::Error::new(
-                value.span(),
-                format!("{} is not a supported `rename_all` option. Try one of [Lowercase]", bad),
-            ))
-        }
-    }
 }
 
 impl Enum {
     //noinspection RsSelfConvention
     fn from_options_branches(&self, ty: &Ident, command_ty: &TokenStream2) -> TokenStream2 {
         let branches = self.variants.iter().enumerate().map(|(n, v)| {
-            let patt = v.name(self.rename_all);
+            let patt = v.name();
             // todo filter out the attributes this used
             let fields = Struct::from_fields(v.fields.clone(), &[]);
             match syn::parse_str(&format!("{}::{}", ty, v.ident)) {
@@ -135,11 +103,11 @@ impl Enum {
         let branches = self.variants.iter().map(|v| {
             // todo filter out the attributes this used
             let strukt = Struct::from_fields(v.fields.clone(), &[]);
-            let name = v.name(self.rename_all);
+            let name = v.name();
             let desc = v.description(&name);
             let options = strukt.data_options();
             quote_spanned! { v.ident.span() =>
-                Self::VecArg::make(
+                <Self::VecArg as ::discorsd::commands::VecArgLadder>::make(
                     #name, #desc, #options
                 )
             }
@@ -152,7 +120,7 @@ impl Enum {
 
     fn variants_array(&self) -> TokenStream2 {
         let array = self.variants.iter()
-            .map(|v| LitStr::new(&v.ident.to_string().to_lowercase(), v.ident.span()));
+            .map(|v| v.name());
         quote! { [#(#array),*] }
     }
 
@@ -240,7 +208,7 @@ impl Enum {
             .expect("All newtype enums have at least one newtype")
             .ty;
         let args = self.variants.iter().map(|v| {
-            let name = v.name(self.rename_all);
+            let name = v.name();
             let desc = v.description(&name);
             let make_args = if let Some(f) = &v.fields.iter().next() {
                 let new_ty = &f.ty;
@@ -249,19 +217,19 @@ impl Enum {
                 quote! { Vec::new() }
             };
             let quote = quote_spanned! { v.ident.span() =>
-                Self::VecArg::make(#name, #desc, #make_args)
+                <Self::VecArg as ::discorsd::commands::VecArgLadder>::make(#name, #desc, #make_args)
             };
             quote
         });
         // let match_branches = self.match_branches(ty, &c_ty);
         let match_branches = self.variants.iter().map(|v| {
-            let name = v.name(self.rename_all);
+            let name = v.name();
             let ident = &v.ident;
             let variant = if let Some(first) = &v.fields.iter().next() {
                 let ty = &first.ty;
                 quote_spanned! { first.span() =>
                     #ident(
-                        <#ty as ::discorsd::model::commands::CommandData<#c_ty>>::from_options(lower)?
+                        <#ty as ::discorsd::commands::CommandData<#c_ty>>::from_options(lower)?
                     )
                 }
             } else {
@@ -368,6 +336,6 @@ impl Enum {
 
 impl FromIterator<Variant> for Enum {
     fn from_iter<T: IntoIterator<Item=Variant>>(iter: T) -> Self {
-        Self { variants: iter.into_iter().collect(), command_type: None, rename_all: None }
+        Self { variants: iter.into_iter().collect(), command_type: None }
     }
 }

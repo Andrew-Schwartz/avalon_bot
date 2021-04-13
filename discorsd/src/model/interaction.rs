@@ -70,8 +70,7 @@ impl TopLevelOption {
     pub fn empty() -> Self { Self::Empty }
 
     // todo other ctors, doc for TLO saying to use the functions
-    //  (maybe TLO should be private, then these are different functions on Command? but then edit...)
-    //  what this should really be is instead of Vec<Blah> have 3 separate wrapper classes
+    // todo have this be a `check` fn that takes `&self` & is called automatically somewhere
     pub fn options(options: Vec<DataOption>) -> Self {
         assert!(
             options.iter()
@@ -1196,7 +1195,6 @@ pub enum ApplicationCommandInteractionDataValue {
         value: OptionValue,
     },
     Options {
-        // todo figure out this exact behaviour
         #[serde(default)]
         options: Vec<ApplicationCommandInteractionDataOption>,
     },
@@ -1213,11 +1211,6 @@ pub enum ApplicationCommandInteractionDataValue {
 pub enum InteractionResponse {
     /// ACK a `Ping`
     Pong,
-    // Deprecated
-    // /// ACK a command without sending a message, eating the user's input
-    // Acknowledge,
-    // /// respond with a message, showing the user's input
-    // Message(InteractionMessage),
     /// ACK a command without sending a message, showing the user's input
     ChannelMessageWithSource(InteractionMessage),
     /// respond with a message, eating the user's input
@@ -1235,8 +1228,6 @@ impl Serialize for InteractionResponse {
 
         let shim = match self {
             Self::Pong => Shim { kind: 1, data: None },
-            // Self::Acknowledge => Shim { kind: 2, data: None },
-            // Self::Message(m) => Shim { kind: 3, data: Some(m) },
             Self::ChannelMessageWithSource(m) => Shim { kind: 4, data: Some(m) },
             Self::DeferredChannelMessageWithSource => Shim { kind: 5, data: None },
         };
@@ -1355,17 +1346,4 @@ impl InteractionMessage {
     pub fn ephemeral(&mut self) {
         self.flags.set(MessageFlags::EPHEMERAL, true);
     }
-
-    // pub fn with_source(self) -> InteractionResponse {
-    //     self.into_response(true)
-    // }
-    //
-    // pub fn without_source(self) -> InteractionResponse {
-    //     self.into_response(false)
-    // }
-    //
-    // pub fn into_response(self, with_source: bool) -> InteractionResponse {
-    //     use InteractionResponse::*;
-    //     (if with_source { MessageWithSource } else { Message })(self)
-    // }
 }

@@ -88,16 +88,9 @@ impl AvalonGame {
         self.rounds[self.round]
     }
 
-    pub fn board_image(&self) -> (&'static str, Vec<u8>) {
-        ("board.jpg", self.board.image(&self.good_won, self.rejected_quests))
-        // format!(
-        //     "images/avalon/board/composed/{}{}.jpg",
-        //     self.players.len(),
-        //     self.good_won.iter()
-        //         .map(|&gw| if gw { 'G' } else { 'E' })
-        //         .chain((0..self.rejected_quests).map(|_| 'R'))
-        //         .collect::<String>()
-        // )
+    pub fn board_image(&self) -> Option<(&'static str, Vec<u8>)> {
+        self.board.image(&self.good_won, self.rejected_quests)
+            .map(|image| ("board.jpg", image))
     }
 
     pub fn is_command(command: &dyn SlashCommand<Bot=Bot>) -> bool {

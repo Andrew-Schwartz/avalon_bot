@@ -469,10 +469,8 @@ impl Struct {
             quote_spanned! { a.span() =>
                 #a.chain(#b)
             }
-        }).expect("Is not a unit struct");
-        // todo ^ actually can be a unit struct at this point :(
+        }).unwrap_or_else(|| quote! { ::std::iter::empty() });
         quote_spanned! { chain.span() => #chain.collect() }
-        // quote! { vec![#(#options),*] }
     }
 
     fn single_option(
@@ -524,7 +522,7 @@ impl Struct {
                     #[allow(unused_mut)]
                     let mut option = ::discorsd::commands::CommandDataOption::new(name, desc);
                     #required
-                    #ty::option_ctor(option)
+                    <#ty as ::discorsd::commands::OptionCtor>::option_ctor(option)
                 } else {
                     #[allow(unused_mut)]
                     let mut option = ::discorsd::commands::CommandDataOption::new_str(name, desc)

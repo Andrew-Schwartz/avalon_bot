@@ -56,6 +56,15 @@ impl Cache {
         self.users.read().await.get(id).cloned()
     }
 
+    pub async fn member<U, G>(&self, user: U, guild: G) -> Option<GuildMember>
+        where
+            U: Id<Id=UserId> + Send,
+            G: Id<Id=GuildId> + Send,
+    {
+        self.members.read().await.get(&user.id())
+            .and_then(|map| map.get(&guild.id()).cloned())
+    }
+
     pub async fn channel<C: Id<Id=ChannelId> + Send>(&self, id: C) -> Option<Channel> {
         let id = id.id();
         let channel_type = self.channel_types.read().await.get(&id).copied();

@@ -70,7 +70,6 @@ impl From<WsError> for SendError {
     }
 }
 
-// todo update docs?
 /// used by [Shard::events_loop](Shard::events_loop), which can only ever return with an error
 pub enum Never {}
 

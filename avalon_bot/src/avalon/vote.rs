@@ -80,7 +80,9 @@ impl ReactionCommand<Bot> for PartyVote {
                                 return avalon.game_over(&state, guild, commands, embed(|e| {
                                     e.color(Color::RED);
                                     e.title("With 5 rejected parties in a row, the bad guys win");
-                                    e.image(board);
+                                    if let Some(board) = board {
+                                        e.image(board);
+                                    }
                                 })).await.map_err(|e| e.into());
                             }
                             rejects => {
@@ -90,7 +92,9 @@ impl ReactionCommand<Bot> for PartyVote {
                                         r => e.title(format!("There are now {} rejects in a row", r)),
                                     };
                                     e.fields(vote_summary);
-                                    e.image(board);
+                                    if let Some(board) = board {
+                                        e.image(board);
+                                    }
                                 })).await?;
                                 let guard = state.commands.read().await;
                                 let mut commands = guard.get(&guild).unwrap()
@@ -249,7 +253,9 @@ impl ReactionCommand<Bot> for QuestVote {
                                 }
                             ));
                             e.description(format!("Reminder: {} were on this quest", questers));
-                            e.image(game.board_image());
+                            if let Some(board) = game.board_image() {
+                                e.image(board);
+                            }
                         })).await?
                     } else {
                         game.good_won.push(true);
@@ -262,7 +268,9 @@ impl ReactionCommand<Bot> for QuestVote {
                                 format!("There were {} fails, but {} were required this quest", fails, round.fails)
                             });
                             e.description(format!("Reminder: {} were on this quest", questers));
-                            e.image(game.board_image());
+                            if let Some(board) = game.board_image() {
+                                e.image(board);
+                            }
                         })).await?
                     };
                     // let _ = game.pin(&state, msg).await;

@@ -32,8 +32,7 @@ impl Board {
         Self(players, board)
     }
 
-    // todo get rid of unwraps?
-    pub fn image(&self, wins: &[bool], rejects: usize) -> Vec<u8> {
+    pub fn image(&self, wins: &[bool], rejects: usize) -> Option<Vec<u8>> {
         const BOUND: f32 = std::f32::consts::PI / 10.0;
 
         let mut board = self.1.clone();
@@ -53,8 +52,8 @@ impl Board {
             overlay(&mut board, &rotated, x, y);
         }
         let mut buf = Vec::new();
-        JpegEncoder::new(&mut buf).encode_image(&board).unwrap();
-        buf
+        JpegEncoder::new(&mut buf).encode_image(&board).ok()?;
+        Some(buf)
     }
 
     fn rotate_token(mut rng: &mut ThreadRng, radians: Uniform<f32>, token: &DynamicImage) -> Image<Rgba<u8>> {

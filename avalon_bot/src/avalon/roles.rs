@@ -131,7 +131,6 @@ impl SlashCommandData for RolesCommand {
 }
 
 #[derive(CommandData)]
-#[command(rename_all = "lowercase")]
 pub enum RoleData {
     #[command(desc = "Choose roles to add")]
     Add(#[command(vararg = "role", default = "HashSet::new")] HashSet<Character>),

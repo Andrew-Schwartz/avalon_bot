@@ -13,7 +13,6 @@
 // @formatter:on
 
 use proc_macro::TokenStream;
-use std::convert::TryInto;
 
 use proc_macro2::{Ident, Span};
 use proc_macro_error::*;
@@ -268,13 +267,13 @@ handle_attribute!(
     ///     Clear,
     /// }
     /// ```
+    ///
+    /// All variants will be shown as lowercase in Discord.
     self DataEnum =>
     " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
         /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
         /// can make decisions at runtime by taking functions callable as `fn(CommandType) -> SomeType`.
         ["command" => self.command_type = Some(str.parse()?)]
-        /// How to rename all of the variants of this enum. Acceptable options are `lowercase`.
-        ["rename_all" => self.rename_all = Some(str.try_into()?)]
 );
 
 handle_attribute!(

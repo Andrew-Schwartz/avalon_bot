@@ -122,7 +122,9 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Defe
                 "images/avalon/lotl.jpg",
             );
         }
-        e.image(board);
+        if let Some(board) = board {
+            e.image(board)
+        }
     })).await?;
 
     let commands = state.commands.read().await;

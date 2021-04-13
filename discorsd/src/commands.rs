@@ -1,45 +1,17 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::{clone_trait_object, DynClone};
-use futures::StreamExt;
 
 use crate::BotState;
 use crate::commands::FinalizeInteraction;
 use crate::errors::{BotError, CommandParseErrorInfo};
 pub use crate::model::commands::*;
-use crate::model::guild::GuildId;
-use crate::model::ids::CommandId;
 pub use crate::model::interaction::*;
 use crate::shard::dispatch::ReactionUpdate;
-
-// todo this really shouldn't be here
-pub async fn create_guild_commands<B, State>(
-    state: State,
-    guild: GuildId,
-    commands: Vec<Box<dyn SlashCommand<Bot=B>>>,
-) -> HashMap<CommandId, Box<dyn SlashCommand<Bot=B>>>
-    where
-        B: Send + Sync + 'static,
-        State: AsRef<BotState<B>> + Send,
-{
-    let state = state.as_ref();
-    let app = state.application_id().await;
-    tokio::stream::iter(commands)
-        .then(|command| async move {
-            let resp = state.client
-                .create_guild_command(app, guild, command.command())
-                .await
-                .unwrap_or_else(|_| panic!("when creating `{}`", command.name()));
-            (resp.id, command)
-        })
-        .collect()
-        .await
-}
 
 #[async_trait]
 pub trait SlashCommandData: Sized + Send + Sync + Debug + Downcast + DynClone + SlashCommand {
@@ -119,7 +91,6 @@ pub trait SlashCommand: Send + Sync + Debug + Downcast + DynClone {
     ) -> Result<InteractionUse<Used>, BotError>;
 }
 impl_downcast!(SlashCommand assoc Bot);
-// clone_trait_object!(SlashCommand);
 
 impl<'clone, B> Clone for Box<dyn SlashCommand<Bot=B> + 'clone> {
     fn clone(&self) -> Self {

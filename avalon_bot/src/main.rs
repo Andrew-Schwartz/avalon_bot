@@ -53,6 +53,7 @@ use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, Updat
 use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
 pub use crate::commands::{addme::AddMeCommand};
+use crate::commands::ll::LowLevelCommand;
 use crate::commands::start::StartCommand;
 use crate::games::GameType;
 use crate::hangman::Hangman;
@@ -210,9 +211,15 @@ impl discorsd::Bot for Bot {
             Self::clear_old_commands(guild.id, &state).await.unwrap();
 
             let mut commands = state.commands.write().await;
-            let commands = commands.entry(guild.id).or_default().write().await;
+            let guild_commands = commands.entry(guild.id).or_default().write().await;
             let rcs = state.reaction_commands.write().await;
-            Self::reset_guild_commands(guild.id, &state, commands, rcs).await;
+            Self::reset_guild_commands(guild.id, &state, guild_commands, rcs).await;
+
+            if guild.id == self.config.guild {
+                let mut commands = commands.entry(guild.id).or_default().write().await;
+
+                create_command(&state, guild.id, &mut commands, LowLevelCommand).await?;
+            }
         }
 
         self.config.channel.send(&state, format!(
@@ -400,14 +407,14 @@ impl Bot {
                 }
             }
         }
-        let new: Vec<Box<dyn SlashCommand<Bot=Self>>> = vec![
+        let new: [Box<dyn SlashCommand<Bot=Self>>; 4] = [
             Box::new(RolesCommand(vec![])),
             Box::new(AddMeCommand),
             Box::new(ToggleLady),
             Box::new(HangmanCommand),
             // todo write the logic for taking this off of here when hangman starts etc (also ^)
         ];
-        let new = discorsd::commands::create_guild_commands(&state, guild, new).await;
+        let new = Self::create_guild_commands(&state, guild, new).await;
         commands.extend(new);
         let start_id = create_command(
             state, guild, &mut commands, StartCommand(set!(GameType::Hangman)),

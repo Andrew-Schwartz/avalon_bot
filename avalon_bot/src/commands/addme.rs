@@ -78,17 +78,22 @@ async fn avalon(
                     m.ephemeral();
                 })).await;
             }
-            let interaction = interaction.defer(&state).await?;
             if interaction.channel == state.bot.config.channel && user == state.bot.config.owner {
                 for _ in 0..(5_usize.saturating_sub(config.players.len())) {
                     config.players.push(interaction.member().unwrap().clone());
                 };
             } else {
-                // TODO don't take the interaction member, MUST use the the user passed in
-                config.players.push(interaction.member().unwrap().clone());
+                if let Some(member) = state.cache.member(user, guild).await {
+                    config.players.push(member)
+                } else {
+                    return interaction.respond(&state, message(|m| {
+                        m.content("Could not find that user in this guild!");
+                        m.ephemeral();
+                    })).await
+                }
             }
             guilds.insert(guild);
-            interaction
+            interaction.defer(&state).await?
         }
     };
 

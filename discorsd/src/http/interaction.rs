@@ -244,7 +244,6 @@ struct Edit<'a> {
     options: Option<TopLevelOption>,
 }
 
-// todo make this not own the strings?
 #[derive(Serialize, Clone, Debug, Default, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct WebhookMessage {
