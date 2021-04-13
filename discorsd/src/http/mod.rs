@@ -158,105 +158,110 @@ impl DiscordClient {
     }
 
     pub(crate) async fn get<T: DeserializeOwned>(&self, route: Route) -> ClientResult<T> {
-        self.request::<Ser, Ser, _, _, _, _>(Request {
-            method: Method::GET,
+        self.request(Request::new(
+            Method::GET,
             route,
-            query: None,
-            body: None,
-            multipart: || None,
-            getter: |resp| resp.nice_json(),
-        }).await
+            || None,
+            |resp| resp.nice_json(),
+        )).await
     }
 
     pub(crate) async fn post<T, J>(&self, route: Route, json: J) -> ClientResult<T>
         where T: DeserializeOwned,
               J: Serialize + Send + Sync,
     {
-        self.request::<Ser, _, _, _, _, _>(Request {
-            method: Method::POST,
+        self.request(Request::with_body(
+            Method::POST,
             route,
-            query: None,
-            body: Some(json),
-            multipart: || None,
-            getter: |resp| resp.nice_json(),
-        }).await
+            json,
+            || None,
+            |resp| resp.nice_json(),
+        )).await
     }
 
     pub(crate) async fn post_multipart<T, F>(&self, route: Route, multipart: F) -> ClientResult<T>
         where T: DeserializeOwned,
               F: Fn() -> Option<multipart::Form> + Send + Sync,
     {
-        self.request::<Ser, Ser, _, _, _, _>(Request {
-            method: Method::POST,
+        self.request(Request::new(
+            Method::POST,
             route,
-            query: None,
-            body: None,
             multipart,
-            getter: |resp| resp.nice_json(),
-        }).await
+            |resp| resp.nice_json(),
+        )).await
     }
 
     pub(crate) async fn post_unit<J: Serialize + Send + Sync>(&self, route: Route, json: J) -> ClientResult<()> {
-        self.request::<Ser, _, _, _, _, _>(Request {
-            method: Method::POST,
+        self.request(Request::with_body(
+            Method::POST,
             route,
-            query: None,
-            body: Some(json),
-            multipart: || None,
-            getter: |_| async { Ok(()) },
-        }).await
+            json,
+            || None,
+            |_| async { Ok(()) },
+        )).await
     }
 
-    pub(crate) async fn patch<T, J: Send + Sync>(&self, route: Route, json: J) -> ClientResult<T>
+    pub(crate) async fn patch<T, J>(&self, route: Route, json: J) -> ClientResult<T>
         where T: DeserializeOwned,
-              J: Serialize, {
-        self.request::<Ser, _, _, _, _, _>(Request {
-            method: Method::PATCH,
+              J: Serialize + Send + Sync,
+    {
+        self.request(Request::with_body(
+            Method::PATCH,
             route,
-            query: None,
-            body: Some(json),
-            multipart: || None,
-            getter: |resp| resp.nice_json(),
-        }).await
+            json,
+            || None,
+            |resp| resp.nice_json(),
+        )).await
     }
 
     pub(crate) async fn patch_unit<J: Serialize + Send + Sync>(&self, route: Route, json: J) -> ClientResult<()> {
-        self.request::<Ser, _, _, _, _, _>(Request {
-            method: Method::PATCH,
+        self.request(Request::with_body(
+            Method::PATCH,
             route,
-            query: None,
-            body: Some(json),
-            multipart: || None,
-            getter: |_| async { Ok(()) },
-        }).await
+            json,
+            || None,
+            |_| async { Ok(()) },
+        )).await
     }
 
-    pub(crate) async fn put_unit(&self, route: Route) -> ClientResult<()> {
-        self.request::<Ser, _, _, _, _, _>(Request {
-            method: Method::PUT,
+    pub(crate) async fn put<T, J>(&self, route: Route, json: J) -> ClientResult<T>
+        where T: DeserializeOwned,
+              J: Serialize + Send + Sync,
+    {
+        self.request(Request::with_body(
+            Method::PUT,
             route,
-            query: None,
-            body: Some(""),
-            multipart: || None,
-            getter: |_| async { Ok(()) },
-        }).await
+            json,
+            || None,
+            |resp| resp.nice_json(),
+        )).await
+    }
+
+    pub(crate) async fn put_unit<J>(&self, route: Route, json: J) -> ClientResult<()>
+        where J: Serialize + Send + Sync,
+    {
+        self.request(Request::with_body(
+            Method::PUT,
+            route,
+            json,
+            || None,
+            |_| async { Ok(()) },
+        )).await
     }
 
     pub(crate) async fn delete(&self, route: Route) -> ClientResult<()> {
-        self.request::<Ser, Ser, _, _, _, _>(Request {
-            method: Method::DELETE,
+        self.request(Request::new(
+            Method::DELETE,
             route,
-            query: None,
-            body: None,
-            multipart: || None,
-            getter: |_| async { Ok(()) },
-        }).await
+            || None,
+            |_| async { Ok(()) },
+        )).await
     }
 }
 
 pub(crate) struct Request<Q, J, F, R, Fut, T>
     where
-    // F: Fn() -> Option<multipart::Form>,
+        F: Fn() -> Option<multipart::Form>,
         R: Fn(Response) -> Fut,
         Fut: Future<Output=ClientResult<T>>
 {
@@ -268,9 +273,43 @@ pub(crate) struct Request<Q, J, F, R, Fut, T>
     getter: R,
 }
 
-/// Never created, just used to tell `request` what type the `None` options are
+impl<F, R, Fut, T> Request<SerializeNone, SerializeNone, F, R, Fut, T> where
+    F: Fn() -> Option<multipart::Form>,
+    R: Fn(Response) -> Fut,
+    Fut: Future<Output=ClientResult<T>>
+{
+    fn new(method: Method, route: Route, multipart: F, getter: R) -> Self {
+        Self {
+            method,
+            route,
+            query: None,
+            body: None,
+            multipart,
+            getter,
+        }
+    }
+}
+
+impl<J, F, R, Fut, T> Request<SerializeNone, J, F, R, Fut, T> where
+    F: Fn() -> Option<multipart::Form>,
+    R: Fn(Response) -> Fut,
+    Fut: Future<Output=ClientResult<T>>
+{
+    fn with_body(method: Method, route: Route, body: J, multipart: F, getter: R) -> Self {
+        Self {
+            method,
+            route,
+            query: None,
+            body: Some(body),
+            multipart,
+            getter,
+        }
+    }
+}
+
+/// Never created, just used to tell `Request` what type the `None` options are
 #[derive(Serialize)]
-enum Ser {}
+enum SerializeNone {}
 
 /// general functions
 impl DiscordClient {

@@ -91,7 +91,7 @@ impl DiscordClient {
     ///
     /// If the http request fails
     pub async fn create_reaction<E: Into<Emoji> + Send>(&self, channel: ChannelId, message: MessageId, emoji: E) -> ClientResult<()> {
-        self.put_unit(CreateReaction(channel, message, emoji.into())).await
+        self.put_unit(CreateReaction(channel, message, emoji.into()), "").await
     }
 
     /// Delete a reaction the current user has made for the message.
@@ -143,7 +143,7 @@ impl DiscordClient {
     ///
     /// If the http request fails
     pub async fn add_pinned_message(&self, channel: ChannelId, message: MessageId) -> ClientResult<()> {
-        self.put_unit(PinMessage(channel, message)).await
+        self.put_unit(PinMessage(channel, message), "").await
     }
 
     /// Delete a pinned message in a channel. Requires the `MANAGE_MESSAGES` permission.

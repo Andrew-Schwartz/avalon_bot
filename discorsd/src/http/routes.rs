@@ -1,9 +1,9 @@
 use Route::*;
 
 use crate::cache::Cache;
-use crate::model::ids::*;
-use crate::model::emoji::Emoji;
 use crate::model::channel::Channel;
+use crate::model::emoji::Emoji;
+use crate::model::ids::*;
 
 #[derive(Debug, Clone)]
 pub enum Route {
@@ -34,16 +34,22 @@ pub enum Route {
     CreateGlobalCommand(ApplicationId),
     EditGlobalCommand(ApplicationId, CommandId),
     DeleteGlobalCommand(ApplicationId, CommandId),
+    BulkOverwriteGlobalCommands(ApplicationId),
     GetGuildCommands(ApplicationId, GuildId),
     CreateGuildCommand(ApplicationId, GuildId),
     EditGuildCommand(ApplicationId, GuildId, CommandId),
     DeleteGuildCommand(ApplicationId, GuildId, CommandId),
+    BulkOverwriteGuildCommands(ApplicationId, GuildId),
     CreateInteractionResponse(InteractionId, String),
     EditInteractionResponse(ApplicationId, String),
     DeleteInteractionResponse(ApplicationId, String),
     CreateFollowupMessage(ApplicationId, String),
     EditFollowupMessage(ApplicationId, String, MessageId),
     DeleteFollowupMessage(ApplicationId, String, MessageId),
+    GetGuildApplicationCommandPermissions(ApplicationId, GuildId),
+    GetApplicationCommandPermissions(ApplicationId, GuildId, CommandId),
+    EditApplicationCommandPermissions(ApplicationId, GuildId, CommandId),
+    BatchEditApplicationCommandPermissions(ApplicationId, GuildId),
 
     // users
     GetUser(UserId),
@@ -75,16 +81,23 @@ impl Route {
             CreateGlobalCommand(a) => api!("/applications/{}/commands", a),
             EditGlobalCommand(a, c) => api!("/applications/{}/commands/{}", a, c),
             DeleteGlobalCommand(a, c) => api!("/applications/{}/commands/{}", a, c),
+            BulkOverwriteGlobalCommands(a) => api!("/applications/{}/commands", a),
             GetGuildCommands(a, g) => api!("/applications/{}/guilds/{}/commands", a, g),
             CreateGuildCommand(a, g) => api!("/applications/{}/guilds/{}/commands", a, g),
             EditGuildCommand(a, g, c) => api!("/applications/{}/guilds/{}/commands/{}", a, g, c),
             DeleteGuildCommand(a, g, c) => api!("/applications/{}/guilds/{}/commands/{}", a, g, c),
+            BulkOverwriteGuildCommands(a, g) => api!("/applications/{}/guilds/{}/commands", a, g),
             CreateInteractionResponse(i, t) => api!("/interactions/{}/{}/callback", i, t),
             EditInteractionResponse(a, t) => api!("/webhooks/{}/{}/messages/@original", a, t),
             DeleteInteractionResponse(a, t) => api!("/webhooks/{}/{}/messages/@original", a, t),
             CreateFollowupMessage(a, t) => api!("/webhooks/{}/{}", a, t),
             EditFollowupMessage(a, t, m) => api!("/webhooks/{}/{}/messages/{}", a, t, m),
             DeleteFollowupMessage(a, t, m) => api!("/webhooks/{}/{}/messages/{}", a, t, m),
+            GetGuildApplicationCommandPermissions(a, g) => api!("/applications/{}/guilds/{}/commands/permissions", a, g),
+            GetApplicationCommandPermissions(a, g, c) => api!("/applications/{}/guilds/{}/commands/{}/permissions", a, g, c),
+            EditApplicationCommandPermissions(a, g, c) => api!("/applications/{}/guilds/{}/commands/{}/permissions", a, g, c),
+            BatchEditApplicationCommandPermissions(a, g) => api!("/applications/{}/guilds/{}/commands/permissions", a, g),
+
             GetUser(u) => api!("/users/{}", u),
             CreateDm => api!("/users/@me/channels"),
         }
@@ -154,6 +167,7 @@ impl Route {
             CreateGlobalCommand(_) => format!("CreateGlobalCommand"),
             &EditGlobalCommand(_, c) => format!("EditGlobalCommand({})", command(c).await),
             &DeleteGlobalCommand(_, c) => format!("DeleteGlobalCommand({})", command(c).await),
+            BulkOverwriteGlobalCommands(_) => format!("BulkOverwriteGlobalCommands"),
             &GetGuildCommands(_, g) => format!("GetGuildCommands({})", guild(g).await),
             &CreateGuildCommand(_, g) => format!("CreateGuildCommand({})", guild(g).await),
             &EditGuildCommand(_, g, c) => format!(
@@ -164,12 +178,32 @@ impl Route {
                 "DeleteGuildCommand({}/{})",
                 guild(g).await, command(c).await
             ),
+            &BulkOverwriteGuildCommands(_, g) => format!(
+                "BulkOverwriteGuildCommands({})",
+                guild(g).await
+            ),
             CreateInteractionResponse(_, _) => format!("CreateInteractionResponse"),
             EditInteractionResponse(_, _) => format!("EditInteractionResponse"),
             DeleteInteractionResponse(_, _) => format!("DeleteInteractionResponse"),
             CreateFollowupMessage(_, _) => format!("CreateFollowupMessage"),
             EditFollowupMessage(_, _, m) => format!("EditFollowupMessage({})", m),
             DeleteFollowupMessage(_, _, m) => format!("DeleteFollowupMessage({})", m),
+            &GetGuildApplicationCommandPermissions(_, g) => format!(
+                "GetGuildApplicationCommandPermissions({})",
+                guild(g).await,
+            ),
+            &GetApplicationCommandPermissions(_, g, c) => format!(
+                "GetApplicationCommandPermissions({}, {})",
+                guild(g).await, command(c).await
+            ),
+            &EditApplicationCommandPermissions(_, g, c) => format!(
+                "EditApplicationCommandPermissions({}, {})",
+                guild(g).await, command(c).await
+            ),
+            &BatchEditApplicationCommandPermissions(_, g) => format!(
+                "BatchEditApplicationCommandPermissions({})",
+                guild(g).await,
+            ),
             &GetUser(u) => format!("GetUser({})", user(u).await),
             CreateDm => format!("CreateDm"),
         }

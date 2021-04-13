@@ -21,10 +21,16 @@ pub struct Command {
     pub name: &'static str,
     pub description: Cow<'static, str>,
     pub options: TopLevelOption,
+    // todo default to true
+    pub default_permission: bool,
 }
 
 impl Command {
-    pub fn new<D: Into<Cow<'static, str>>>(name: &'static str, description: D, options: TopLevelOption) -> Self {
+    pub fn new<D: Into<Cow<'static, str>>>(
+        name: &'static str,
+        description: D,
+        options: TopLevelOption,
+    ) -> Self {
         assert!(
             name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
             "command names must only contain letters, numbers, `-`, and `_`; name = `{:?}`",
@@ -42,7 +48,7 @@ impl Command {
             "command descriptions must be 1-100 characters long ({} is {} characters)",
             description, dlen
         );
-        Self { name, description, options }
+        Self { name, description, options, default_permission: true }
     }
 }
 
@@ -880,6 +886,76 @@ impl OptionValue {
             Err(mut ope) => {
                 ope.desired = desired;
                 Err(ope)
+            }
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct GuildApplicationCommandPermission {
+    /// the id of the command
+    pub id: CommandId,
+    /// the id of the application the command belongs to
+    pub application_id: ApplicationId,
+    /// the id of the guild
+    pub guild_id: GuildId,
+    /// the permissions for the command in the guild
+    pub permissions: Vec<ApplicationCommandPermissions>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ApplicationCommandPermissions {
+    /// the id of the role or user
+    pub id: UserRoleId,
+    /// true to allow, false, to disallow
+    pub permission: bool,
+}
+
+/// Either a `UserId` or a `RoleId`
+#[derive(Debug, Clone, Copy)]
+pub enum UserRoleId {
+    Role(RoleId),
+    User(UserId),
+}
+
+mod acp_impl {
+    use super::*;
+    use serde::de::{Error, Unexpected};
+
+    #[derive(Deserialize, Serialize)]
+    struct Shim {
+        #[serde(rename = "type")]
+        kind: u8,
+        // the actual id type doesn't matter, just pick one :)
+        id: UserId,
+        permission: bool,
+    }
+
+    impl Serialize for ApplicationCommandPermissions {
+        fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+            let Self { id, permission } = *self;
+            let shim = match id {
+                UserRoleId::Role(role) => Shim { kind: 1, id: UserId(role.0), permission },
+                UserRoleId::User(id) => Shim { kind: 1, id, permission }
+            };
+            shim.serialize(s)
+        }
+    }
+
+    impl<'de> Deserialize<'de> for ApplicationCommandPermissions {
+        fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+            let Shim { kind, id, permission } = Shim::deserialize(d)?;
+            match kind {
+                // role
+                1 => {
+                    let role = RoleId(id.0);
+                    Ok(Self { id: UserRoleId::Role(role), permission })
+                }
+                // user
+                2 => {
+                    Ok(Self { id: UserRoleId::User(id), permission })
+                }
+                bad => Err(D::Error::invalid_value(Unexpected::Unsigned(bad as _), &"1 (role) or 2 (user)")),
             }
         }
     }

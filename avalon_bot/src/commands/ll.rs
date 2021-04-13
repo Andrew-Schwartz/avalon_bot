@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use command_data_derive::CommandData;
@@ -35,13 +34,16 @@ impl SlashCommandData for LowLevelCommand {
                 Get::User { user } => state.client
                     .get_user(user).await
                     .map_or_else(|_| String::from("Unknown user"),
-                                 |u| format!("{:?}", user)),
+                                 |user| format!("{:?}", user)),
                 Get::Message { channel, message_id } => {
-                    (|| async move {
-                        let message = message_id.parse().ok()?;
-                        let message = state.client.get_message(channel, message)
-                            .await.ok()?;
-                        Some(format!("{:?}", message))
+                    ({
+                        let state = Arc::clone(&state);
+                        || async move {
+                            let message = message_id.parse().ok()?;
+                            let message = state.client.get_message(channel, message)
+                                .await.ok()?;
+                            Some(format!("{:?}", message))
+                        }
                     })().await.unwrap_or_else(|| String::from("Unknown message"))
                 }
             },
