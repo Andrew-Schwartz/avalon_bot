@@ -16,7 +16,7 @@ use crate::model::guild::{ExplicitFilterLevel, Guild, GuildFeature, GuildMember,
 use crate::model::ids::*;
 use crate::model::interaction::{ApplicationCommand, Interaction};
 use crate::model::message::{Attachment, ChannelMention, Embed, Message, MessageActivity, MessageApplication, MessageFlags, MessageReference, MessageType, Reaction, Sticker};
-use crate::model::permissions::Role;
+use crate::model::permissions::{Permissions, Role};
 use crate::model::user::User;
 use crate::model::voice::VoiceState;
 use crate::shard::model::{Activity, StatusType};
@@ -447,8 +447,7 @@ pub struct GuildUpdate {
     discovery_splash: Option<String>,
     owner: Option<bool>,
     owner_id: UserId,
-    // todo deserialize into u64
-    permissions: Option<String>,
+    permissions: Option<Permissions>,
     region: String,
     afk_channel_id: Option<ChannelId>,
     afk_timeout: u32,

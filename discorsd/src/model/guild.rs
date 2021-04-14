@@ -5,16 +5,16 @@ use serde::{Deserialize, Serialize};
 use serde_repr::*;
 
 use crate::cache::IdMap;
+use crate::model::{ImageFormat, StillImage};
 use crate::model::channel::Channel;
 use crate::model::emoji::CustomEmoji;
-use crate::model::permissions::Role;
-use crate::model::user::User;
 use crate::model::ids::*;
+use crate::model::permissions::{Permissions, Role};
+use crate::model::user::User;
+use crate::model::voice::VoiceState;
 use crate::shard::dispatch::PresenceUpdate;
 
 pub use super::ids::GuildId;
-use crate::model::voice::VoiceState;
-use crate::model::{ImageFormat, StillImage};
 
 /// Guilds in Discord represent an isolated collection of users and channels, and are often referred to as "servers" in the UI.
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -39,8 +39,7 @@ pub struct Guild {
     /// total permissions for the user in the guild (excludes overrides)
     /// todo link when impl'd
     /// only sent when using the `GET Current User Guilds` endpoint and are relative to the requested user
-    // todo deserialize into u64
-    pub permissions: Option<String>,
+    pub permissions: Option<Permissions>,
     /// voice region id for the guild
     pub region: String,
     /// id of afk channel

@@ -8,6 +8,8 @@ use guild::Guild;
 use ids::*;
 use user::User;
 
+use crate::model::permissions::Permissions;
+
 #[macro_use]
 pub mod ids;
 pub mod guild;
@@ -256,7 +258,7 @@ pub struct TeamMember {
     /// the user's membership state on the team
     pub membership_state: MembershipState,
     /// will always be ["*"]
-    pub permissions: (String, ),
+    pub permissions: (Permissions, ),
     /// the id of the parent team of which they are a member
     pub team_id: TeamId,
     /// the avatar, discriminator, id, and username of the user

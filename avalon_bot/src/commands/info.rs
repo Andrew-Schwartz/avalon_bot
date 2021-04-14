@@ -6,6 +6,7 @@ use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::embed;
 use discorsd::model::message::Color;
+use discorsd::model::permissions::Permissions;
 
 use crate::Bot;
 
@@ -34,9 +35,16 @@ impl SlashCommandData for InfoCommand {
                 e.title("Avalon Bot");
                 e.color(Color::GOLD);
                 e.url("https://github.com/Andrew-Schwartz/avalon_bot");
+                let perms = Permissions::ADD_REACTIONS
+                    | Permissions::VIEW_CHANNEL
+                    | Permissions::SEND_MESSAGES
+                    | Permissions::MANAGE_MESSAGES
+                    | Permissions::ATTACH_FILES
+                    | Permissions::READ_MESSAGE_HISTORY
+                    | Permissions::USE_EXTERNAL_EMOJIS;
                 let url = format!(
-                    "https://discord.com/oauth2/authorize?scope=applications.commands%20bot&client_id={}&permissions=67497024",
-                    user.id
+                    "https://discord.com/oauth2/authorize?scope=applications.commands%20bot&client_id={}&permissions={}",
+                    user.id, perms.bits()
                 );
                 e.description(format!(
                     "I can run games of Avalon and Hangman for you (maybe more in the future).\

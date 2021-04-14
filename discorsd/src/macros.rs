@@ -5,15 +5,19 @@ macro_rules! cdn {
     };
 }
 
-pub const API_VERSION: u8 = 8;
 macro_rules! api {
+    (VERSION) => { 8 };
+    (@private str $fmt:literal) => {
+        concat!("https://discord.com/api/v", api!(VERSION), $fmt)
+    };
     ($fmt:literal) => {
-        concat!("https://discord.com/api/v8", $fmt).to_string()
+        api!(@priv str $fmt).to_string()
     };
     ($fmt:literal, $($args:tt)+) => {
-        format!(concat!("https://discord.com/api/v8", $fmt), $($args)+)
+        format!(api!(@priv str $fmt), $($args)+)
     };
 }
+pub const API_VERSION: u8 = api!(VERSION);
 
 /// derive `Serialize`, `Deserialize` for bitflags
 macro_rules! serde_bitflag {
@@ -28,7 +32,7 @@ macro_rules! serde_bitflag {
             fn deserialize<D: serde::de::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
                 let bits = <$repr>::deserialize(d)?;
                 Self::from_bits(bits)
-                    .ok_or(serde::de::Error::custom(format!("Unexpected flags value: {}", bits)))
+                    .ok_or_else(|| serde::de::Error::custom(format!("Unexpected flags value: {}", bits)))
             }
         }
     };

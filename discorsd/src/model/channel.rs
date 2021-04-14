@@ -9,10 +9,10 @@ use serde_json::value::RawValue;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::model::ids::*;
+pub use crate::model::ids::ChannelId;
+use crate::model::permissions::Permissions;
 use crate::model::user::User;
 use crate::serde_utils::nice_from_str;
-
-pub use crate::model::ids::ChannelId;
 
 // This can be gotten rid of once serde can ser/de an enum tagged by an int
 #[derive(Deserialize)]
@@ -248,8 +248,8 @@ impl From<DmChannel> for Channel {
 }
 
 mod one_recipient {
+    use serde::{Deserialize, Deserializer, Serializer};
     use serde::ser::SerializeSeq;
-    use serde::{Serializer, Deserializer, Deserialize};
 
     use crate::model::User;
 
@@ -479,11 +479,10 @@ pub enum ChannelType {
 pub struct Overwrite {
     /// role or user id
     pub id: OverwriteType,
-    // todo permission struct
     /// permission bit set
-    pub allow: u64,
+    pub allow: Permissions,
     /// permission bit set
-    pub deny: u64,
+    pub deny: Permissions,
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq, PartialEq)]
@@ -518,8 +517,8 @@ struct RawOverwrite<'a> {
     otype: u8,
     #[serde(borrow)]
     id: &'a RawValue,
-    allow: String,
-    deny: String,
+    allow: Permissions,
+    deny: Permissions,
 }
 
 impl<'a> TryFrom<RawOverwrite<'a>> for Overwrite {
@@ -536,8 +535,8 @@ impl<'a> TryFrom<RawOverwrite<'a>> for Overwrite {
                 }
                 _ => return Err(de::Error::custom("should only receive `type` of 0 or 1")),
             },
-            allow: allow.parse().map_err(de::Error::custom)?,
-            deny: deny.parse().map_err(de::Error::custom)?,
+            allow,
+            deny,
         })
     }
 }
