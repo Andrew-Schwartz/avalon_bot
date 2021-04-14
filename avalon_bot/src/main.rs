@@ -50,7 +50,7 @@ use discorsd::model::message::Message;
 use discorsd::shard::dispatch::ReactionUpdate;
 use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, UpdateStatus};
 
-use crate::avalon::Avalon;
+use crate::avalon::{ApplicationCommandPermissions, Avalon};
 use crate::avalon::game::AvalonGame;
 pub use crate::commands::{addme::AddMeCommand};
 use crate::commands::ll::LowLevelCommand;
@@ -208,17 +208,26 @@ impl discorsd::Bot for Bot {
 
         {
             // deletes any commands Discord has saved from the last time this bot was run
-            Self::clear_old_commands(guild.id, &state).await.unwrap();
+            // todo make this smarter to speed it up, don't delete ones that will get replaced/deleted
+            //  in reset_guild_commands anyway
+            self.clear_old_commands(guild.id, &state).await.unwrap();
 
             let mut commands = state.commands.write().await;
             let guild_commands = commands.entry(guild.id).or_default().write().await;
             let rcs = state.reaction_commands.write().await;
-            Self::reset_guild_commands(guild.id, &state, guild_commands, rcs).await;
+            self.reset_guild_commands(guild.id, &state, guild_commands, rcs).await;
 
             if guild.id == self.config.guild {
                 let mut commands = commands.entry(guild.id).or_default().write().await;
 
-                create_command(&state, guild.id, &mut commands, LowLevelCommand).await?;
+                let command = create_command(&state, guild.id, &mut commands, LowLevelCommand).await?;
+
+                state.client.edit_application_command_permissions(
+                    state.application_id().await,
+                    guild.id,
+                    command,
+                    vec![ApplicationCommandPermissions::allow_user(self.config.owner, true)],
+                ).await?;
             }
         }
 
@@ -315,7 +324,7 @@ impl discorsd::Bot for Bot {
             let mut commands = state.commands.write().await;
             let commands = commands.entry(guild.id()).or_default().write().await;
             let rcs = state.reaction_commands.write().await;
-            Self::reset_guild_commands(guild.id(), &state, commands, rcs).await;
+            self.reset_guild_commands(guild.id(), &state, commands, rcs).await;
         }
 
         let channels = state.cache.guild_channels(guild, Channel::text).await;
@@ -366,25 +375,54 @@ async fn create_command<C: SlashCommand<Bot=Bot>>(
 }
 
 impl Bot {
-    // async fn init_guild_commands(&self, guild: GuildId, state: &BotState<Bot>) -> ClientResult<()> {
-    //     let app = state.application_id().await;
-    //     let commands = state.client.get_guild_commands(app, guild).await?;
-    //     for command in commands {
-    //         state.client
-    //             .delete_guild_command(app, guild, command.id)
-    //             .await.unwrap();
-    //     }
-    //     let mut commands = state.commands.write().await;
-    //     let mut commands = commands.entry(guild)
-    //         .or_default()
-    //         .write().await;
-    //     // create_command(&*state, guild, &mut commands, UptimeCommand).await?;
-    //     let rcs = state.reaction_commands.write().await;
-    //     self.reset_guild_commands(&state, &mut commands, rcs, guild).await;
-    //     Ok(())
-    // }
+    fn starting_commands(&self) -> Vec<Box<dyn SlashCommand<Bot=Self>>> {
+        vec![
+            Box::new(RolesCommand(vec![])),
+            Box::new(AddMeCommand),
+            Box::new(ToggleLady),
+            Box::new(HangmanCommand),
+            // todo write the logic for taking this off of here when hangman starts etc (also ^)
+        ]
+    }
+
+    /// The first time connecting to a guild, run this to delete any commands Discord has saved from
+    /// the last time the bot was started
+    async fn clear_old_commands(
+        &self,
+        guild: GuildId,
+        state: &BotState<Self>,
+    ) -> ClientResult<()> {
+        let mut commands = state.commands.write().await;
+        let first_time = !commands.contains_key(&guild);
+        let mut commands = commands.entry(guild)
+            .or_default()
+            .write().await;
+        if first_time {
+            let app = state.application_id().await;
+            match state.client.get_guild_commands(app, guild).await {
+                Ok(old_commands) => {
+                    let starting_commands = self.starting_commands();
+                    for command in old_commands {
+                        if starting_commands.iter().any(|c| c.name() == command.name) {
+                            continue
+                        }
+                        let delete = state.client
+                            .delete_guild_command(app, guild, command.id)
+                            .await;
+                        if let Err(e) = delete {
+                            error!("{}", e.display_error(state).await);
+                        }
+                        commands.remove(&command.id);
+                    }
+                }
+                Err(e) => error!("{}", e.display_error(state).await)
+            }
+        }
+        Ok(())
+    }
 
     async fn reset_guild_commands(
+        &self,
         guild: GuildId,
         state: &BotState<Self>,
         mut commands: RwLockWriteGuard<'_, GuildCommands<Self>>,
@@ -407,14 +445,7 @@ impl Bot {
                 }
             }
         }
-        let new: [Box<dyn SlashCommand<Bot=Self>>; 4] = [
-            Box::new(RolesCommand(vec![])),
-            Box::new(AddMeCommand),
-            Box::new(ToggleLady),
-            Box::new(HangmanCommand),
-            // todo write the logic for taking this off of here when hangman starts etc (also ^)
-        ];
-        let new = Self::create_guild_commands(&state, guild, new).await;
+        let new = Self::create_guild_commands(&state, guild, self.starting_commands()).await;
         commands.extend(new);
         let start_id = create_command(
             state, guild, &mut commands, StartCommand(set!(GameType::Hangman)),

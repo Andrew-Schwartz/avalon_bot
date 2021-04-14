@@ -103,6 +103,7 @@ impl Route {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn debug_with_cache(&self, cache: &Cache) -> String {
         let channel = |channel: ChannelId| async move {
             let guild = if let Some(guild) = cache.channel(channel).await.and_then(|c| c.guild_id()) {

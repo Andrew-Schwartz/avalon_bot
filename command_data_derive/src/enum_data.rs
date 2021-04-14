@@ -119,8 +119,7 @@ impl Enum {
     }
 
     fn variants_array(&self) -> TokenStream2 {
-        let array = self.variants.iter()
-            .map(|v| v.name());
+        let array = self.variants.iter().map(Variant::name);
         quote! { [#(#array),*] }
     }
 

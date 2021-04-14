@@ -122,9 +122,9 @@ impl CommandParseErrorInfo {
         match &self.source {
             InteractionSource::Guild(GuildSource { id, .. }) => {
                 let guard = state.commands.read().await;
-                if let Some(guild_lock) = guard.get(&id) {
+                if let Some(guild_lock) = guard.get(id) {
                     let guard = guild_lock.read().await;
-                    self.command_fail_message(source, guard.get(&self.id).map(|c| &**c))
+                    self.command_fail_message(&source, guard.get(&self.id).map(|c| &**c))
                 } else {
                     format!(
                         "Failed to parse command `{}` in {}, which has no commands: {:?}",
@@ -134,12 +134,12 @@ impl CommandParseErrorInfo {
             }
             InteractionSource::Dm(_) => {
                 let global = state.global_commands.get().unwrap();
-                self.command_fail_message(source, global.get(&self.id).map(|c| *c))
+                self.command_fail_message(&source, global.get(&self.id).copied())
             }
         }
     }
 
-    fn command_fail_message<B: Send + Sync>(&self, source: String, command: Option<&dyn SlashCommand<Bot=B>>) -> String {
+    fn command_fail_message<B: Send + Sync>(&self, source: &str, command: Option<&dyn SlashCommand<Bot=B>>) -> String {
         if let Some(command) = command {
             format!(
                 "Failed to parse command `{}` ({}) in {}: {:?}",

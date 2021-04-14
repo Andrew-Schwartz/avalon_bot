@@ -29,7 +29,7 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Defe
         let commands = state.commands.read().await;
         if let Some(commands) = commands.get(&guild) {
             let mut commands = commands.write().await;
-            delete_command(&state, guild, &mut commands, |c| c.is::<HangmanCommand>()).await?;
+            delete_command(state, guild, &mut commands, |c| c.is::<HangmanCommand>()).await?;
         }
     }
 

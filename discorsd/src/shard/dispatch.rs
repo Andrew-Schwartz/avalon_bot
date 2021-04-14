@@ -9,17 +9,17 @@ use log::info;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::{Cache, IdMap, Update};
+use crate::commands::{ApplicationCommandPermissions, MessageInteraction};
 use crate::model::channel::{Channel, ChannelType};
-use crate::model::emoji::{Emoji, CustomEmoji};
-use crate::model::guild::{Guild, GuildMember, UnavailableGuild, VerificationLevel, NotificationLevel, ExplicitFilterLevel, GuildFeature, MfaLevel, SystemChannelFlags, PremiumTier, Integration, GuildMemberUserless};
+use crate::model::emoji::{CustomEmoji, Emoji};
+use crate::model::guild::{ExplicitFilterLevel, Guild, GuildFeature, GuildMember, GuildMemberUserless, Integration, MfaLevel, NotificationLevel, PremiumTier, SystemChannelFlags, UnavailableGuild, VerificationLevel};
 use crate::model::ids::*;
+use crate::model::interaction::{ApplicationCommand, Interaction};
+use crate::model::message::{Attachment, ChannelMention, Embed, Message, MessageActivity, MessageApplication, MessageFlags, MessageReference, MessageType, Reaction, Sticker};
 use crate::model::permissions::Role;
 use crate::model::user::User;
 use crate::model::voice::VoiceState;
 use crate::shard::model::{Activity, StatusType};
-use crate::model::message::{Message, ChannelMention, Attachment, Embed, Reaction, MessageType, MessageActivity, MessageApplication, MessageReference, MessageFlags, Sticker};
-use crate::model::interaction::{Interaction, ApplicationCommand};
-use crate::commands::MessageInteraction;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Deserialize, Debug, Clone)]
@@ -84,6 +84,7 @@ pub(crate) enum DispatchPayload {
     ApplicationCommandCreate(ApplicationCommandCreate),
     ApplicationCommandUpdate(ApplicationCommandUpdate),
     ApplicationCommandDelete(ApplicationCommandDelete),
+    ApplicationCommandPermissionsUpdate(ApplicationCommandPermissionsUpdate),
 }
 
 #[async_trait]
@@ -132,6 +133,7 @@ impl<'a> Update for DispatchPayload {
             ApplicationCommandCreate(create) => create.update(cache).await,
             ApplicationCommandUpdate(update) => update.update(cache).await,
             ApplicationCommandDelete(delete) => delete.update(cache).await,
+            ApplicationCommandPermissionsUpdate(update) => update.update(cache).await,
         };
     }
 }
@@ -1469,5 +1471,19 @@ pub struct ApplicationCommandDelete {
 
 #[async_trait]
 impl Update for ApplicationCommandDelete {
+    async fn update(&self, _cache: &Cache) {}
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ApplicationCommandPermissionsUpdate {
+    application_id: ApplicationId,
+    guild_id: GuildId,
+    id: CommandId,
+    // todo it could also be GuildPermissions :)
+    permissions: Vec<ApplicationCommandPermissions>,
+}
+
+#[async_trait]
+impl Update for ApplicationCommandPermissionsUpdate {
     async fn update(&self, _cache: &Cache) {}
 }

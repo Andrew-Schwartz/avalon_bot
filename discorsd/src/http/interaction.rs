@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use serde::Serialize;
 
-use crate::commands::{GuildApplicationCommandPermission, ApplicationCommandPermissions};
+use crate::commands::{ApplicationCommandPermissions, GuildApplicationCommandPermission, PartialGuildApplicationCommandPermission};
 use crate::http::{ClientResult, DiscordClient};
 use crate::http::channel::{embed, MessageAttachment, RichEmbed};
 use crate::http::routes::Route::*;
@@ -123,6 +123,7 @@ impl DiscordClient {
     /// # Errors
     ///
     /// If the http request fails, or fails to deserialize the response into a `ApplicationCommand`
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     pub async fn edit_guild_command<'a>(
         &self,
         application: ApplicationId,
@@ -183,6 +184,10 @@ impl DiscordClient {
         token: &str,
         response: InteractionResponse,
     ) -> ClientResult<InteractionResponse> {
+        // todo here (or elsewhere ig) validate InteractionResponse!!!
+        //  thats so good because then it can just ? instead of asserting!
+        //  todo do that ^ everywhere? maybe not since then it gets more separated from why/where
+        //  although it kinda already is iirc
         self.post_unit(
             CreateInteractionResponse(interaction, token.into()),
             &response,
@@ -311,7 +316,13 @@ impl DiscordClient {
         command: CommandId,
         permissions: Vec<ApplicationCommandPermissions>,
     ) -> ClientResult<()> {
-        self.put_unit(EditApplicationCommandPermissions(application, guild, command), permissions).await
+        self.put_unit(
+            EditApplicationCommandPermissions(application, guild, command),
+            PartialGuildApplicationCommandPermission {
+                id: command,
+                permissions,
+            },
+        ).await
     }
 
     /// Edits command permissions for a specific command for your application in a guild.
@@ -325,7 +336,7 @@ impl DiscordClient {
         &self,
         application: ApplicationId,
         guild: GuildId,
-        permissions: Vec<GuildApplicationCommandPermission>,
+        permissions: Vec<PartialGuildApplicationCommandPermission>,
     ) -> ClientResult<()> {
         self.put_unit(BatchEditApplicationCommandPermissions(application, guild), permissions).await
     }
@@ -367,6 +378,18 @@ pub fn webhook_message<F: FnOnce(&mut WebhookMessage)>(builder: F) -> WebhookMes
     WebhookMessage::build(builder)
 }
 
+impl<S: Into<Cow<'static, str>>> From<S> for WebhookMessage {
+    fn from(s: S) -> Self {
+        webhook_message(|m| m.content(s))
+    }
+}
+
+impl From<RichEmbed> for WebhookMessage {
+    fn from(e: RichEmbed) -> Self {
+        webhook_message(|m| m.embeds = vec![e])
+    }
+}
+
 impl WebhookMessage {
     pub fn build<F: FnOnce(&mut Self)>(builder: F) -> Self {
         let mut message = Self::default();
@@ -374,19 +397,16 @@ impl WebhookMessage {
         message
     }
 
-    pub fn content<S: Into<Cow<'static, str>>>(&mut self, content: S) -> &mut Self {
+    pub fn content<S: Into<Cow<'static, str>>>(&mut self, content: S) {
         self.content = content.into();
-        self
     }
 
-    pub fn username<S: Into<Cow<'static, str>>>(&mut self, username: S) -> &mut Self {
+    pub fn username<S: Into<Cow<'static, str>>>(&mut self, username: S) {
         self.username = Some(username.into());
-        self
     }
 
-    pub fn avatar_url<S: Into<Cow<'static, str>>>(&mut self, avatar_url: S) -> &mut Self {
+    pub fn avatar_url<S: Into<Cow<'static, str>>>(&mut self, avatar_url: S) {
         self.avatar_url = Some(avatar_url.into());
-        self
     }
 
     // todo error, don't panic
@@ -397,14 +417,13 @@ impl WebhookMessage {
     ///
     /// Panics if adding [n](n) embeds will result in this [WebhookMessage](WebhookMessage) having
     /// more than 10 embeds.
-    pub fn embeds<F: FnMut(usize, &mut RichEmbed)>(&mut self, n: usize, mut builder: F) -> &mut Self {
+    pub fn embeds<F: FnMut(usize, &mut RichEmbed)>(&mut self, n: usize, mut builder: F) {
         if self.embeds.len() + n > 10 {
             panic!("can't send more than 10 embeds");
         } else {
             self.embeds.extend(
                 (0..n).map(|i| embed(|e| builder(i, e)))
             );
-            self
         }
     }
 
@@ -413,12 +432,11 @@ impl WebhookMessage {
     /// # Panics
     ///
     /// Panics if this message already has 10 or more embeds
-    pub fn embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) -> &mut Self {
+    pub fn embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) {
         if self.embeds.len() >= 10 {
             panic!("can't send more than 10 embeds");
         } else {
             self.embeds.push(embed(builder));
-            self
         }
     }
 
@@ -427,12 +445,12 @@ impl WebhookMessage {
     /// # Errors
     ///
     /// Returns `Err(builder)` if this message already has 10 or more embeds
-    pub fn try_embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) -> std::result::Result<&mut Self, F> {
+    pub fn try_embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) -> std::result::Result<(), F> {
         if self.embeds.len() >= 10 {
             Err(builder)
         } else {
             self.embeds.push(embed(builder));
-            Ok(self)
+            Ok(())
         }
     }
 }

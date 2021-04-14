@@ -126,7 +126,7 @@ impl Hangman {
         *self = Self::default();
 
         let rcs = state.reaction_commands.write().await;
-        Bot::reset_guild_commands(guild, state, commands, rcs).await;
+        state.bot.reset_guild_commands(guild, state, commands, rcs).await;
         Ok(())
     }
 }

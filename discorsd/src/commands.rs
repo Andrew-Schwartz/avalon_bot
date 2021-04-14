@@ -21,6 +21,7 @@ pub trait SlashCommandData: Sized + Send + Sync + Debug + Downcast + DynClone + 
 
     const NAME: &'static str;
     fn description(&self) -> Cow<'static, str>;
+    fn usable_by_everyone(&self) -> bool { true }
 
     fn options(&self) -> TopLevelOption {
         <Self::Data as CommandData<Self>>::VecArg::tlo_ctor()(Self::Data::make_args(self))
@@ -45,7 +46,12 @@ impl<Scd: SlashCommandData> SlashCommand for Scd
     }
 
     fn command(&self) -> Command {
-        Command::new(Self::NAME, self.description(), self.options())
+        Command::new(
+            Self::NAME,
+            self.description(),
+            self.options(),
+            self.usable_by_everyone(),
+        )
     }
 
     async fn run(&self,

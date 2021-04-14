@@ -8,7 +8,7 @@ use async_tungstenite::{
     tungstenite::protocol::frame::coding::CloseCode,
     WebSocketStream,
 };
-use futures::{SinkExt, StreamExt, TryStreamExt};
+use futures::{SinkExt, TryStreamExt};
 use log::{error, info, warn};
 use rand::Rng;
 use thiserror::Error;
@@ -350,16 +350,17 @@ impl<B: Bot + 'static> Shard<B> {
             if self.state.global_commands.get().is_none() {
                 let app = ready.application.id;
                 let client = &self.state.client;
-                let ids = tokio::stream::iter(B::global_commands())
-                    .then(|command| async move {
-                        let resp = client
-                            .create_global_command(app, command.command())
-                            .await
-                            .unwrap_or_else(|_| panic!("when creating command `{}`", command.name()));
-                        (resp.id, *command)
-                    })
-                    .collect()
-                    .await;
+                let global_commands = B::global_commands();
+                let ids = client
+                    .bulk_overwrite_global_commands(
+                        app,
+                        global_commands.iter().map(|c| c.command()).collect(),
+                    ).await
+                    .unwrap()
+                    .into_iter()
+                    .zip(global_commands)
+                    .map(|(ac, c)| (ac.id, *c))
+                    .collect();
                 let _ = self.state.global_commands.set(ids);
             }
         }

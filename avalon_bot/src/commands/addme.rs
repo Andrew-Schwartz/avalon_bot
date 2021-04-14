@@ -82,15 +82,13 @@ async fn avalon(
                 for _ in 0..(5_usize.saturating_sub(config.players.len())) {
                     config.players.push(interaction.member().unwrap().clone());
                 };
+            } else if let Some(member) = state.cache.member(user, guild).await {
+                config.players.push(member)
             } else {
-                if let Some(member) = state.cache.member(user, guild).await {
-                    config.players.push(member)
-                } else {
-                    return interaction.respond(&state, message(|m| {
-                        m.content("Could not find that user in this guild!");
-                        m.ephemeral();
-                    })).await
-                }
+                return interaction.respond(&state, message(|m| {
+                    m.content("Could not find that user in this guild!");
+                    m.ephemeral();
+                })).await
             }
             guilds.insert(guild);
             interaction.defer(&state).await?

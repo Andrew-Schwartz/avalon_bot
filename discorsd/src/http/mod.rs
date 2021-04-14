@@ -162,7 +162,7 @@ impl DiscordClient {
             Method::GET,
             route,
             || None,
-            |resp| resp.nice_json(),
+            NiceResponseJson::nice_json,
         )).await
     }
 
@@ -175,7 +175,7 @@ impl DiscordClient {
             route,
             json,
             || None,
-            |resp| resp.nice_json(),
+            NiceResponseJson::nice_json,
         )).await
     }
 
@@ -187,7 +187,7 @@ impl DiscordClient {
             Method::POST,
             route,
             multipart,
-            |resp| resp.nice_json(),
+            NiceResponseJson::nice_json,
         )).await
     }
 
@@ -210,7 +210,7 @@ impl DiscordClient {
             route,
             json,
             || None,
-            |resp| resp.nice_json(),
+            NiceResponseJson::nice_json,
         )).await
     }
 
@@ -233,7 +233,7 @@ impl DiscordClient {
             route,
             json,
             || None,
-            |resp| resp.nice_json(),
+            NiceResponseJson::nice_json,
         )).await
     }
 

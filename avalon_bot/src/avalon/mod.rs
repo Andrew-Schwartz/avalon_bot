@@ -9,13 +9,13 @@ use tokio::sync::RwLockWriteGuard;
 
 pub use command_data_derive::*;
 pub use discorsd::{async_trait, BotState, errors::BotError};
+use discorsd::{GuildCommands, UserMarkupExt};
 pub use discorsd::commands::*;
 use discorsd::http::channel::{ChannelExt, embed, embed_with, RichEmbed};
 use discorsd::http::ClientResult;
 use discorsd::http::user::UserExt;
 use discorsd::model::guild::GuildMember;
 use discorsd::model::ids::*;
-use discorsd::{UserMarkupExt, GuildCommands};
 use game::{AvalonGame, AvalonState};
 
 use crate::avalon::characters::Character::{self, LoyalServant, Merlin, MinionOfMordred};
@@ -175,7 +175,7 @@ impl Avalon {
         *self = Self::default();
 
         let rcs = state.reaction_commands.write().await;
-        Bot::reset_guild_commands(guild, state, commands, rcs).await;
+        state.bot.reset_guild_commands(guild, state, commands, rcs).await;
         Ok(())
     }
 }

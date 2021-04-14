@@ -11,6 +11,7 @@ use crate::{BotState, utils};
 use crate::commands::{Interaction, SlashCommand};
 use crate::errors::*;
 use crate::http::{ClientResult, DiscordClient};
+use crate::http::interaction::WebhookMessage;
 use crate::model::{ids::*, interaction::*};
 use crate::model::guild::GuildMember;
 use crate::model::user::User;
@@ -46,6 +47,7 @@ pub trait FinalizeInteraction {
     async fn finalize<B: Send + Sync + 'static>(self, state: &Arc<BotState<B>>) -> ClientResult<InteractionUse<Used>>;
 }
 
+#[allow(clippy::use_self)]
 #[async_trait]
 impl FinalizeInteraction for InteractionUse<Used> {
     async fn finalize<B: Send + Sync + 'static>(self, _: &Arc<BotState<B>>) -> ClientResult<InteractionUse<Used>> {
@@ -53,6 +55,7 @@ impl FinalizeInteraction for InteractionUse<Used> {
     }
 }
 
+#[allow(clippy::use_self)]
 #[async_trait]
 impl FinalizeInteraction for InteractionUse<Deferred> {
     async fn finalize<B: Send + Sync + 'static>(self, state: &Arc<BotState<B>>) -> ClientResult<InteractionUse<Used>> {
@@ -170,10 +173,36 @@ impl InteractionUse<Used> {
             &self.token,
         ).await
     }
+
+    pub async fn followup<B, State, Message>(&self, state: State, message: Message) -> ClientResult<crate::model::message::Message>
+        where B: Send + Sync + 'static,
+              State: AsRef<BotState<B>> + Send + Sync,
+              Message: Into<WebhookMessage> + Send,
+    {
+        let state = state.as_ref();
+        state.client.create_followup_message(
+            state.application_id().await,
+            &self.token,
+            message.into(),
+        ).await
+    }
 }
 
 #[allow(clippy::use_self)]
 impl InteractionUse<Deferred> {
+    pub async fn followup<B, State, Message>(&self, state: State, message: Message) -> ClientResult<crate::model::message::Message>
+        where B: Send + Sync + 'static,
+              State: AsRef<BotState<B>> + Send + Sync,
+              Message: Into<WebhookMessage> + Send,
+    {
+        let state = state.as_ref();
+        state.client.create_followup_message(
+            state.application_id().await,
+            &self.token,
+            message.into(),
+        ).await
+    }
+
     pub async fn edit<B, State, Message>(self, state: State, message: Message) -> ClientResult<InteractionUse<Used>>
         where B: Send + Sync + 'static,
               State: AsRef<BotState<B>> + Send + Sync,

@@ -15,13 +15,38 @@ use crate::model::ids::*;
 use crate::model::ids::{CommandId, InteractionId};
 use crate::model::message::{AllowedMentions, MessageFlags};
 use crate::model::user::User;
+use crate::serde_utils::BoolExt;
+
+mod validate {
+    use once_cell::sync::Lazy;
+    use regex::Regex;
+
+    static NAME_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[\w-]{1,32}$").unwrap());
+
+    pub fn name(name: &str) {
+        assert!(
+            NAME_REGEX.is_match(name),
+            "names must only contain letters, numbers, `-`, and `_` and must be 1-32 characters long; name = `{:?}`",
+            name
+        );
+    }
+
+    pub fn description(description: &str) {
+        let dlen = description.chars().count();
+        assert!(
+            (1..=100).contains(&dlen),
+            "command descriptions must be 1-100 characters long ({:?} is {} characters)",
+            description, dlen
+        );
+    }
+}
 
 #[derive(Serialize, Debug, Clone)]
 pub struct Command {
     pub name: &'static str,
     pub description: Cow<'static, str>,
     pub options: TopLevelOption,
-    // todo default to true
+    #[serde(skip_serializing_if = "BoolExt::is_true")]
     pub default_permission: bool,
 }
 
@@ -30,25 +55,18 @@ impl Command {
         name: &'static str,
         description: D,
         options: TopLevelOption,
+        default_permission: bool,
     ) -> Self {
-        assert!(
-            name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
-            "command names must only contain letters, numbers, `-`, and `_`; name = `{:?}`",
-            name
-        );
-        assert!(
-            3 <= name.len() && name.len() <= 32,
-            "command names must be 3-32 characters long ({} is {} characters)",
-            name, name.len()
-        );
         let description = description.into();
-        let dlen = description.chars().count();
+        validate::name(name);
+        validate::description(&description);
+        options.validate();
         assert!(
-            (1..=100).contains(&dlen),
-            "command descriptions must be 1-100 characters long ({} is {} characters)",
-            description, dlen
+            name.len() + description.len() + options.text_len() <= 4000,
+            "Maximum of 4000 bytes for combined name, description, and value properties for \
+            each command and its subcommands and groups"
         );
-        Self { name, description, options, default_permission: true }
+        Self { name, description, options, default_permission }
     }
 }
 
@@ -66,18 +84,63 @@ impl PartialEq for Command {
 
 #[derive(Debug, Clone)]
 pub enum TopLevelOption {
-    Commands(Vec<SubCommand>),
     Groups(Vec<SubCommandGroup>),
+    Commands(Vec<SubCommand>),
     Data(Vec<DataOption>),
     Empty,
 }
 
 impl TopLevelOption {
-    pub fn empty() -> Self { Self::Empty }
+    fn text_len(&self) -> usize {
+        fn group_len(group: &SubCommandGroup) -> usize {
+            group.name.len()
+                + group.description.len()
+                + group.sub_commands.iter().map(command_len).sum::<usize>()
+        }
+        fn command_len(command: &SubCommand) -> usize {
+            command.name.len()
+                + command.description.len()
+                + options_len(&command.options)
+        }
+        fn options_len(options: &[DataOption]) -> usize {
+            options.iter()
+                .map(|o| o.name().len() + o.description().len())
+                .sum()
+        }
+        match self {
+            Self::Groups(groups) => groups.iter().map(group_len).sum(),
+            Self::Commands(commands) => commands.iter().map(command_len).sum(),
+            Self::Data(options) => options_len(options),
+            Self::Empty => 0,
+        }
+    }
 
-    // todo other ctors, doc for TLO saying to use the functions
-    // todo have this be a `check` fn that takes `&self` & is called automatically somewhere
-    pub fn options(options: Vec<DataOption>) -> Self {
+    fn validate(&self) {
+        match self {
+            Self::Groups(groups) => groups.iter().for_each(Self::validate_group),
+            Self::Commands(commands) => commands.iter().for_each(Self::validate_command),
+            Self::Data(options) => Self::validate_options(options),
+            Self::Empty => {}
+        }
+    }
+
+    fn validate_group(SubCommandGroup { name, description, sub_commands }: &SubCommandGroup) {
+        validate::name(name);
+        validate::description(description);
+        sub_commands.iter().for_each(Self::validate_command)
+    }
+
+    fn validate_command(SubCommand { name, description, options }: &SubCommand) {
+        validate::name(name);
+        validate::description(description);
+        assert!(
+            options.len() <= 25,
+            "commands can have at most 25 options"
+        );
+        Self::validate_options(options)
+    }
+
+    fn validate_options(options: &[DataOption]) {
         assert!(
             options.iter()
                 .filter(|o| o.default()).count() <= 1,
@@ -89,6 +152,7 @@ impl TopLevelOption {
                 .any(DataOption::required),
             "all required options must be at front of list"
         );
+        // todo this can probably be done without a hashmap? idk if that'd actually be faster
         assert_eq!(
             options.iter()
                 .map(DataOption::name)
@@ -97,8 +161,12 @@ impl TopLevelOption {
             options.len(),
             "must not repeat option names"
         );
-
-        Self::Data(options)
+        for option in options {
+            assert!(
+                option.num_choices() <= 25,
+                "options can have at most 25 choices"
+            );
+        }
     }
 }
 
@@ -226,6 +294,16 @@ impl DataOption {
             Self::Role(o) => o.required,
         }
     }
+    pub(crate) fn num_choices(&self) -> usize {
+        match self {
+            Self::String(cdo) => cdo.choices.len(),
+            Self::Integer(cdo) => cdo.choices.len(),
+            Self::Boolean(_)
+            | Self::User(_)
+            | Self::Channel(_)
+            | Self::Role(_) => 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -240,20 +318,14 @@ pub struct CommandDataOption<T> {
     required: bool,
     /// choices for string and int types for the user to pick from
     choices: Vec<CommandChoice<T>>,
-    // choices: Cow<'static, [CommandChoice<T>]>,
 }
 
 impl<T> CommandDataOption<T> {
     pub fn new<N: Into<Cow<'static, str>>, D: Into<Cow<'static, str>>>(name: N, description: D) -> Self {
         let name = name.into();
         let description = description.into();
-        assert!(name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
-                "command names must only contain letters, numbers, and _, name = {:?}",
-                name
-        );
-        assert!(1 <= name.len() && name.len() <= 32, "command names must be 1-32 characters, name = {:?}", name);
-        let dlen = description.chars().count();
-        assert!((1..=100).contains(&dlen), "command descriptions must be 1-100 characters, description = {:?}", description);
+        validate::name(&name);
+        validate::description(&description);
 
         Self {
             name,
@@ -280,9 +352,7 @@ impl CommandDataOption<&'static str> {
         Self::new(name, description)
     }
 
-    // pub fn choices<C: Into<Cow<'static, [CommandChoice<&'static str>]>>>(mut self, choices: C) -> Self {
     pub fn choices(mut self, choices: Vec<CommandChoice<&'static str>>) -> Self {
-        // self.choices = choices.into();
         self.choices = choices;
         self
     }
@@ -293,9 +363,7 @@ impl CommandDataOption<i64> {
         Self::new(name, description)
     }
 
-    // pub fn choices<C: Into<Cow<'static, [CommandChoice<i64>]>>>(mut self, choices: C) -> Self {
     pub fn choices(mut self, choices: Vec<CommandChoice<i64>>) -> Self {
-        // self.choices = choices.into();
         self.choices = choices;
         self
     }
@@ -338,7 +406,11 @@ pub struct CommandChoice<T> {
 impl<T> CommandChoice<T> {
     pub fn new(name: &'static str, value: T) -> Self {
         let nlen = name.chars().count();
-        assert!((1..=100).contains(&nlen), "command names must be 1-100 characters, name = {:?}", name);
+        assert!(
+            (1..=100).contains(&nlen),
+            "command names must be 1-100 characters, name = {:?}",
+            name
+        );
 
         Self { name, value, _priv: () }
     }
@@ -436,6 +508,7 @@ mod tests {
             "permissions",
             "Get or edit permissions for a user or a role",
             TopLevelOption::Empty,
+            true,
         );
 
         assert_same_json_value(CORRECT1, command);
@@ -474,6 +547,7 @@ mod tests {
                     sub_commands: vec![],
                 }
             ]),
+            true,
         );
 
         assert_same_json_value(CORRECT2, command);
@@ -559,6 +633,7 @@ mod tests {
                     ],
                 }
             ]),
+            true,
         );
 
         assert_same_json_value(CORRECT, command)
@@ -732,6 +807,7 @@ mod tests {
                     ],
                 }
             ]),
+            true,
         );
 
         if let TopLevelOption::Groups(groups) = &command.options {
@@ -748,6 +824,8 @@ mod tests {
                         DataOption::Role(opt) => assert!(matches!(&opt.name, Cow::Borrowed(_))),
                     }
                 });
+        } else {
+            panic!()
         }
 
         assert_same_json_value(CORRECT, command);
@@ -903,12 +981,36 @@ pub struct GuildApplicationCommandPermission {
     pub permissions: Vec<ApplicationCommandPermissions>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct PartialGuildApplicationCommandPermission {
+    /// the id of the command
+    pub id: CommandId,
+    /// the permissions for the command in the guild
+    pub permissions: Vec<ApplicationCommandPermissions>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ApplicationCommandPermissions {
     /// the id of the role or user
     pub id: UserRoleId,
-    /// true to allow, false, to disallow
+    /// true to allow, false to disallow
     pub permission: bool,
+}
+
+impl ApplicationCommandPermissions {
+    pub fn allow_role(role: RoleId, allow: bool) -> Self {
+        Self {
+            id: UserRoleId::Role(role),
+            permission: allow,
+        }
+    }
+
+    pub fn allow_user(user: UserId, allow: bool) -> Self {
+        Self {
+            id: UserRoleId::User(user),
+            permission: allow,
+        }
+    }
 }
 
 /// Either a `UserId` or a `RoleId`
@@ -919,8 +1021,9 @@ pub enum UserRoleId {
 }
 
 mod acp_impl {
-    use super::*;
     use serde::de::{Error, Unexpected};
+
+    use super::*;
 
     #[derive(Deserialize, Serialize)]
     struct Shim {
@@ -936,7 +1039,7 @@ mod acp_impl {
             let Self { id, permission } = *self;
             let shim = match id {
                 UserRoleId::Role(role) => Shim { kind: 1, id: UserId(role.0), permission },
-                UserRoleId::User(id) => Shim { kind: 1, id, permission }
+                UserRoleId::User(id) => Shim { kind: 2, id, permission }
             };
             shim.serialize(s)
         }
@@ -955,6 +1058,7 @@ mod acp_impl {
                 2 => {
                     Ok(Self { id: UserRoleId::User(id), permission })
                 }
+                #[allow(clippy::cast_lossless)]
                 bad => Err(D::Error::invalid_value(Unexpected::Unsigned(bad as _), &"1 (role) or 2 (user)")),
             }
         }
@@ -1347,15 +1451,13 @@ pub fn message<F: FnOnce(&mut InteractionMessage)>(builder: F) -> InteractionMes
 
 impl<S: Into<Cow<'static, str>>> From<S> for InteractionMessage {
     fn from(s: S) -> Self {
-        let mut msg = Self::default();
-        msg.content(s);
-        msg
+        message(|m| m.content(s))
     }
 }
 
 impl From<RichEmbed> for InteractionMessage {
     fn from(e: RichEmbed) -> Self {
-        Self { embeds: vec![e], ..Default::default() }
+        message(|m| m.embeds = vec![e])
     }
 }
 
