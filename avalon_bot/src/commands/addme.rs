@@ -90,7 +90,7 @@ async fn avalon(
                 return interaction.respond(&state, message(|m| {
                     m.content("Could not find that user in this guild!");
                     m.ephemeral();
-                })).await
+                })).await;
             }
             guilds.insert(guild);
             interaction.defer(&state).await?

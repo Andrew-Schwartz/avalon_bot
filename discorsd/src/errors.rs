@@ -166,6 +166,10 @@ pub enum CommandParseError {
     UnknownOption(UnknownOption),
     EmptyOption(String),
     BadOrder(String, usize, Range<usize>),
+    /// found a vararg option when it was not expected
+    UnexpectedVararg(String, usize),
+    /// found a single option when expecting to find a vararg
+    UnexpectedSingleOption(String, usize),
     MissingOption(String),
     /// Command named `String` didn't have a subcommand option
     NoSubtype(String),

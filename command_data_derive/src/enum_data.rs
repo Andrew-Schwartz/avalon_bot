@@ -78,13 +78,13 @@ pub struct Enum {
 impl Enum {
     //noinspection RsSelfConvention
     fn from_options_branches(&self, ty: &Ident, command_ty: &TokenStream2) -> TokenStream2 {
-        let branches = self.variants.iter().enumerate().map(|(n, v)| {
+        let branches = self.variants.iter().map(|v| {
             let patt = v.name();
             // todo filter out the attributes this used
             let fields = Struct::from_fields(v.fields.clone(), &[]);
             match syn::parse_str(&format!("{}::{}", ty, v.ident)) {
                 Ok(path) => {
-                    let try_from_body = fields.impl_from_options(ty, &path, command_ty, n);
+                    let try_from_body = fields.impl_from_options(ty, &path, command_ty);
                     quote_spanned! { v.ident.span() =>
                         #patt => {
                             #try_from_body
@@ -99,13 +99,13 @@ impl Enum {
         }
     }
 
-    fn make_args_vec(&self) -> TokenStream2 {
+    fn make_args_vec(&self, command_type: &TokenStream2) -> TokenStream2 {
         let branches = self.variants.iter().map(|v| {
             // todo filter out the attributes this used
             let strukt = Struct::from_fields(v.fields.clone(), &[]);
             let name = v.name();
             let desc = v.description(&name);
-            let options = strukt.data_options();
+            let options = strukt.data_options(command_type);
             quote_spanned! { v.ident.span() =>
                 <Self::VecArg as ::discorsd::commands::VecArgLadder>::make(
                     #name, #desc, #options
@@ -302,7 +302,7 @@ impl Enum {
         let (command_data_impl_statement, c_ty) = command_data_impl(self.command_type.as_ref());
         let from_option_branches = self.from_options_branches(ty, &c_ty);
         let variants_array = self.variants_array();
-        let make_args_vec = self.make_args_vec();
+        let make_args_vec = self.make_args_vec(&c_ty);
 
         quote! {
             #command_data_impl_statement for #ty {

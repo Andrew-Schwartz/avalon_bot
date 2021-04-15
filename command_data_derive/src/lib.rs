@@ -25,6 +25,8 @@ use enum_choices::Variant as ChoicesVariant;
 use enum_data::{Enum as DataEnum, Variant as DataVariant};
 use struct_data::*;
 
+use crate::utils::TypeExt;
+
 #[macro_use]
 mod macros;
 pub(crate) mod utils;
@@ -129,15 +131,13 @@ handle_attribute!(
     self Field =>
 
     "": Meta::Path(path), path =>
-        /// Marks this field as optional in the Command in Discord, and if the use omits it, will use
+        /// Marks this field as optional in the Command in Discord, and if the user omits it, will use
         /// this field's type's `Default` implementation to create it.
         ["default" => self.default = Some(syn::parse_str("::std::default::Default::default").unwrap())]
         // todo is this necessary? it's never used
         /// Make this field required (note: fields are required by default, unless they are an `Option`).
         ["required" => self.default = None]
         /// Only applicable for `vararg` fields. Name the command options "One", "Two", "Three", etc.
-        /// CURRENTLY BROKEN
-        // todo fix this
         ["va_ordinals" => self.vararg.names = VarargNames::Ordinals]
         /// Only applicable for `vararg` fields. Name this vararg field "{vararg}1", "{vararg}2",
         /// where {vararg} is the key on the `vararg` option.
@@ -149,10 +149,16 @@ handle_attribute!(
         /// The description of this command option. If omitted, will use the field's name as the
         /// description.
         ["desc" => self.desc = Some(str)]
-        /// Marks this field as optional in the Command in Discord, and if the use omits it, will use
+        /// Marks this field as optional in the Command in Discord, and if the user omits it, will use
         /// this function to provide the default if this field is missing. Must be callable as
         /// `fn() -> T`, where `T` is this field's type.
         ["default" => self.default = Some(str.parse()?)]
+        /// What to rename this field as in the Command.
+        ["rename" => {
+            if let FieldIdent::Named(named) = &mut self.name {
+                named.rename = Some(str);
+            }
+        }]
         // todo make a va_desc_name thing
         /// Marks this field as a vararg argument to the command, with the name and description
         /// created by appending a counting integer to `{str}`. Allows the user to chose multiple
@@ -179,20 +185,19 @@ handle_attribute!(
         ["va_count" => self.vararg.num = VarargNum::Function(str.parse()?)]
         /// How to name the vararg options. Must be callable as a function
         /// `fn<N>(usize) -> N where N: Into<Cow<'static, str>`.
-        ["va_names" => self.vararg.names = VarargNames::Function(str.parse()?)]
-        /// What to rename this field as in the Command.
-        ["rename" => {
-            if let FieldIdent::Named(named) = &mut self.name {
-                named.rename = Some(str);
-            }
-        }],
+        ["va_names" => self.vararg.names = VarargNames::Function(str.parse()?)],
 
     " = {int}": Meta::NameValue(MetaNameValue { path, lit: Lit::Int(int), .. }), path =>
         /// The number of vararg options to show.
         ["va_count" => self.vararg.num = VarargNum::Count(int.base10_parse()?)]
         /// The number of vararg options required. If `va_count` is greater than this, the excess
         /// options will be optional.
-        ["required" => self.vararg.required = Some(int.base10_parse()?)]
+        ["required" => self.vararg.required = if self.ty.array_type().is_some() {
+            // if its an array require all of them
+            None
+        } else {
+            Some(int.base10_parse()?)
+        }]
 );
 
 handle_attribute!(

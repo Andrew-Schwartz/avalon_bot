@@ -37,6 +37,8 @@ pub trait TypeExt {
         self.generic_type_by(|_| true)
     }
 
+    fn array_type(&self) -> Option<&Type>;
+
     fn without_generics(&self) -> Option<&Ident>;
 }
 
@@ -60,6 +62,14 @@ impl TypeExt for Type {
             } else {
                 None
             }
+        } else {
+            None
+        }
+    }
+
+    fn array_type(&self) -> Option<&Type> {
+        if let Type::Array(array) = self {
+            Some(&array.elem)
         } else {
             None
         }

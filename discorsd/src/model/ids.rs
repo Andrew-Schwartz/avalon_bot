@@ -78,10 +78,6 @@ macro_rules! id_impl {
 
                 fn id(&self) -> Self { *self }
             }
-
-            // impl<C: SlashCommand> CommandData<C> for $id {
-            //     type Options =
-            // }
         )+
     };
 }

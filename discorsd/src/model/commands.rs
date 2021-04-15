@@ -267,10 +267,10 @@ macro_rules! option_primitives {
                     options.lower.$method().map_err(|e| e.into())
                 }
 
-                type VecArg = ();
+                type VecArg = DataOption;
 
                 fn make_args(_: &C) -> Vec<Self::VecArg> {
-                    unimplemented!()
+                    unreachable!()
                 }
             }
 
@@ -309,7 +309,6 @@ impl<T: OptionCtor<Data=T>> OptionCtor for Option<T> {
 }
 
 // traits to let enums figure out how to impl CommandData
-
 pub enum Highest {}
 
 pub enum Lowest {}
@@ -507,6 +506,23 @@ impl OptionsLadder for () {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum VarargState {
+    Fixed(usize),
+    Variable,
+    None,
+}
+
+impl VarargState {
+    pub fn number(self) -> Option<usize> {
+        match self {
+            VarargState::Fixed(n) => Some(n),
+            VarargState::Variable => None,
+            VarargState::None => panic!("Tried to get the number of varargs for a non-vararg option"),
+        }
+    }
+}
+
 // the big boi himself
 pub trait CommandData<Command: SlashCommand>: Sized {
     // function to go from InteractionData -> Self
@@ -516,16 +532,14 @@ pub trait CommandData<Command: SlashCommand>: Sized {
 
     // functionality to got from Self -> Command for sending to Discord
     type VecArg: VecArgLadder;
+    // todo: VecArg *maybe* should have the Vec<> on it, so that this can just return one?
+    //  do I ever actually return vec![one] or just do I always panic?
     fn make_args(command: &Command) -> Vec<Self::VecArg>;
     #[allow(unused_variables)]
     fn make_choices(command: &Command) -> Vec<CommandChoice<&'static str>> {
         Vec::new()
     }
-    // todo fn that returns Option<usize> for # of varargs (ex hashmap is None, [T;N] is N)
-    //  maybe some other return type to differentiate between not-vararg and unknown #
-    //  that means the `from_options` for the vararg types would have to be prepared before sending
-    //  it into that function to have the right number (N or the runtime chosen value)
-    //  update: that fn isn't ever called for varargs! should fix that and add this
+    fn vararg_number() -> VarargState { VarargState::None }
 }
 
 // let `()` be used for commands with no options
@@ -575,12 +589,17 @@ impl<T, C, S> CommandData<C> for HashSet<T, S>
     type VecArg = DataOption;
 
     fn make_args(c: &C) -> Vec<Self::VecArg> {
-        // Vec::new()
-        T::make_args(c)
+        let vec = T::make_args(c);
+        println!("vec = {:?}", vec);
+        vec
     }
 
     fn make_choices(c: &C) -> Vec<CommandChoice<&'static str>> {
         T::make_choices(c)
+    }
+
+    fn vararg_number() -> VarargState {
+        VarargState::Variable
     }
 }
 
@@ -592,20 +611,22 @@ impl<T, C> CommandData<C> for Vec<T>
 {
     type Options = Vec<ValueOption>;
 
-    // todo lol this is never even called!
     fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
-        println!("options = {:?}", options);
         options.into_iter().map(T::from_options).collect()
     }
 
     type VecArg = DataOption;
 
-    fn make_args(command: &C) -> Vec<Self::VecArg> {
-        T::make_args(command)
+    fn make_args(c: &C) -> Vec<Self::VecArg> {
+        T::make_args(c)
     }
 
     fn make_choices(command: &C) -> Vec<CommandChoice<&'static str>> {
         T::make_choices(command)
+    }
+
+    fn vararg_number() -> VarargState {
+        VarargState::Variable
     }
 }
 
@@ -619,7 +640,7 @@ impl<T, C, const N: usize> CommandData<C> for [T; N]
     fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
         let iter = options.into_iter().map(T::from_options);
         utils::array_try_from_iter(iter, |i| CommandParseError::MissingOption(
-            format!("Didn't have option number {}", i)
+            format!("Didn't have option number {}", i + 1)
         ))
     }
 
@@ -631,5 +652,9 @@ impl<T, C, const N: usize> CommandData<C> for [T; N]
 
     fn make_choices(command: &C) -> Vec<CommandChoice<&'static str>> {
         T::make_choices(command)
+    }
+
+    fn vararg_number() -> VarargState {
+        VarargState::Fixed(N)
     }
 }

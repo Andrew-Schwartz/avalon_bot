@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use std::borrow::Cow;
     use std::sync::Arc;
@@ -20,6 +21,7 @@ mod tests {
             impl SlashCommandData for Perms {
                 type Bot = TestBot;
                 type Data = $data;
+                type Use = Used;
                 const NAME: &'static str = "permissions";
 
                 fn description(&self) -> Cow<'static, str> {
@@ -54,6 +56,8 @@ mod tests {
     fn part1() {
         make_slash_command!(());
         assert_same_json_value(CORRECT1, Perms);
+        let command = <()>::make_args(&Perms);
+        println!("command = {:?}", command);
     }
 
     const CORRECT2: &'static str = r#"{
@@ -284,7 +288,6 @@ mod tests {
         assert_same_json_value(CORRECT4, Perms);
         make_slash_command!(Data);
         #[derive(CommandData)]
-        #[command(rename_all = "lowercase")]
         enum Data {
             #[command(desc = "Get or edit permissions for a user")]
             User(GetEditUser),
@@ -292,7 +295,6 @@ mod tests {
             Role(GetEditRole),
         }
         #[derive(CommandData)]
-        #[command(rename_all = "lowercase")]
         enum GetEditUser {
             #[command(desc = "Get permissions for a user")]
             Get {
@@ -310,7 +312,6 @@ mod tests {
             },
         }
         #[derive(CommandData)]
-        #[command(rename_all = "lowercase")]
         enum GetEditRole {
             #[command(desc = "Get permissions for a role")]
             Get(GetRole),
@@ -331,5 +332,7 @@ mod tests {
             #[command(desc = "The channel permissions to edit. If omitted, the guild permissions will be edited")]
             pub channel: Option<ChannelId>,
         }
+        let command = Data::make_args(&Perms);
+        println!("command = {:#?}", command);
     }
 }

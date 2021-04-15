@@ -61,7 +61,7 @@ impl SlashCommandData for SysInfoCommand {
                         let avg: f32 = processors.iter()
                             .map(ProcessorExt::get_cpu_usage)
                             .sum();
-                        format!("{}\n**Average**: {:.2}%", value, avg / processors.len() as f32)
+                        format!("```{}\nAverage: {:.2}%```", value, avg / processors.len() as f32)
                     }
                 };
                 embed.field(("CPU Usage", value))
@@ -70,9 +70,9 @@ impl SlashCommandData for SysInfoCommand {
                 let used = sys.get_used_memory();
                 let total = sys.get_total_memory();
                 let string = format!(
-                    "{:.2}% used\n\
-                     Used: {} MB\n\
-                     Total: {} MB",
+                    "```    {:.2}%\n\
+                     Used : {} MB\n\
+                     Total: {} MB```",
                     (used as f64) / (total as f64) * 100.0,
                     used / 1024,
                     total / 1024
@@ -93,7 +93,7 @@ impl SlashCommandData for SysInfoCommand {
                         let avg: f32 = components.iter()
                             .map(ComponentExt::get_temperature)
                             .sum();
-                        format!("{}\n**Average**: {:.2} °C", value, avg / components.len() as f32)
+                        format!("```{}\nAverage: {:.2} °C```", value, avg / components.len() as f32)
                     }
                 };
                 embed.field(("Component Temperature", value));
