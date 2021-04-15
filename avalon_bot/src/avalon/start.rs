@@ -29,6 +29,8 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Defe
     state.client.trigger_typing(game.channel).await?;
     let board = game.board_image();
     let AvalonGame { channel, players, lotl, .. } = game.clone();
+
+    // send all of the players their roles
     let players = Arc::new(players);
     let mut handles = Vec::new();
     for player in Vec::clone(&*players) {
@@ -76,6 +78,7 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Defe
         .collect::<ClientResult<HashSet<_>>>()?;
     game.pins.extend(pinned);
 
+    // start info
     channel.send(&state, embed(|e| {
         e.title(format!("Avalon game with {} players", players.len()));
         e.color(Color::GOLD);

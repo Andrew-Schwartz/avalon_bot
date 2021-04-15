@@ -11,7 +11,7 @@ use reqwest::header::{AUTHORIZATION, HeaderMap};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use thiserror::Error;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 
 use crate::{BotState, serde_utils};
 use crate::http::rate_limit::{BucketKey, RateLimiter};
@@ -21,10 +21,11 @@ use crate::model::Application;
 use crate::serde_utils::NiceResponseJson;
 
 mod rate_limit;
+pub(crate) mod routes;
 pub mod channel;
 pub mod interaction;
 pub mod user;
-pub(crate) mod routes;
+pub mod guild;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error)]
@@ -80,7 +81,7 @@ pub type ClientResult<T> = std::result::Result<T, ClientError>;
 pub struct DiscordClient {
     pub(crate) token: String,
     client: Client,
-    rate_limit: Arc<RwLock<RateLimiter>>,
+    rate_limit: Arc<Mutex<RateLimiter>>,
 }
 
 /// General functionality
@@ -90,7 +91,7 @@ impl DiscordClient {
         Self::shared(token, Default::default())
     }
 
-    pub fn shared(token: String, rate_limit: Arc<RwLock<RateLimiter>>) -> Self {
+    pub fn shared(token: String, rate_limit: Arc<Mutex<RateLimiter>>) -> Self {
         let mut headers = HeaderMap::new();
         headers.insert(AUTHORIZATION, format!("Bot {}", token).parse().expect("Unable to parse token!"));
 
@@ -123,10 +124,10 @@ impl DiscordClient {
             if let Some(multipart) = multipart() {
                 builder = builder.multipart(multipart);
             }
-            self.rate_limit.read().await.rate_limit(&key).await;
+            self.rate_limit.lock().await.rate_limit(&key).await;
             let response = builder.send().await.map_err(ClientError::Request)?;
             let headers = response.headers();
-            self.rate_limit.write().await.update(key, headers);
+            self.rate_limit.lock().await.update(key, headers);
             if response.status().is_client_error() || response.status().is_server_error() {
                 let status = response.status();
                 let err = if status == StatusCode::TOO_MANY_REQUESTS {

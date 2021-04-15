@@ -69,7 +69,7 @@ impl ReactionCommand<Bot> for PartyVote {
                         .collect_vec();
 
                     let new_state = if rejecter.len() >= approver.len() {
-                        AvalonGame::next_leader(&mut game.leader, players.len());
+                        AvalonGame::advance_leader(&mut game.leader, players.len());
                         game.rejected_quests += 1;
                         let board = game.board_image();
                         match game.rejected_quests {

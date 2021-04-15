@@ -136,10 +136,14 @@ handle_attribute!(
         /// Make this field required (note: fields are required by default, unless they are an `Option`).
         ["required" => self.default = None]
         /// Only applicable for `vararg` fields. Name the command options "One", "Two", "Three", etc.
-        ["ordinals" => self.vararg.names = VarargNames::Ordinals]
+        /// CURRENTLY BROKEN
+        // todo fix this
+        ["va_ordinals" => self.vararg.names = VarargNames::Ordinals]
         /// Only applicable for `vararg` fields. Name this vararg field "{vararg}1", "{vararg}2",
         /// where {vararg} is the key on the `vararg` option.
-        ["counts" => self.vararg.names = VarargNames::Count],
+        ///
+        /// Note: this is the default naming behavior used for varargs.
+        ["va_indexed" => self.vararg.names = VarargNames::Index],
 
     " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
         /// The description of this command option. If omitted, will use the field's name as the

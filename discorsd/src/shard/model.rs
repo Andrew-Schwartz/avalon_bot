@@ -193,9 +193,7 @@ pub struct Identify {
 
 impl Identify {
     /// Used to create an instance of [Identify]. This struct uses the builder pattern to configure
-    /// the optional fields. [intents](Indentify::intents) defaults to all non-priveleged intents.
-    // todo remove when CLion can tell where `all()` comes from
-    //noinspection ALL
+    /// the optional fields. [intents](Identify::intents) defaults to all non-privileged intents.
     pub fn new(token: String) -> Self {
         Self {
             token,

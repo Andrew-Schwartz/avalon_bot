@@ -42,6 +42,7 @@ use discorsd::commands::{ReactionCommand, SlashCommand};
 use discorsd::errors::BotError;
 use discorsd::http::channel::{ChannelExt, create_message, CreateMessage, embed};
 use discorsd::http::ClientResult;
+use discorsd::http::guild::CommandPermsExt;
 use discorsd::model::channel::Channel;
 use discorsd::model::guild::{Guild, Integration};
 use discorsd::model::ids::*;
@@ -50,7 +51,7 @@ use discorsd::model::message::Message;
 use discorsd::shard::dispatch::ReactionUpdate;
 use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, UpdateStatus};
 
-use crate::avalon::{ApplicationCommandPermissions, Avalon};
+use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
 pub use crate::commands::{addme::AddMeCommand};
 use crate::commands::ll::LowLevelCommand;
@@ -220,14 +221,8 @@ impl discorsd::Bot for Bot {
             if guild.id == self.config.guild {
                 let mut commands = commands.entry(guild.id).or_default().write().await;
 
-                let command = create_command(&state, guild.id, &mut commands, LowLevelCommand).await?;
-
-                state.client.edit_application_command_permissions(
-                    state.application_id().await,
-                    guild.id,
-                    command,
-                    vec![ApplicationCommandPermissions::allow_user(self.config.owner, true)],
-                ).await?;
+                let mut command = create_command(&state, guild.id, &mut commands, LowLevelCommand).await?;
+                command.allow_users(&state, guild.id, &[self.config.owner]).await?;
             }
         }
 

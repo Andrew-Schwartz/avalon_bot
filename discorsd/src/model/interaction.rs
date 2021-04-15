@@ -978,7 +978,7 @@ pub struct GuildApplicationCommandPermission {
     /// the id of the guild
     pub guild_id: GuildId,
     /// the permissions for the command in the guild
-    pub permissions: Vec<ApplicationCommandPermissions>,
+    pub permissions: Vec<CommandPermissions>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -986,29 +986,44 @@ pub struct PartialGuildApplicationCommandPermission {
     /// the id of the command
     pub id: CommandId,
     /// the permissions for the command in the guild
-    pub permissions: Vec<ApplicationCommandPermissions>,
+    pub permissions: Vec<CommandPermissions>,
 }
 
+/// Referred to in Discord docs as `ApplicationCommandPermissions`
 #[derive(Debug, Clone, Copy)]
-pub struct ApplicationCommandPermissions {
+pub struct CommandPermissions {
     /// the id of the role or user
     pub id: UserRoleId,
     /// true to allow, false to disallow
     pub permission: bool,
 }
 
-impl ApplicationCommandPermissions {
-    pub fn allow_role(role: RoleId, allow: bool) -> Self {
+impl CommandPermissions {
+    pub fn allow_role(role: RoleId) -> Self {
         Self {
             id: UserRoleId::Role(role),
-            permission: allow,
+            permission: true,
         }
     }
 
-    pub fn allow_user(user: UserId, allow: bool) -> Self {
+    pub fn disallow_role(role: RoleId) -> Self {
+        Self {
+            id: UserRoleId::Role(role),
+            permission: false,
+        }
+    }
+
+    pub fn allow_user(user: UserId) -> Self {
         Self {
             id: UserRoleId::User(user),
-            permission: allow,
+            permission: true,
+        }
+    }
+
+    pub fn disallow_user(user: UserId) -> Self {
+        Self {
+            id: UserRoleId::User(user),
+            permission: false,
         }
     }
 }
@@ -1034,7 +1049,7 @@ mod acp_impl {
         permission: bool,
     }
 
-    impl Serialize for ApplicationCommandPermissions {
+    impl Serialize for CommandPermissions {
         fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
             let Self { id, permission } = *self;
             let shim = match id {
@@ -1045,7 +1060,7 @@ mod acp_impl {
         }
     }
 
-    impl<'de> Deserialize<'de> for ApplicationCommandPermissions {
+    impl<'de> Deserialize<'de> for CommandPermissions {
         fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
             let Shim { kind, id, permission } = Shim::deserialize(d)?;
             match kind {
@@ -1420,14 +1435,14 @@ impl Serialize for InteractionResponse {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MessageInteraction {
     /// id of the interaction
-    id: InteractionId,
+    pub id: InteractionId,
     /// the type of interaction
     #[serde(rename = "type")]
-    kind: InteractionType,
+    pub kind: InteractionType,
     /// the name of the ApplicationCommand
-    name: String,
+    pub name: String,
     /// the user who invoked the interaction
-    user: User,
+    pub user: User,
 }
 
 /// Not all message fields are currently supported.

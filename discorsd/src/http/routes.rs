@@ -54,6 +54,13 @@ pub enum Route {
     // users
     GetUser(UserId),
     CreateDm,
+
+    // guilds
+    GetGuildMember(GuildId, UserId),
+    AddGuildMemberRole(GuildId, UserId, RoleId),
+    RemoveGuildMemberRole(GuildId, UserId, RoleId),
+    GetGuildRoles(GuildId),
+    CreateGuildRole(GuildId),
 }
 
 impl Route {
@@ -100,6 +107,12 @@ impl Route {
 
             GetUser(u) => api!("/users/{}", u),
             CreateDm => api!("/users/@me/channels"),
+
+            GetGuildMember(g, u) => api!("/guilds/{}/members/{}", g, u),
+            AddGuildMemberRole(g, u, r) => api!("/guild/{}/members/{}/roles/{}", g, u, r),
+            RemoveGuildMemberRole(g, u, r) => api!("/guild/{}/members/{}/roles/{}", g, u, r),
+            GetGuildRoles(g) => api!("/guilds/{}/roles", g),
+            CreateGuildRole(g) => api!("/guilds/{}/roles", g),
         }
     }
 
@@ -136,6 +149,14 @@ impl Route {
             cache.guild(guild).await
                 .and_then(|g| g.name)
                 .unwrap_or_else(|| guild.to_string())
+        };
+        let role = |guild: GuildId, role: RoleId| async move {
+            cache.guild(guild).await
+                .and_then(|mut g| g.roles
+                    // cache.whatever() clones it, so we're free to yoink the role
+                    .remove(role)
+                    .map(|r| r.name))
+                .unwrap_or_else(|| role.to_string())
         };
 
         #[allow(clippy::useless_format)]
@@ -207,6 +228,17 @@ impl Route {
             ),
             &GetUser(u) => format!("GetUser({})", user(u).await),
             CreateDm => format!("CreateDm"),
+            &GetGuildMember(g, u) => format!("GetGuildMember({}, {})", g, u),
+            &AddGuildMemberRole(g, u, r) => format!(
+                "AddGuildMemberRole({}, {}, {})",
+                guild(g).await, user(u).await, role(g, r).await
+            ),
+            &RemoveGuildMemberRole(g, u, r) => format!(
+                "RemoveGuildMemberRole({}, {}, {})",
+                guild(g).await, user(u).await, role(g, r).await
+            ),
+            &GetGuildRoles(g) => format!("GetGuildRoles({})", guild(g).await),
+            &CreateGuildRole(g) => format!("CreateGuildRole({})", guild(g).await),
         }
     }
 }

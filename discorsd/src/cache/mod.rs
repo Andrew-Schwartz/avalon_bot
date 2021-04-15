@@ -36,6 +36,7 @@ pub struct Cache {
     pub(crate) stores: RwLock<IdMap<StoreChannel>>,
 
     pub(crate) messages: RwLock<IdMap<Message>>,
+    pub(crate) interaction_responses: RwLock<HashMap<InteractionId, Message>>,
 
     pub(crate) commands: RwLock<IdMap<ApplicationCommand>>,
 }
@@ -56,7 +57,7 @@ impl Cache {
         self.users.read().await.get(id).cloned()
     }
 
-    pub async fn member<U, G>(&self, user: U, guild: G) -> Option<GuildMember>
+    pub async fn member<U, G>(&self, guild: G, user: U) -> Option<GuildMember>
         where
             U: Id<Id=UserId> + Send,
             G: Id<Id=GuildId> + Send,
@@ -111,11 +112,30 @@ impl Cache {
     pub async fn command<C: Id<Id=CommandId> + Send>(&self, id: C) -> Option<ApplicationCommand> {
         self.commands.read().await.get(id).cloned()
     }
+
+    pub async fn interaction_response<I: Id<Id=InteractionId> + Send>(&self, id: I) -> Option<Message> {
+        self.interaction_responses.read().await.get(&id.id()).cloned()
+    }
 }
 
 impl Cache {
     pub async fn debug(&self) -> DebugCache<'_> {
-        let Self { user, application, users, unavailable_guilds, guilds, members, channel_types, dms, channels, categories, news, stores, messages, commands } = self;
+        let Self {
+            user,
+            application,
+            users,
+            unavailable_guilds,
+            guilds,
+            members,
+            channel_types,
+            dms, channels,
+            categories,
+            news,
+            stores,
+            messages,
+            interaction_responses,
+            commands
+        } = self;
         #[allow(clippy::eval_order_dependence)]
         DebugCache {
             user: user.read().await,
@@ -131,6 +151,7 @@ impl Cache {
             news: news.read().await,
             stores: stores.read().await,
             messages: messages.read().await,
+            interaction_responses: interaction_responses.read().await,
             commands: commands.read().await,
         }
     }
@@ -151,6 +172,7 @@ pub struct DebugCache<'a> {
     news: RwLockReadGuard<'a, IdMap<NewsChannel>>,
     stores: RwLockReadGuard<'a, IdMap<StoreChannel>>,
     messages: RwLockReadGuard<'a, IdMap<Message>>,
+    interaction_responses: RwLockReadGuard<'a, HashMap<InteractionId, Message>>,
     commands: RwLockReadGuard<'a, IdMap<ApplicationCommand>>,
 }
 

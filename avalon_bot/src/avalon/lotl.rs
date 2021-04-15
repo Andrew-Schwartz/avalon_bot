@@ -21,6 +21,10 @@ impl SlashCommandData for LotlCommand {
         "Learn a player's true alignment".into()
     }
 
+    fn usable_by_everyone(&self) -> bool {
+        false
+    }
+
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
@@ -78,7 +82,7 @@ impl SlashCommandData for LotlCommand {
                         game.lotl = Some(target_idx);
                         game.prev_ladies.push(self.0);
                         game.round += 1;
-                        AvalonGame::next_leader(&mut game.leader, game.players.len());
+                        AvalonGame::advance_leader(&mut game.leader, game.players.len());
                         game.start_round(&*state, guild, &mut commands).await?;
                         interaction.delete(&state).await
                     }

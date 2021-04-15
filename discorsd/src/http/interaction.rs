@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use serde::Serialize;
 
-use crate::commands::{ApplicationCommandPermissions, GuildApplicationCommandPermission, PartialGuildApplicationCommandPermission};
+use crate::commands::{CommandPermissions, GuildApplicationCommandPermission, PartialGuildApplicationCommandPermission};
 use crate::http::{ClientResult, DiscordClient};
 use crate::http::channel::{embed, MessageAttachment, RichEmbed};
 use crate::http::routes::Route::*;
@@ -314,7 +314,7 @@ impl DiscordClient {
         application: ApplicationId,
         guild: GuildId,
         command: CommandId,
-        permissions: Vec<ApplicationCommandPermissions>,
+        permissions: Vec<CommandPermissions>,
     ) -> ClientResult<()> {
         self.put_unit(
             EditApplicationCommandPermissions(application, guild, command),

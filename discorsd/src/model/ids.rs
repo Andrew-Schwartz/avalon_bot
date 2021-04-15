@@ -114,6 +114,25 @@ pub trait Id: PartialEq {
 
     fn id(&self) -> Self::Id;
 }
+
+/// impl `PartialEq` for a type that has an id
+///
+/// ```rust
+/// # struct MessageId;
+/// struct Message {
+///     id: MessageId,
+/// #   /*
+///     ...
+/// #   */
+/// }
+/// # trait Id {}
+/// impl Id for Message {
+/// #   /*
+///     implementation omitted
+/// #   */
+/// }
+/// id_eq!(Message);
+/// ```
 macro_rules! id_eq {
     ($id:ty) => {
         impl PartialEq for $id {

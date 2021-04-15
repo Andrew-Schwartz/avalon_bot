@@ -29,6 +29,10 @@ impl SlashCommandData for QuestCommand {
         "Choose who will go on the quest! Only the current leader can use this.".into()
     }
 
+    fn usable_by_everyone(&self) -> bool {
+        false
+    }
+
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
@@ -163,7 +167,7 @@ enum QuestUserError {
 #[derive(CommandData, Debug)]
 #[command(command = "QuestCommand")]
 pub struct QuestData(
-    #[command(vararg = "player", va_count = "num_players", ordinals)]
+    #[command(vararg = "player", va_count = "num_players", va_ordinals)]
     Vec<UserId>
 );
 

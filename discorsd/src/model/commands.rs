@@ -74,15 +74,18 @@ pub struct InteractionUse<Usability: self::Usability> {
     /// the channel it was sent from
     pub channel: ChannelId,
     pub source: InteractionSource,
-    // /// the guild it was sent from
-    // pub guild: Option<GuildId>,
-    // /// guild member data for the invoking user
-    // pub member: Option<GuildMember>,
-    // /// user object for the invoking user, if invoked in a DM
-    // pub user: Option<User>,
     /// a continuation token for responding to the interaction
     pub token: String,
     _priv: PhantomData<Usability>,
+}
+
+// todo is PartialEq implied?
+impl<Use: Usability + PartialEq> Id for InteractionUse<Use> {
+    type Id = InteractionId;
+
+    fn id(&self) -> Self::Id {
+        self.id
+    }
 }
 
 impl<U: Usability> InteractionUse<U> {
@@ -518,6 +521,11 @@ pub trait CommandData<Command: SlashCommand>: Sized {
     fn make_choices(command: &Command) -> Vec<CommandChoice<&'static str>> {
         Vec::new()
     }
+    // todo fn that returns Option<usize> for # of varargs (ex hashmap is None, [T;N] is N)
+    //  maybe some other return type to differentiate between not-vararg and unknown #
+    //  that means the `from_options` for the vararg types would have to be prepared before sending
+    //  it into that function to have the right number (N or the runtime chosen value)
+    //  update: that fn isn't ever called for varargs! should fix that and add this
 }
 
 // let `()` be used for commands with no options
@@ -584,7 +592,9 @@ impl<T, C> CommandData<C> for Vec<T>
 {
     type Options = Vec<ValueOption>;
 
+    // todo lol this is never even called!
     fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
+        println!("options = {:?}", options);
         options.into_iter().map(T::from_options).collect()
     }
 

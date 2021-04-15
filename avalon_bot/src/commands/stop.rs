@@ -1,10 +1,11 @@
 use std::borrow::Cow;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use discorsd::{BotState, http::ClientResult};
 use discorsd::commands::*;
 use discorsd::errors::BotError;
-use discorsd::http::channel::{ChannelExt, embed};
+use discorsd::http::channel::embed;
 use discorsd::model::ids::*;
 use discorsd::model::message::Color;
 use discorsd::shard::dispatch::{ReactionType, ReactionUpdate};
@@ -25,7 +26,7 @@ impl StopCommand {
 impl SlashCommandData for StopCommand {
     type Bot = Bot;
     type Data = ();
-    type Use = Deferred;
+    type Use = Used;
     const NAME: &'static str = "stop";
 
     fn description(&self) -> Cow<'static, str> {
@@ -38,15 +39,25 @@ impl SlashCommandData for StopCommand {
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,
-                 _: (),
+                 _data: (),
     ) -> Result<InteractionUse<Self::Use>, BotError> {
         let guild = interaction.guild().unwrap();
-        let deferred = interaction.defer(&state).await?;
-        let message = deferred.channel.send(&state, format!(
+        let message = format!(
             "React {} to confirm stopping the game or {} to cancel this.\
                 \nNote: 2 other players must confirm for the game to be stopped.",
             Self::CONFIRM, Self::CANCEL
-        )).await?;
+        );
+        let interaction = interaction.respond(&state, message).await?;
+        let start = Instant::now();
+        // todo this works pretty lit (and fast), make a dedicated fn to do this somewhere
+        let message = loop {
+            tokio::time::delay_for(Duration::from_millis(5)).await;
+            if let Some(message) = state.cache.interaction_response(&interaction).await {
+                println!("DONE: {:?}", start.elapsed());
+                break message
+            }
+            println!("start.elapsed() = {:?}", start.elapsed());
+        };
         let id = message.id;
         let s = Arc::clone(&state);
         tokio::spawn(async move {
@@ -62,7 +73,7 @@ impl SlashCommandData for StopCommand {
                 .map(AvalonPlayer::id)
                 .collect();
             let mut reaction_commands = state.reaction_commands.write().await;
-            let vote = StopVoteCommand(id, guild, players, deferred.user().id, self.0);
+            let vote = StopVoteCommand(id, guild, players, interaction.user().id, self.0);
             reaction_commands.push(Box::new(vote));
         }
         {
@@ -72,11 +83,11 @@ impl SlashCommandData for StopCommand {
             state.client.delete_guild_command(
                 state.application_id().await,
                 guild,
-                deferred.command,
+                interaction.command,
             ).await?;
-            commands.remove(&deferred.command);
+            commands.remove(&interaction.command);
         }
-        Ok(deferred)
+        Ok(interaction)
     }
 }
 
@@ -118,9 +129,9 @@ impl ReactionCommand<Bot> for StopVoteCommand {
             let guard = state.commands.read().await;
             let commands = guard.get(&self.1).unwrap()
                 .write().await;
-            state.client.delete_message(reaction.channel_id, self.0).await?;
+            // state.client.delete_message(reaction.channel_id, self.0).await?;
             avalon.game_over(&state, self.1, commands, embed(|e| {
-                e.title("Manually restarted");
+                e.title("Manually ended");
                 e.color(Color::GOLD);
             })).await?;
         } else if *cancels >= 2 {

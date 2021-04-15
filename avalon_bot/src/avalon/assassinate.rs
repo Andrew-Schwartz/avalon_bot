@@ -18,6 +18,10 @@ impl SlashCommandData for Assassinate {
         "Assassinate who you think is Merlin".into()
     }
 
+    fn usable_by_everyone(&self) -> bool {
+        false
+    }
+
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,

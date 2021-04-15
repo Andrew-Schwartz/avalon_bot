@@ -9,7 +9,7 @@ use log::info;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::{Cache, IdMap, Update};
-use crate::commands::{ApplicationCommandPermissions, MessageInteraction};
+use crate::commands::{CommandPermissions, MessageInteraction};
 use crate::model::channel::{Channel, ChannelType};
 use crate::model::emoji::{CustomEmoji, Emoji};
 use crate::model::guild::{ExplicitFilterLevel, Guild, GuildFeature, GuildMember, GuildMemberUserless, Integration, MfaLevel, NotificationLevel, PremiumTier, SystemChannelFlags, UnavailableGuild, VerificationLevel};
@@ -912,6 +912,9 @@ impl Update for MessageCreate {
         }
         cache.users.write().await.insert(self.message.author.clone());
         cache.messages.write().await.insert(self.message.clone());
+        if let Some(interaction) = self.message.interaction.clone() {
+            cache.interaction_responses.write().await.insert(interaction.id, self.message.clone());
+        }
     }
 }
 
@@ -1479,7 +1482,7 @@ pub struct ApplicationCommandPermissionsUpdate {
     guild_id: GuildId,
     id: CommandId,
     // todo it could also be GuildPermissions :)
-    permissions: Vec<ApplicationCommandPermissions>,
+    permissions: Vec<CommandPermissions>,
 }
 
 #[async_trait]

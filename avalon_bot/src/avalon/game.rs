@@ -1,9 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
+use tokio::sync::RwLockWriteGuard;
+
 use discorsd::{BotState, UserMarkupExt};
 use discorsd::commands::*;
 use discorsd::http::channel::{ChannelExt, create_message, embed};
 use discorsd::http::ClientResult;
+use discorsd::http::guild::CommandPermsExt;
 use discorsd::model::ids::*;
 use discorsd::model::message::{ChannelMessageId, Color};
 
@@ -22,13 +25,13 @@ use super::{
     rounds::{Round, Rounds},
     vote::{PartyVote, QuestVote},
 };
-use tokio::sync::RwLockWriteGuard;
 
 #[derive(Debug, Clone)]
 pub struct AvalonGame {
     pub state: AvalonState,
     pub channel: ChannelId,
     pub players: Vec<AvalonPlayer>,
+    // pub roles: AvalonRoles,
     pub rounds: Rounds,
     pub board: Board,
     pub lotl: Option<usize>,
@@ -65,7 +68,8 @@ impl AvalonGame {
         }
     }
 
-    pub fn next_leader(leader: &mut usize, num_players: usize) {
+    // has to be an associated fn because of &mut rules
+    pub fn advance_leader(leader: &mut usize, num_players: usize) {
         *leader += 1;
         *leader %= num_players;
     }
@@ -138,8 +142,8 @@ impl Avalon {
                         );
                     });
                 })).await?;
-                let assassinate = Assassinate(assassin.id());
-                create_command(&*state, guild, &mut commands, assassinate).await?;
+                let mut assassinate = create_command(&*state, guild, &mut commands, Assassinate(assassin.id())).await?;
+                assassinate.allow_users(&state, guild, &[assassin.id()]).await?;
 
                 AvalonState::Assassinate
             } else {
@@ -167,13 +171,13 @@ impl Avalon {
                     );
                 });
             })).await?;
-            let lotl = LotlCommand(lotl.id());
-            create_command(&*state, guild, &mut commands, lotl).await?;
+            let mut lotl_id = create_command(&*state, guild, &mut commands, LotlCommand(lotl.id())).await?;
+            lotl_id.allow_users(&state, guild, &[lotl.id()]).await?;
 
             AvalonState::Lotl
         } else {
             game.round += 1;
-            AvalonGame::next_leader(&mut game.leader, game.players.len());
+            AvalonGame::advance_leader(&mut game.leader, game.players.len());
             game.start_round(state, guild, &mut commands).await?;
             AvalonState::RoundStart
         };
@@ -194,8 +198,8 @@ impl AvalonGame {
             &*state, guild, commands,
             |c| c.is::<VoteStatus>(),
         ).await?;
-        let quest = QuestCommand(round.players);
-        create_command(&*state, guild, commands, quest).await?;
+        let mut quest_id = create_command(&*state, guild, commands, QuestCommand(round.players)).await?;
+        quest_id.allow_users(&state, guild, &[self.leader().id()]).await?;
 
         self.channel.send(&state.client, create_message(|m| {
             m.content(self.leader().ping_nick());
@@ -231,3 +235,81 @@ pub enum AvalonState {
     Assassinate,
     Lotl,
 }
+
+// #[derive(Debug, Clone, Copy)]
+// pub struct AvalonRoles {
+//     pub leader: RoleId,
+//     pub lotl: RoleId,
+//     pub assassin: RoleId,
+// }
+//
+// impl AvalonRoles {
+//     pub async fn in_guild(client: &DiscordClient, guild: GuildId) -> ClientResult<Self> {
+//         macro_rules! make_self {
+//             ($client:ident, $guild:ident => $($field:tt, $name:expr);+ $(;)?) => {
+//                 {
+//                     let mut existing_roles = $client.get_guild_roles($guild).await?;
+//                     let this = Self {
+//                         $(
+//                             $field: if let Some(idx) = existing_roles.iter().position(|r| r.name == $name) {
+//                                         existing_roles.swap_remove(idx).id
+//                                     } else {
+//                                         $client.create_guild_role($guild, CreateRole::new($name)).await?.id
+//                                     }
+//                         ),+
+//                     };
+//                     Ok(this)
+//                 }
+//             };
+//         }
+//
+//         make_self!(client, guild =>
+//             leader, "Leader";
+//             lotl, "Lady of the Lake";
+//             assassin, "Assassin";
+//         )
+//     }
+//
+//     async fn new(
+//         client: &DiscordClient,
+//         guild: GuildId,
+//         old: Option<UserId>,
+//         new: UserId,
+//         role: RoleId,
+//     ) -> ClientResult<()> {
+//         if let Some(old) = old {
+//             client.remove_guild_member_role(guild, old, role).await?;
+//         }
+//         client.add_guild_member_role(guild, new, role).await?;
+//         Ok(())
+//     }
+//
+//     pub async fn new_leader(
+//         &self,
+//         client: &DiscordClient,
+//         guild: GuildId,
+//         old: UserId,
+//         new: UserId,
+//     ) -> ClientResult<()> {
+//         Self::new(client, guild, Some(old), new, self.leader).await
+//     }
+//
+//     pub async fn new_lotl(
+//         &self,
+//         client: &DiscordClient,
+//         guild: GuildId,
+//         old: UserId,
+//         new: UserId,
+//     ) -> ClientResult<()> {
+//         Self::new(client, guild, Some(old), new, self.lotl).await
+//     }
+//
+//     pub async fn new_assassin(
+//         &self,
+//         client: &DiscordClient,
+//         guild: GuildId,
+//         new: UserId,
+//     ) -> ClientResult<()> {
+//         Self::new(client, guild, None, new, self.lotl).await
+//     }
+// }

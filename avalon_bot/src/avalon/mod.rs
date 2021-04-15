@@ -77,6 +77,7 @@ impl Avalon {
         let config = std::mem::take(self.config_mut());
         let max_evil = config.max_evil().unwrap();
         let AvalonConfig { mut players, mut roles, lotl, .. } = config;
+
         let num_evil = roles.iter()
             .filter(|c| c.loyalty() == Evil)
             .count();
@@ -85,13 +86,16 @@ impl Avalon {
         let ls = players.len() - max_evil - num_good;
         roles.extend((0..mom).map(|_| MinionOfMordred));
         roles.extend((0..ls).map(|_| LoyalServant));
+
         let mut rng = rand::thread_rng();
         roles.shuffle(&mut rng);
         players.shuffle(&mut rng);
+
         let players = players.into_iter()
             .map(|user| AvalonPlayer { member: user, role: roles.remove(0) })
             .collect_vec();
         let lotl = if lotl { Some(players.len() - 1) } else { None };
+
         *self = Self::Game(AvalonGame::new(channel, players, lotl));
         self.game_mut()
     }

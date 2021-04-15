@@ -41,7 +41,8 @@ impl SlashCommandData for InfoCommand {
                     | Permissions::MANAGE_MESSAGES
                     | Permissions::ATTACH_FILES
                     | Permissions::READ_MESSAGE_HISTORY
-                    | Permissions::USE_EXTERNAL_EMOJIS;
+                    | Permissions::USE_EXTERNAL_EMOJIS
+                    | Permissions::MANAGE_ROLES;
                 let url = format!(
                     "https://discord.com/oauth2/authorize?scope=applications.commands%20bot&client_id={}&permissions={}",
                     user.id, perms.bits()

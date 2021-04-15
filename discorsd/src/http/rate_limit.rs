@@ -76,6 +76,11 @@ pub enum BucketKey {
     BatchEditApplicationCommandPermissions,
     GetUser,
     CreateDm,
+    GetGuildMember(GuildId),
+    AddGuildMemberRole(GuildId),
+    RemoveGuildMemberRole(GuildId),
+    GetGuildRoles(GuildId),
+    CreateGuildRole(GuildId),
 }
 
 impl From<&Route> for BucketKey {
@@ -117,6 +122,11 @@ impl From<&Route> for BucketKey {
             Route::BatchEditApplicationCommandPermissions(_, _) => Self::BatchEditApplicationCommandPermissions,
             Route::GetUser(_) => Self::GetUser,
             Route::CreateDm => Self::CreateDm,
+            Route::GetGuildMember(g, _) => Self::GetGuildMember(*g),
+            Route::AddGuildMemberRole(g, _, _) => Self::AddGuildMemberRole(*g),
+            Route::RemoveGuildMemberRole(g, _, _) => Self::RemoveGuildMemberRole(*g),
+            Route::GetGuildRoles(g) => Self::GetGuildRoles(*g),
+            Route::CreateGuildRole(g) => Self::CreateGuildRole(*g),
         }
     }
 }
