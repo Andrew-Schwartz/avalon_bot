@@ -6,7 +6,7 @@ use quote::{quote, quote_spanned};
 use syn::{Attribute, DataEnum, Fields, Ident, LitStr, Type};
 use syn::spanned::Spanned;
 
-use crate::struct_data::Struct;
+use crate::struct_data::{Field, Struct};
 use crate::utils::command_data_impl;
 
 pub fn enum_impl(ty: &Ident, data: DataEnum, attrs: &[Attribute]) -> TokenStream2 {
@@ -124,45 +124,60 @@ impl Enum {
     }
 
     fn args_maker_impl(&self, ty: &Ident) -> TokenStream2 {
+        fn is_inline(variant: &Variant) -> Option<bool> {
+            match &variant.fields {
+                Fields::Named(_) => Some(true),
+                Fields::Unnamed(fields) => {
+                    match fields.unnamed.len() {
+                        0 => None,
+                        1 => {
+                            let field = fields.unnamed.first().unwrap();
+                            let field = Field::from((0, field.clone()));
+                            if field.vararg.is_some() {
+                                Some(true)
+                            } else {
+                                Some(false)
+                            }
+                        },
+                        _ => Some(true),
+                    }
+                }
+                Fields::Unit => None,
+            }
+        }
         let differ_err = |variant: &Variant| abort!(
             variant.fields,
             "All variants must be same type (tuple/struct), but this one isn't",
         );
 
+        // None        - No variants
+        // Some(true)  - All (some) variants are inline structs, ie `Variant { name: type },`
+        //               This enum is a list of subcommand
+        // Some(false) - All are one field tuples, ie `Variant(Type)`
+        //               This enum is a list of command groups OR subcommands, depending on how
+        //               `Type` implements `CommandData`
         let mut inline_data = None::<bool>;
         for variant in &self.variants {
             if let Some(inline_data) = inline_data {
                 // make sure each variant is same type
-                match &variant.fields {
-                    Fields::Named(_) => {
+                match is_inline(variant) {
+                    Some(true) => {
                         if !inline_data {
                             differ_err(variant);
                         }
                     }
-                    Fields::Unnamed(f) => {
-                        if f.unnamed.len() == 1 {
-                            if inline_data {
-                                differ_err(variant);
-                            }
-                        } else if !inline_data {
+                    Some(false) => {
+                        if inline_data {
                             differ_err(variant);
                         }
                     }
                     // just skip unit structs
-                    Fields::Unit => {}
+                    None => {}
                 }
             } else {
                 // first variant, set `inline_data`
-                match &variant.fields {
-                    Fields::Named(_) => inline_data = Some(true),
-                    Fields::Unnamed(f) => {
-                        if f.unnamed.len() == 1 {
-                            inline_data = Some(false)
-                        } else {
-                            inline_data = Some(true)
-                        }
-                    }
-                    Fields::Unit => {}
+                if let Some(is_inline) = is_inline(variant) {
+                    inline_data = Some(is_inline);
                 }
             }
         }

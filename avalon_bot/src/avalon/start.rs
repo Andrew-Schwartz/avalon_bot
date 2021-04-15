@@ -66,6 +66,7 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Defe
                 let image = player.role.image();
                 e.image(image);
             })).await?;
+            // todo message this user to let them know their pins are full
             if let Err(e) = message.pin(&state).await {
                 warn!("Failed to pin character: {}", e.display_error(&state).await);
             }

@@ -165,6 +165,13 @@ pub trait ChannelExt: Id<Id=ChannelId> {
     {
         client.as_ref().create_message(self.id(), message.into()).await
     }
+
+    async fn get_pinned_messages<Client>(&self, client: Client) -> ClientResult<Vec<Message>>
+        where Client: AsRef<DiscordClient> + Sync + Send,
+    {
+        let client = client.as_ref();
+        client.get_pinned_messages(self.id()).await
+    }
 }
 
 impl<C: Id<Id=ChannelId>> ChannelExt for C {}

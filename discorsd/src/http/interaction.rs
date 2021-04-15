@@ -187,7 +187,7 @@ impl DiscordClient {
         // todo here (or elsewhere ig) validate InteractionResponse!!!
         //  thats so good because then it can just ? instead of asserting!
         //  todo do that ^ everywhere? maybe not since then it gets more separated from why/where
-        //  although it kinda already is iirc
+        //   although it kinda already is iirc
         self.post_unit(
             CreateInteractionResponse(interaction, token.into()),
             &response,

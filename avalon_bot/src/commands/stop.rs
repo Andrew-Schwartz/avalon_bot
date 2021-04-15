@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use discorsd::{BotState, http::ClientResult};
 use discorsd::commands::*;
@@ -48,16 +48,11 @@ impl SlashCommandData for StopCommand {
             Self::CONFIRM, Self::CANCEL
         );
         let interaction = interaction.respond(&state, message).await?;
-        let start = Instant::now();
-        // todo this works pretty lit (and fast), make a dedicated fn to do this somewhere
-        let message = loop {
-            tokio::time::delay_for(Duration::from_millis(5)).await;
-            if let Some(message) = state.cache.interaction_response(&interaction).await {
-                println!("DONE: {:?}", start.elapsed());
-                break message
-            }
-            println!("start.elapsed() = {:?}", start.elapsed());
-        };
+        let message = interaction.get_message(
+            &state.cache,
+            Duration::from_millis(5),
+            Duration::from_secs(2),
+        ).await.unwrap();
         let id = message.id;
         let s = Arc::clone(&state);
         tokio::spawn(async move {

@@ -7,7 +7,7 @@ use crate::BotState;
 use crate::commands::{DmSource, GuildSource, SlashCommand};
 use crate::http::{ClientError, DisplayClientError};
 use crate::model::ids::*;
-use crate::model::interaction::{ApplicationCommandOptionType, InteractionSource, OptionValue};
+use crate::model::interaction::{InteractionSource, OptionValue};
 
 #[derive(Error, Debug)]
 pub enum BotError {
@@ -184,7 +184,22 @@ pub enum CommandParseError {
 #[derive(Debug)]
 pub struct OptionType {
     pub value: OptionValue,
-    pub desired: ApplicationCommandOptionType,
+    pub desired: CommandOptionTypeParsed,
+}
+
+/// like [ApplicationCommandOptionType](ApplicationCommandOptionType), but more specifically for
+/// single option types and with more options (that have been further parsed, such as unsigned ints)
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+pub enum CommandOptionTypeParsed {
+    String,
+    I64,
+    U64,
+    Usize,
+    Boolean,
+    UserId,
+    ChannelId,
+    RoleId,
+    MessageId,
 }
 
 impl From<OptionType> for CommandParseError {
@@ -194,7 +209,7 @@ impl From<OptionType> for CommandParseError {
 }
 
 impl OptionValue {
-    pub const fn parse_error(self, desired_type: ApplicationCommandOptionType) -> OptionType {
+    pub const fn parse_error(self, desired_type: CommandOptionTypeParsed) -> OptionType {
         OptionType { value: self, desired: desired_type }
     }
 }

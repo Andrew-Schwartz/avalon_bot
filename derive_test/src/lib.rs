@@ -1,15 +1,7 @@
 #[cfg(test)]
 #[allow(dead_code)]
 mod tests {
-    use std::borrow::Cow;
-    use std::sync::Arc;
-
     use command_data_derive::*;
-    use discorsd::async_trait;
-    use discorsd::BotState;
-    use discorsd::commands::*;
-    use discorsd::errors::BotError;
-    use discorsd::model::ids::{ChannelId, RoleId, UserId};
 
     struct TestBot;
 
@@ -17,25 +9,30 @@ mod tests {
         ($data:ty) => {
             #[derive(Debug, Clone)]
             struct Perms;
-            #[async_trait]
-            impl SlashCommandData for Perms {
+            #[discorsd::async_trait]
+            impl discorsd::commands::SlashCommandData for Perms {
                 type Bot = TestBot;
                 type Data = $data;
-                type Use = Used;
+                type Use = discorsd::commands::Used;
                 const NAME: &'static str = "permissions";
 
-                fn description(&self) -> Cow<'static, str> {
+                fn description(&self) -> std::borrow::Cow<'static, str> {
                     "Get or edit permissions for a user or a role".into()
                 }
 
-                async fn run(&self, _: Arc<BotState<TestBot>>, _: InteractionUse<Unused>, _: Self::Data) -> Result<InteractionUse<Used>, BotError> {
+                async fn run(
+                    &self,
+                    _: std::sync::Arc<discorsd::BotState<TestBot>>,
+                    _: discorsd::commands::InteractionUse<discorsd::commands::Unused>,
+                    _: Self::Data
+                ) -> Result<discorsd::commands::InteractionUse<discorsd::commands::Used>, discorsd::errors::BotError> {
                     unimplemented!()
                 }
             }
         };
     }
 
-    fn assert_same_json_value(correct: &str, modeled: impl SlashCommand) {
+    fn assert_same_json_value(correct: &str, modeled: impl discorsd::commands::SlashCommand) {
         use serde_json::Value;
 
         let correct: Value = serde_json::from_str(correct).unwrap();
@@ -56,7 +53,7 @@ mod tests {
     fn part1() {
         make_slash_command!(());
         assert_same_json_value(CORRECT1, Perms);
-        let command = <()>::make_args(&Perms);
+        let command = <() as discorsd::commands::CommandData<Perms>>::make_args(&Perms);
         println!("command = {:?}", command);
     }
 
@@ -299,16 +296,16 @@ mod tests {
             #[command(desc = "Get permissions for a user")]
             Get {
                 #[command(desc = "The user to get")]
-                user: UserId,
+                user: discorsd::model::ids::UserId,
                 #[command(desc = "The channel permissions to get. If omitted, the guild permissions will be returned")]
-                channel: Option<ChannelId>,
+                channel: Option<discorsd::model::ids::ChannelId>,
             },
             #[command(desc = "Edit permissions for a user")]
             Edit {
                 #[command(desc = "The user to edit")]
-                user: UserId,
+                user: discorsd::model::ids::UserId,
                 #[command(desc = "The channel permissions to edit. If omitted, the guild permissions will be edited")]
-                channel: Option<ChannelId>,
+                channel: Option<discorsd::model::ids::ChannelId>,
             },
         }
         #[derive(CommandData)]
@@ -321,18 +318,18 @@ mod tests {
         #[derive(CommandData)]
         struct GetRole {
             #[command(desc = "The role to get", required)]
-            pub role: RoleId,
+            pub role: discorsd::model::ids::RoleId,
             #[command(desc = "The channel permissions to get. If omitted, the guild permissions will be returned")]
-            pub channel: Option<ChannelId>,
+            pub channel: Option<discorsd::model::ids::ChannelId>,
         }
         #[derive(CommandData)]
         struct EditRole {
             #[command(desc = "The role to edit", required)]
-            pub role: RoleId,
+            pub role: discorsd::model::ids::RoleId,
             #[command(desc = "The channel permissions to edit. If omitted, the guild permissions will be edited")]
-            pub channel: Option<ChannelId>,
+            pub channel: Option<discorsd::model::ids::ChannelId>,
         }
-        let command = Data::make_args(&Perms);
+        let command = <Data as discorsd::commands::CommandData<Perms>>::make_args(&Perms);
         println!("command = {:#?}", command);
     }
 }

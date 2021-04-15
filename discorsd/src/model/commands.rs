@@ -6,17 +6,20 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::warn;
+use tokio::time::{Duration, Instant};
 
 use crate::{BotState, utils};
+use crate::cache::Cache;
 use crate::commands::{Interaction, SlashCommand};
 use crate::errors::*;
 use crate::http::{ClientResult, DiscordClient};
 use crate::http::interaction::WebhookMessage;
 use crate::model::{ids::*, interaction::*};
 use crate::model::guild::GuildMember;
+use crate::model::message::Message;
 use crate::model::user::User;
 
-pub trait Usability {}
+pub trait Usability: PartialEq {}
 
 pub trait NotUnused: Usability {}
 
@@ -79,8 +82,7 @@ pub struct InteractionUse<Usability: self::Usability> {
     _priv: PhantomData<Usability>,
 }
 
-// todo is PartialEq implied?
-impl<Use: Usability + PartialEq> Id for InteractionUse<Use> {
+impl<Use: Usability> Id for InteractionUse<Use> {
     type Id = InteractionId;
 
     fn id(&self) -> Self::Id {
@@ -233,6 +235,29 @@ impl InteractionUse<Deferred> {
     }
 }
 
+impl<U: NotUnused + Sync> InteractionUse<U> {
+    pub async fn get_message(
+        &self,
+        cache: &Cache,
+        period: Duration,
+        timeout: Duration,
+    ) -> Option<Message> {
+        let start = Instant::now();
+        let mut interval = tokio::time::interval(period);
+        loop {
+            let now = interval.tick().await;
+            if let Some(message) = cache.interaction_response(self).await {
+                println!("DONE: {:?}", now - start);
+                break Some(message);
+            }
+            log::info!("MISSED ONE = {:?}", now - start);
+            if now - start > timeout {
+                break None;
+            }
+        }
+    }
+}
+
 #[allow(clippy::use_self)]
 impl From<InteractionUse<Unused>> for InteractionUse<Used> {
     fn from(InteractionUse { id, command, command_name, channel, source, token, _priv }: InteractionUse<Unused>) -> Self {
@@ -284,7 +309,6 @@ macro_rules! option_primitives {
         )+
     };
 }
-
 option_primitives!(
     String,    string,  String,  &'static str;
     i64,       int,     Integer, Self;
@@ -293,6 +317,74 @@ option_primitives!(
     ChannelId, channel, Channel, Self;
     RoleId,    role,    Role,    Self;
 );
+
+macro_rules! option_integers {
+    ($($ty:ty, $parsed_type:ident);+ $(;)?) => {
+        $(
+            impl<C: SlashCommand> CommandData<C> for $ty {
+                type Options = ValueOption;
+
+                fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
+                    use std::convert::TryInto;
+                    options.lower.int()
+                        .and_then(|i64| i64.try_into().map_err(|_| OptionType {
+                            value: OptionValue::Integer(i64),
+                            desired: CommandOptionTypeParsed::$parsed_type,
+                        }))
+                        .map_err(|e| e.into())
+                }
+
+                type VecArg = DataOption;
+
+                fn make_args(_: &C) -> Vec<Self::VecArg> {
+                    unreachable!()
+                }
+            }
+
+            impl OptionCtor for $ty {
+                type Data = i64;
+
+                fn option_ctor(cdo: CommandDataOption<Self::Data>) -> DataOption {
+                    DataOption::Integer(cdo)
+                }
+            }
+        )+
+    };
+}
+option_integers!(
+    usize, Usize;
+    u64, U64;
+);
+
+// todo maybe make a general macro to parse any Id type from a string
+// impl parsing stuff for MessageId by parsing a String option
+impl<C: SlashCommand> CommandData<C> for MessageId {
+    type Options = ValueOption;
+
+    fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
+        options.lower.string()
+            // todo better error?
+            .and_then(|s| s.parse().map_err(|_| OptionType {
+                value: OptionValue::String(s),
+                desired: CommandOptionTypeParsed::MessageId,
+            }))
+            .map_err(|e| e.into())
+    }
+
+    type VecArg = DataOption;
+
+    fn make_args(_: &C) -> Vec<Self::VecArg> {
+        unreachable!()
+    }
+}
+
+impl OptionCtor for MessageId {
+    type Data = &'static str;
+
+    fn option_ctor(cdo: CommandDataOption<Self::Data>) -> DataOption {
+        DataOption::String(cdo)
+    }
+}
 
 pub trait OptionCtor {
     type Data;

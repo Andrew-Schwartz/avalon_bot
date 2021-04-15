@@ -76,6 +76,7 @@ impl SlashCommandData for QuestCommand {
                                 let msg = ChannelMessageId::from(msg);
 
                                 // build the vote command as we go so we don't miss any reactions
+                                // (doesn't work perfectly but it helps)
                                 {
                                     let mut idx_guard = command_idx.lock().await;
                                     let mut rxn_commands = state.reaction_commands.write().await;
@@ -109,14 +110,17 @@ impl SlashCommandData for QuestCommand {
                             votes.insert(msg, 0);
                         }
 
+                        // todo
+                        // tokio::spawn(async move {
+                        //     let duration = Duration::from_secs(5);
+                        //     let mut interval = tokio::time::interval_at(Instant::now() + duration, duration);
+                        //     while true {
+                        //         interval.tick().await
+                        //     }
+                        // })
+
                         let guard = state.commands.read().await;
                         let mut commands = guard.get(&guild).unwrap().write().await;
-                        // let party_vote = PartyVote {
-                        //     guild,
-                        //     messages: votes.keys().copied().collect(),
-                        // };
-                        // state.reaction_commands.write().await
-                        //     .push(Box::new(party_vote));
                         create_command(&*state, guild, &mut commands, VoteStatus).await?;
                         delete_command(
                             &*state, guild, &mut commands,

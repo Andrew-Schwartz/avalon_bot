@@ -41,6 +41,7 @@ impl SlashCommandData for AddMeCommand {
     }
 }
 
+// fixme: doesn't work if just `player` is given
 #[derive(CommandData)]
 pub struct AddMeData {
     #[command(default, desc = "The game to add you to, or Avalon if not specified")]

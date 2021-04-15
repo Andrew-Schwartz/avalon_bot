@@ -8,7 +8,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::ser::SerializeSeq;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-use crate::errors::OptionType;
+use crate::errors::{CommandOptionTypeParsed, OptionType};
 use crate::http::channel::{embed, RichEmbed};
 use crate::model::guild::GuildMember;
 use crate::model::ids::*;
@@ -925,7 +925,7 @@ impl OptionValue {
         if let Self::String(s) = self {
             Ok(s)
         } else {
-            Err(self.parse_error(ApplicationCommandOptionType::String))
+            Err(self.parse_error(CommandOptionTypeParsed::String))
         }
     }
 
@@ -933,7 +933,7 @@ impl OptionValue {
         if let Self::Integer(i) = self {
             Ok(i)
         } else {
-            Err(self.parse_error(ApplicationCommandOptionType::Integer))
+            Err(self.parse_error(CommandOptionTypeParsed::I64))
         }
     }
 
@@ -941,23 +941,23 @@ impl OptionValue {
         if let Self::Bool(b) = self {
             Ok(b)
         } else {
-            Err(self.parse_error(ApplicationCommandOptionType::Boolean))
+            Err(self.parse_error(CommandOptionTypeParsed::Boolean))
         }
     }
 
     pub fn user(self) -> Result<UserId, OptionType> {
-        self.id(ApplicationCommandOptionType::User)
+        self.id(CommandOptionTypeParsed::UserId)
     }
 
     pub fn channel(self) -> Result<ChannelId, OptionType> {
-        self.id(ApplicationCommandOptionType::Channel)
+        self.id(CommandOptionTypeParsed::ChannelId)
     }
 
     pub fn role(self) -> Result<RoleId, OptionType> {
-        self.id(ApplicationCommandOptionType::Role)
+        self.id(CommandOptionTypeParsed::RoleId)
     }
 
-    fn id<I: FromStr>(self, desired: ApplicationCommandOptionType) -> Result<I, OptionType> {
+    fn id<I: FromStr>(self, desired: CommandOptionTypeParsed) -> Result<I, OptionType> {
         #[allow(clippy::map_err_ignore)]
         match self.string() {
             Ok(s) => s.parse().map_err(|_| OptionType { value: Self::String(s), desired }),

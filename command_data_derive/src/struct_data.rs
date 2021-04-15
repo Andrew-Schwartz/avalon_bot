@@ -113,7 +113,7 @@ pub struct Vararg {
 }
 
 impl Vararg {
-    const fn is_some(&self) -> bool {
+    pub const fn is_some(&self) -> bool {
         self.root.is_some()
     }
 }
@@ -226,7 +226,7 @@ impl From<syn::Field> for Field {
         let attrs = field.attrs;
         let mut field = Self {
             name: FieldIdent::Named(NamedField {
-                ident: field.ident.expect("named fields"),
+                ident: field.ident.expect("expected named fields"),
                 rename: None,
             }),
             default: None,

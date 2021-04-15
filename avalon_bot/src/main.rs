@@ -40,8 +40,8 @@ use discorsd::{BotExt, BotState, GuildCommands, IdMap, shard};
 use discorsd::async_trait;
 use discorsd::commands::{ReactionCommand, SlashCommand};
 use discorsd::errors::BotError;
+use discorsd::http::{ClientError, ClientResult};
 use discorsd::http::channel::{ChannelExt, create_message, CreateMessage, embed};
-use discorsd::http::ClientResult;
 use discorsd::http::guild::CommandPermsExt;
 use discorsd::model::channel::Channel;
 use discorsd::model::guild::{Guild, Integration};
@@ -54,8 +54,14 @@ use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, Updat
 use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
 pub use crate::commands::{addme::AddMeCommand};
+use crate::commands::info::InfoCommand;
 use crate::commands::ll::LowLevelCommand;
+use crate::commands::ping::PingCommand;
+use crate::commands::rules::RulesCommand;
 use crate::commands::start::StartCommand;
+use crate::commands::system_info::SysInfoCommand;
+use crate::commands::unpin::UnpinCommand;
+use crate::commands::uptime::UptimeCommand;
 use crate::games::GameType;
 use crate::hangman::Hangman;
 use crate::hangman::hangman_command::HangmanCommand;
@@ -174,7 +180,9 @@ impl discorsd::Bot for Bot {
     }
 
     fn global_commands() -> &'static [&'static dyn SlashCommand<Bot=Self>] {
-        &commands::GLOBAL_COMMANDS
+        &[
+            // &InfoCommand, &PingCommand, &UptimeCommand, &SysInfoCommand, &RulesCommand, &UnpinCommand
+        ]
     }
 
     async fn ready(&self, state: Arc<BotState<Self>>) -> Result<()> {
@@ -209,8 +217,6 @@ impl discorsd::Bot for Bot {
 
         {
             // deletes any commands Discord has saved from the last time this bot was run
-            // todo make this smarter to speed it up, don't delete ones that will get replaced/deleted
-            //  in reset_guild_commands anyway
             self.clear_old_commands(guild.id, &state).await.unwrap();
 
             let mut commands = state.commands.write().await;
@@ -220,6 +226,8 @@ impl discorsd::Bot for Bot {
 
             if guild.id == self.config.guild {
                 let mut commands = commands.entry(guild.id).or_default().write().await;
+
+                create_command(&state, guild.id, &mut commands, UnpinCommand).await?;
 
                 let mut command = create_command(&state, guild.id, &mut commands, LowLevelCommand).await?;
                 command.allow_users(&state, guild.id, &[self.config.owner]).await?;
@@ -416,6 +424,8 @@ impl Bot {
         Ok(())
     }
 
+    // fixme: the 200 create per day is annoying, so need to fix the creation/deletion to just edit
+    //  the perms instead to prevent anyone from using it
     async fn reset_guild_commands(
         &self,
         guild: GuildId,
@@ -442,9 +452,16 @@ impl Bot {
         }
         let new = Self::create_guild_commands(&state, guild, self.starting_commands()).await;
         commands.extend(new);
-        let start_id = create_command(
-            state, guild, &mut commands, StartCommand(set!(GameType::Hangman)),
-        ).await.unwrap();
+        let result = create_command(
+            state, guild, &mut commands, StartCommand(HashSet::new()),
+            // state, guild, &mut commands, StartCommand(set!(GameType::Hangman)),
+        ).await;
+        let start_id = match result {
+            Ok(start_id) => start_id,
+            Err(e) => {
+                panic!("{}", e.display_error(&state).await);
+            }
+        };
         // todo when `Entry.insert` is stabilized just use that
         match state.bot.start.write().await.entry(guild) {
             Entry::Occupied(mut o) => { o.insert(start_id); },
