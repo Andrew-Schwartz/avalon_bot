@@ -13,7 +13,7 @@ use discorsd::model::message::{ChannelMessageId, Color};
 use crate::avalon::board::Board;
 use crate::avalon::vote::VoteStatus;
 use crate::Bot;
-use crate::commands::stop::{StopCommand, StopVoteCommand};
+use crate::commands::stop::StopVoteCommand;
 
 use super::{
     assassinate::AssassinateCommand,

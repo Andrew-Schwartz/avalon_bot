@@ -41,6 +41,21 @@ impl StartCommand {
     }
 }
 
+#[derive(CommandData)]
+#[command(command = "StartCommand")]
+pub struct StartData {
+    #[command(desc = "Choose the game to start", required = "req", retain = "retain")]
+    game: Option<GameType>,
+}
+
+fn req(command: &StartCommand) -> bool {
+    command.games.len() > 1
+}
+
+fn retain(command: &StartCommand, choice: &CommandChoice<&'static str>) -> bool {
+    command.games.iter().any(|game| game == choice.value)
+}
+
 #[async_trait]
 impl SlashCommand for StartCommand {
     type Bot = Bot;
@@ -64,18 +79,16 @@ impl SlashCommand for StartCommand {
                  interaction: InteractionUse<Unused>,
                  data: StartData,
     ) -> Result<InteractionUse<Self::Use>, BotError> {
-        let game = data.game;
         let deferred = interaction.defer(&state).await?;
         let guild = deferred.guild().unwrap();
 
-        let game = game.unwrap_or_else(|| *self.games.iter().exactly_one().unwrap());
+        let game = data.game.unwrap_or_else(|| *self.games.iter().exactly_one().unwrap());
         {
             let commands = state.commands.read().await;
             let mut commands = commands.get(&guild).unwrap()
                 .write().await;
             let (stop_id, stop_cmd) = state.get_command_mut::<StopCommand>(guild, &mut commands).await;
-            stop_cmd.game = game;
-            stop_cmd.default_permissions = true;
+            stop_cmd.insert(game);
             stop_cmd.edit_command(&state, guild, stop_id).await?;
         }
 
@@ -87,19 +100,4 @@ impl SlashCommand for StartCommand {
 
         Ok(deferred)
     }
-}
-
-#[derive(CommandData)]
-#[command(command = "StartCommand")]
-pub struct StartData {
-    #[command(desc = "Choose the game to start", required = "req", retain = "retain")]
-    game: Option<GameType>,
-}
-
-fn req(command: &StartCommand) -> bool {
-    command.games.len() > 1
-}
-
-fn retain(command: &StartCommand, choice: &CommandChoice<&'static str>) -> bool {
-    command.games.iter().any(|game| game == choice.value)
 }

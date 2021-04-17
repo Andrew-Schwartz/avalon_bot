@@ -250,7 +250,7 @@ impl ReactionCommand<Bot> for QuestVote {
 
                 if votes.iter().filter(|(_, v)| **v == 0).count() == 0 {
                     let fails = votes.iter().filter(|(_, v)| **v == -1).count();
-                    let questers = votes.keys().map(|(_, u)| u).list_grammatically(UserId::ping_nick);
+                    let questers = votes.keys().map(|(_, u)| u).list_grammatically(UserId::ping_nick, "and");
 
                     if fails >= round.fails {
                         game.good_won.push(false);
@@ -334,7 +334,7 @@ impl SlashCommand for VoteStatus {
                     .filter(|(_, vote)| **vote == 0)
                     .collect_vec();
                 let list = not_voted.iter()
-                    .list_grammatically(|((_, user), _)| user.ping_nick());
+                    .list_grammatically(|((_, user), _)| user.ping_nick(), "and");
                 interaction.respond(&state.client, match not_voted.len() {
                     0 => "no one".to_string(),
                     1 => format!("{} has not voted", list),

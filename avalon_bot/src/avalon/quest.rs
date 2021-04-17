@@ -58,14 +58,14 @@ impl SlashCommand for QuestCommand {
                         &state.client,
                         embed(|e| {
                             e.title(format!("{} has proposed a party to go on this quest", leader.member.nick_or_name()));
-                            e.description(party.iter().list_grammatically(UserId::ping_nick));
+                            e.description(party.iter().list_grammatically(UserId::ping_nick, "and"));
                         }),
                     ).await;
 
                     // I think this we should only move on if this works?
                     if let Ok(interaction) = &result {
                         let guild = interaction.guild().unwrap();
-                        let list_party = party.iter().list_grammatically(UserId::ping_nick);
+                        let list_party = party.iter().list_grammatically(UserId::ping_nick, "and");
                         let list_party = Arc::new(list_party);
                         let mut handles = Vec::new();
                         let command_idx: Arc<Mutex<Option<usize>>> = Arc::new(Mutex::new(None));
