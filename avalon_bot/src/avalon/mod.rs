@@ -158,7 +158,7 @@ impl Avalon {
         &mut self,
         state: &BotState<Bot>,
         guild: GuildId,
-        commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
+        mut commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
         embed: RichEmbed,
     ) -> ClientResult<()> {
         let game = self.game_ref();
@@ -189,7 +189,7 @@ impl Avalon {
         *self = Self::default();
 
         let rcs = state.reaction_commands.write().await;
-        state.bot.reset_guild_command_perms(state, guild, commands, rcs).await?;
+        Bot::reset_guild_command_perms(state, guild, &mut commands, rcs).await?;
         Ok(())
     }
 }

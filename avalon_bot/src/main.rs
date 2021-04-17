@@ -217,37 +217,7 @@ impl discorsd::Bot for Bot {
         info!("Guild Create: {} ({})", guild.name.as_ref().unwrap(), guild.id);
         self.avalon_games.write().await.entry(guild.id).or_default();
 
-        {
-            // deletes any commands Discord has saved from the last time this bot was run
-            Self::initialize_guild_commands(guild.id, &state).await.unwrap();
-
-            let commands = state.commands.read().await;
-            let guild_commands = commands.get(&guild.id).unwrap().write().await;
-            let rcs = state.reaction_commands.write().await;
-
-            self.reset_guild_command_perms(&state, guild.id, guild_commands, rcs).await?;
-
-            if guild.id == self.config.guild {
-                let mut commands = commands.get(&guild.id).unwrap().write().await;
-
-                let command = state.client.create_guild_command(
-                    state.application_id().await,
-                    guild.id,
-                    LowLevelCommand.command(),
-                ).await?;
-                commands.insert(command.id, Box::new(LowLevelCommand));
-                // todo bring this back when its safe
-                // let mut command = create_command(&state, guild.id, &mut commands, LowLevelCommand).await?;
-                command.id.allow_users(&state, guild.id, &[self.config.owner]).await?;
-
-                let unpin_command = state.global_command_id::<UnpinCommand>().await;
-                let disallow = guild.roles.iter()
-                    .filter(|r| !unpin_perms(r))
-                    .map(Role::id);
-                unpin_command.disallow_roles(&state, guild.id, disallow).await?;
-                unpin_command.allow_users(&state, guild.id, &[guild.owner_id]).await?;
-            }
-        }
+        self.initialize_guild_commands(&guild, &state).await?;
 
         self.config.channel.send(&state, format!(
             "🎉 Joined new guild **{}** (`{}`) 🎉",
@@ -338,19 +308,13 @@ impl discorsd::Bot for Bot {
         Ok(())
     }
 
-    async fn integration_update(&self, guild: GuildId, integration: Integration, state: Arc<BotState<Self>>) -> Result<()> {
+    async fn integration_update(&self, guild_id: GuildId, integration: Integration, state: Arc<BotState<Self>>) -> Result<()> {
         info!("Guild Integration Update: {:?}", integration);
 
-        {
-            Self::initialize_guild_commands(guild, &state).await?;
+        let guild = state.cache.guild(guild_id).await.unwrap();
+        self.initialize_guild_commands(&guild, &state).await?;
 
-            let commands = state.commands.read().await;
-            let commands = commands.get(&guild).unwrap().write().await;
-            let rcs = state.reaction_commands.write().await;
-            self.reset_guild_command_perms(&state, guild, commands, rcs).await?;
-        }
-
-        let channels = state.cache.guild_channels(guild, Channel::text).await;
+        let channels = state.cache.guild_channels(guild_id, Channel::text).await;
         let channel = channels.iter().find(|c| c.name == "general")
             .unwrap_or_else(|| channels.iter().next().unwrap());
         channel.send(&state, "Slash Commands are now enabled!").await?;
@@ -386,67 +350,81 @@ impl Bot {
     /// the last time the bot was started
     // todo move to BotExt or smth
     async fn initialize_guild_commands(
-        guild: GuildId,
+        &self,
+        guild: &Guild,
         state: &BotState<Self>,
     ) -> ClientResult<()> {
         // this should be only place that writes to first level of `commands`
-        let mut commands = state.commands.write().await;
-        if let Entry::Vacant(vacant) = commands.entry(guild) {
-            let app = state.application_id().await;
-            let guild_commands = Self::guild_commands();
-            let commands: GuildCommands<_> = state.client.bulk_overwrite_guild_commands(
-                app, guild,
-                guild_commands.iter().map(|c| c.command()).collect(),
-            ).await
-                .unwrap()
-                .into_iter()
-                .map(|c| c.id)
-                .zip(guild_commands)
-                .collect();
-            let command_names = commands.iter()
-                .map(|(&id, command)| (command.name(), id))
-                .collect();
-
-            vacant.insert(RwLock::new(commands));
-            *state.command_names.write().await
-                .entry(guild)
-                .or_default() = RwLock::new(command_names);
+        let first_time = match state.commands.write().await.entry(guild.id) {
+            Entry::Vacant(vacant) => {
+                vacant.insert(Default::default());
+                true
+            }
+            Entry::Occupied(_) => false,
         };
+        if first_time {
+            let commands = state.commands.read().await;
+            let mut commands = commands.get(&guild.id).unwrap().write().await;
+            let rcs = state.reaction_commands.write().await;
+
+            Self::reset_guild_command_perms(
+                &state, guild.id, &mut commands, rcs,
+            ).await?;
+
+            // set up perms for `/unpin`
+            let unpin_command = state.global_command_id::<UnpinCommand>().await;
+            let disallow = guild.roles.iter()
+                .filter(|r| !unpin_perms(r))
+                .map(Role::id);
+            unpin_command.disallow_roles(&state, guild.id, disallow).await?;
+            unpin_command.allow_users(&state, guild.id, &[guild.owner_id]).await?;
+
+            if guild.id == self.config.guild {
+                // `/ll` only in testing server
+                let command = state.client.create_guild_command(
+                    state.application_id().await,
+                    guild.id,
+                    LowLevelCommand.command(),
+                ).await?;
+                commands.insert(command.id, Box::new(LowLevelCommand));
+                command.id.allow_users(&state, guild.id, &[self.config.owner]).await?;
+            }
+        }
         Ok(())
     }
 
     async fn reset_guild_command_perms(
-        &self,
         state: &BotState<Self>,
         guild: GuildId,
-        commands: RwLockWriteGuard<'_, GuildCommands<Self>>,
+        commands: &mut RwLockWriteGuard<'_, GuildCommands<Self>>,
         mut reaction_commands: RwLockWriteGuard<'_, Vec<Box<dyn ReactionCommand<Self>>>>,
     ) -> ClientResult<()> {
         reaction_commands.retain(|rc| !AvalonGame::is_reaction_command(rc.as_ref(), guild));
         drop(reaction_commands);
-        // let everyone = state.cache.everyone_role(guild).await;
-        // let perms = commands.iter()
-        //     .map(|(&id, c)| GuildCommandPermissions {
-        //         id,
-        //         permissions: vec![CommandPermissions {
-        //             id: everyone.id.into(),
-        //             permission: c.command().default_permission,
-        //         }],
-        //     }).collect();
+
+        let app = state.application_id().await;
+        let guild_commands = Self::guild_commands();
+        let guild_commands: GuildCommands<_> = state.client.bulk_overwrite_guild_commands(
+            app, guild,
+            guild_commands.iter().map(|c| c.command()).collect(),
+        ).await
+            .unwrap()
+            .into_iter()
+            .map(|c| c.id)
+            .zip(guild_commands)
+            .collect();
+        let command_names = guild_commands.iter()
+            .map(|(&id, command)| (command.name(), id))
+            .collect();
+
+        **commands = guild_commands;
+
+        *state.command_names.write().await
+            .entry(guild)
+            .or_default() = RwLock::new(command_names);
+
+        // clear any left over perms
         guild.batch_edit_permissions(state, vec![]).await?;
-        let perms = state.client.get_guild_application_command_permissions(
-            state.application_id().await,
-            guild,
-        ).await?;
-        for perm in perms {
-            if let Some(command) = state.global_commands.get().unwrap().get(&perm.id) {
-                println!("{} {:?}", command.name(), perm);
-            } else if let Some(command) = commands.get(&perm.id) {
-                println!("{} => {:?}", command.name(), perm.permissions);
-            } else {
-                println!("{:?}", perm);
-            }
-        }
         Ok(())
     }
 

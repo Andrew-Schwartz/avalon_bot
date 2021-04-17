@@ -132,7 +132,7 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Defe
     })).await?;
 
     let commands = state.commands.read().await;
-    let commands = commands.get(&guild).unwrap().read().await;
+    let commands = commands.get(&guild).unwrap().write().await;
 
     let disabled_commands = commands.iter()
         .map(|(_, c)| c)

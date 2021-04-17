@@ -97,15 +97,6 @@ impl AvalonGame {
             .map(|image| ("board.jpg", image))
     }
 
-    // todo was used in reset_commands, is it necessary anymore?
-    pub fn is_command(command: &dyn SlashCommandRaw<Bot=Bot>) -> bool {
-        command.is::<AssassinateCommand>() ||
-            command.is::<LotlCommand>() ||
-            command.is::<QuestCommand>() ||
-            command.is::<StopCommand>() ||
-            command.is::<VoteStatus>()
-    }
-
     pub fn is_reaction_command(command: &dyn ReactionCommand<Bot>, guild: GuildId) -> bool {
         matches!(command.downcast_ref::<StopVoteCommand>(), Some(svc) if svc.1 == guild) ||
             matches!(command.downcast_ref::<PartyVote>(), Some(pv) if pv.guild == guild) ||
