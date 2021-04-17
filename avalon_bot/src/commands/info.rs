@@ -14,7 +14,7 @@ use crate::Bot;
 pub struct InfoCommand;
 
 #[async_trait]
-impl SlashCommandData for InfoCommand {
+impl SlashCommand for InfoCommand {
     type Bot = Bot;
     type Data = ();
     type Use = Used;

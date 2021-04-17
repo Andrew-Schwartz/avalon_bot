@@ -5,13 +5,13 @@ use std::mem;
 use itertools::Itertools;
 use tokio::sync::RwLockWriteGuard;
 
-use discorsd::{GuildCommands, http, IdMap, UserMarkupExt};
+use discorsd::{BotState, GuildCommands, http, IdMap, UserMarkupExt};
+use discorsd::commands::*;
 use discorsd::http::channel::{ChannelExt, embed, RichEmbed};
 use discorsd::http::ClientResult;
 use discorsd::model::ids::{ChannelId, GuildId, UserId};
 use discorsd::model::message::Message;
 
-use crate::avalon::{BotState, InteractionUse, Unused, Used};
 use crate::Bot;
 use crate::hangman::random_words::{GuildHist, Wordnik};
 
@@ -19,6 +19,12 @@ pub mod start;
 pub mod hangman_command;
 pub mod random_words;
 mod guess;
+
+pub fn commands() -> Vec<Box<dyn SlashCommandRaw<Bot=Bot>>> {
+    vec![
+        Box::new(hangman_command::HangmanCommand),
+    ]
+}
 
 #[derive(Debug)]
 pub enum RandomWord {
@@ -126,7 +132,7 @@ impl Hangman {
         *self = Self::default();
 
         let rcs = state.reaction_commands.write().await;
-        state.bot.reset_guild_commands(guild, state, commands, rcs).await;
+        state.bot.reset_guild_command_perms(state, guild, commands, rcs).await?;
         Ok(())
     }
 }

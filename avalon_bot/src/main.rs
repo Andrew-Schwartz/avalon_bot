@@ -22,8 +22,8 @@
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
 use std::fmt::{self, Debug};
-use std::hint::unreachable_unchecked;
 use std::io::Write;
+use std::prelude::v1::Result::Ok;
 use std::sync::Arc;
 
 use chrono::{DateTime, Local, Utc};
@@ -34,37 +34,32 @@ use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use avalon::lotl::ToggleLady;
-use avalon::roles::RolesCommand;
-use discorsd::{BotExt, BotState, GuildCommands, IdMap, shard};
+use discorsd::{Bot as _, BotExt, BotState, GuildCommands, IdMap, shard};
 use discorsd::async_trait;
-use discorsd::commands::{ReactionCommand, SlashCommand};
+use discorsd::commands::*;
 use discorsd::errors::BotError;
-use discorsd::http::{ClientError, ClientResult};
 use discorsd::http::channel::{ChannelExt, create_message, CreateMessage, embed};
-use discorsd::http::guild::CommandPermsExt;
+use discorsd::http::ClientResult;
+use discorsd::http::guild::{CommandPermsExt, GuildCommandPermsExt};
 use discorsd::model::channel::Channel;
 use discorsd::model::guild::{Guild, Integration};
 use discorsd::model::ids::*;
 use discorsd::model::interaction::Interaction;
 use discorsd::model::message::Message;
+use discorsd::model::permissions::{Permissions, Role};
 use discorsd::shard::dispatch::ReactionUpdate;
 use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, UpdateStatus};
 
 use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
-pub use crate::commands::{addme::AddMeCommand};
 use crate::commands::info::InfoCommand;
 use crate::commands::ll::LowLevelCommand;
 use crate::commands::ping::PingCommand;
 use crate::commands::rules::RulesCommand;
-use crate::commands::start::StartCommand;
 use crate::commands::system_info::SysInfoCommand;
 use crate::commands::unpin::UnpinCommand;
 use crate::commands::uptime::UptimeCommand;
-use crate::games::GameType;
 use crate::hangman::Hangman;
-use crate::hangman::hangman_command::HangmanCommand;
 use crate::hangman::random_words::GuildHist;
 
 #[macro_use]
@@ -99,7 +94,7 @@ pub struct Bot {
     hangman_games: RwLock<HashMap<GuildId, Hangman>>,
     guild_hist_words: RwLock<IdMap<GuildHist>>,
     user_games: RwLock<HashMap<UserId, HashSet<GuildId>>>,
-    start: RwLock<HashMap<GuildId, CommandId>>,
+    // start: RwLock<HashMap<GuildId, CommandId>>,
     first_log_in: OnceCell<DateTime<Utc>>,
     log_in: RwLock<Option<DateTime<Utc>>>,
 }
@@ -114,7 +109,7 @@ impl Bot {
             hangman_games: Default::default(),
             guild_hist_words: Default::default(),
             user_games: Default::default(),
-            start: Default::default(),
+            // start: Default::default(),
             first_log_in: Default::default(),
             log_in: Default::default(),
         }
@@ -179,10 +174,17 @@ impl discorsd::Bot for Bot {
         })
     }
 
-    fn global_commands() -> &'static [&'static dyn SlashCommand<Bot=Self>] {
+    fn global_commands() -> &'static [&'static dyn SlashCommandRaw<Bot=Self>] {
         &[
-            // &InfoCommand, &PingCommand, &UptimeCommand, &SysInfoCommand, &RulesCommand, &UnpinCommand
+            &InfoCommand, &PingCommand, &UptimeCommand, &SysInfoCommand, &RulesCommand, &UnpinCommand
         ]
+    }
+
+    fn guild_commands() -> Vec<Box<dyn SlashCommandRaw<Bot=Self>>> {
+        let mut vec = commands::commands();
+        vec.extend(avalon::commands());
+        vec.extend(hangman::commands());
+        vec
     }
 
     async fn ready(&self, state: Arc<BotState<Self>>) -> Result<()> {
@@ -217,20 +219,33 @@ impl discorsd::Bot for Bot {
 
         {
             // deletes any commands Discord has saved from the last time this bot was run
-            self.clear_old_commands(guild.id, &state).await.unwrap();
+            Self::initialize_guild_commands(guild.id, &state).await.unwrap();
 
-            let mut commands = state.commands.write().await;
-            let guild_commands = commands.entry(guild.id).or_default().write().await;
+            let commands = state.commands.read().await;
+            let guild_commands = commands.get(&guild.id).unwrap().write().await;
             let rcs = state.reaction_commands.write().await;
-            self.reset_guild_commands(guild.id, &state, guild_commands, rcs).await;
+
+            self.reset_guild_command_perms(&state, guild.id, guild_commands, rcs).await?;
 
             if guild.id == self.config.guild {
-                let mut commands = commands.entry(guild.id).or_default().write().await;
+                let mut commands = commands.get(&guild.id).unwrap().write().await;
 
-                create_command(&state, guild.id, &mut commands, UnpinCommand).await?;
+                let command = state.client.create_guild_command(
+                    state.application_id().await,
+                    guild.id,
+                    LowLevelCommand.command(),
+                ).await?;
+                commands.insert(command.id, Box::new(LowLevelCommand));
+                // todo bring this back when its safe
+                // let mut command = create_command(&state, guild.id, &mut commands, LowLevelCommand).await?;
+                command.id.allow_users(&state, guild.id, &[self.config.owner]).await?;
 
-                let mut command = create_command(&state, guild.id, &mut commands, LowLevelCommand).await?;
-                command.allow_users(&state, guild.id, &[self.config.owner]).await?;
+                let unpin_command = state.global_command_id::<UnpinCommand>().await;
+                let disallow = guild.roles.iter()
+                    .filter(|r| !unpin_perms(r))
+                    .map(Role::id);
+                unpin_command.disallow_roles(&state, guild.id, disallow).await?;
+                unpin_command.allow_users(&state, guild.id, &[guild.owner_id]).await?;
             }
         }
 
@@ -244,23 +259,7 @@ impl discorsd::Bot for Bot {
     }
 
     async fn message_create(&self, message: Message, state: Arc<BotState<Self>>) -> Result<()> {
-        match message.content.as_ref() {
-            "!ping" => {
-                let mut resp = state.client.create_message(message.channel, CreateMessage::build(|m| {
-                    m.embed(|e| {
-                        e.title("Pong");
-                    });
-                })).await?;
-                #[allow(clippy::map_err_ignore)]
-                    let elapsed = Utc::now()
-                    .signed_duration_since(message.timestamp)
-                    .to_std()
-                    .map_err(|_| BotError::Chrono)?;
-                let embed = resp.embeds.remove(0);
-                resp.edit(&state, embed.build(|e| {
-                    e.footer_text(format!("Took {:?} to respond", elapsed));
-                })).await?;
-            }
+        match message.content.as_str() {
             "!timestamp" => {
                 message.channel.send(
                     &state,
@@ -279,7 +278,7 @@ impl discorsd::Bot for Bot {
                             0 => e.add_inline_field("left col", i),
                             1 => e.add_blank_inline_field(),
                             2 => e.field(("right col", format!("i = {}", i), true)),
-                            _ => unsafe { unreachable_unchecked() }
+                            _ => unreachable!(),
                         };
                     }
                 }),
@@ -291,6 +290,25 @@ impl discorsd::Bot for Bot {
             }
             "!cache" => {
                 info!("{:#?}", state.cache.debug().await);
+                message.channel.send(&state, "logged!").await?;
+            }
+            "!commands" => {
+                let commands = state.commands.read().await;
+                for (guild, commands) in commands.iter() {
+                    let commands = commands.read().await;
+                    println!("\nGUILD {}\n------------------------------", guild);
+                    for command in commands.iter() {
+                        println!("command = {:?}", command);
+                    }
+                }
+                println!("\nEXISTING COMMANDS\n------------------------------");
+                let commands = state.client.get_guild_commands(
+                    state.application_id().await,
+                    message.guild_id.unwrap(),
+                ).await?;
+                for command in commands {
+                    println!("command = {:?}", command);
+                }
                 message.channel.send(&state, "logged!").await?;
             }
             _ => {}
@@ -324,10 +342,12 @@ impl discorsd::Bot for Bot {
         info!("Guild Integration Update: {:?}", integration);
 
         {
-            let mut commands = state.commands.write().await;
-            let commands = commands.entry(guild.id()).or_default().write().await;
+            Self::initialize_guild_commands(guild, &state).await?;
+
+            let commands = state.commands.read().await;
+            let commands = commands.get(&guild).unwrap().write().await;
             let rcs = state.reaction_commands.write().await;
-            self.reset_guild_commands(guild.id(), &state, commands, rcs).await;
+            self.reset_guild_command_perms(&state, guild, commands, rcs).await?;
         }
 
         let channels = state.cache.guild_channels(guild, Channel::text).await;
@@ -337,136 +357,97 @@ impl discorsd::Bot for Bot {
         Ok(())
     }
 
+    // todo should just be one method but have an enum for Create/Update/Delete
+    async fn role_create(&self, guild: GuildId, role: Role, state: Arc<BotState<Self>>) -> Result<()> {
+        let unpin_command = state.global_command_id::<UnpinCommand>().await;
+        unpin_command.edit_permissions(state, guild, vec![CommandPermissions {
+            id: role.id.into(),
+            permission: unpin_perms(&role),
+        }]).await?;
+        Ok(())
+    }
+
+    async fn role_update(&self, guild: GuildId, role: Role, state: Arc<BotState<Self>>) -> Result<()> {
+        let unpin_command = state.global_command_id::<UnpinCommand>().await;
+        unpin_command.edit_permissions(state, guild, vec![CommandPermissions {
+            id: role.id.into(),
+            permission: unpin_perms(&role),
+        }]).await?;
+        Ok(())
+    }
+
     async fn error(&self, error: BotError, state: Arc<BotState<Self>>) {
         error!("{}", error.display_error(&state).await);
     }
 }
 
-async fn delete_command<F: Fn(&dyn SlashCommand<Bot=Bot>) -> bool + Send>(
-    state: &BotState<Bot>,
-    guild: GuildId,
-    commands: &mut GuildCommands<Bot>,
-    pred: F,
-) -> ClientResult<()> {
-    let ids = commands.iter()
-        .filter(|(_, c)| pred(c.as_ref()))
-        .map(|(id, _)| *id)
-        .collect_vec();
-    for id in ids {
-        state.client.delete_guild_command(
-            state.application_id().await, guild, id,
-        ).await?;
-        commands.remove(&id);
-    }
-    Ok(())
-}
-
-async fn create_command<C: SlashCommand<Bot=Bot>>(
-    state: &BotState<Bot>,
-    guild: GuildId,
-    commands: &mut GuildCommands<Bot>,
-    command: C,
-) -> ClientResult<CommandId> {
-    let resp = state.client.create_guild_command(
-        state.application_id().await,
-        guild,
-        command.command(),
-    ).await?;
-    commands.insert(resp.id, Box::new(command));
-
-    Ok(resp.id)
-}
-
 impl Bot {
-    fn starting_commands(&self) -> Vec<Box<dyn SlashCommand<Bot=Self>>> {
-        vec![
-            Box::new(RolesCommand(vec![])),
-            Box::new(AddMeCommand),
-            Box::new(ToggleLady),
-            Box::new(HangmanCommand),
-            // todo write the logic for taking this off of here when hangman starts etc (also ^)
-        ]
-    }
-
     /// The first time connecting to a guild, run this to delete any commands Discord has saved from
     /// the last time the bot was started
-    async fn clear_old_commands(
-        &self,
+    // todo move to BotExt or smth
+    async fn initialize_guild_commands(
         guild: GuildId,
         state: &BotState<Self>,
     ) -> ClientResult<()> {
+        // this should be only place that writes to first level of `commands`
         let mut commands = state.commands.write().await;
-        let first_time = !commands.contains_key(&guild);
-        let mut commands = commands.entry(guild)
-            .or_default()
-            .write().await;
-        if first_time {
+        if let Entry::Vacant(vacant) = commands.entry(guild) {
             let app = state.application_id().await;
-            match state.client.get_guild_commands(app, guild).await {
-                Ok(old_commands) => {
-                    let starting_commands = self.starting_commands();
-                    for command in old_commands {
-                        if starting_commands.iter().any(|c| c.name() == command.name) {
-                            continue
-                        }
-                        let delete = state.client
-                            .delete_guild_command(app, guild, command.id)
-                            .await;
-                        if let Err(e) = delete {
-                            error!("{}", e.display_error(state).await);
-                        }
-                        commands.remove(&command.id);
-                    }
-                }
-                Err(e) => error!("{}", e.display_error(state).await)
-            }
-        }
+            let guild_commands = Self::guild_commands();
+            let commands: GuildCommands<_> = state.client.bulk_overwrite_guild_commands(
+                app, guild,
+                guild_commands.iter().map(|c| c.command()).collect(),
+            ).await
+                .unwrap()
+                .into_iter()
+                .map(|c| c.id)
+                .zip(guild_commands)
+                .collect();
+            let command_names = commands.iter()
+                .map(|(&id, command)| (command.name(), id))
+                .collect();
+
+            vacant.insert(RwLock::new(commands));
+            *state.command_names.write().await
+                .entry(guild)
+                .or_default() = RwLock::new(command_names);
+        };
         Ok(())
     }
 
-    // fixme: the 200 create per day is annoying, so need to fix the creation/deletion to just edit
-    //  the perms instead to prevent anyone from using it
-    async fn reset_guild_commands(
+    async fn reset_guild_command_perms(
         &self,
-        guild: GuildId,
         state: &BotState<Self>,
-        mut commands: RwLockWriteGuard<'_, GuildCommands<Self>>,
-        mut reactions: RwLockWriteGuard<'_, Vec<Box<dyn ReactionCommand<Self>>>>,
-    ) {
-        reactions.retain(|rc| !AvalonGame::is_reaction_command(rc.as_ref(), guild));
-        drop(reactions);
-        let application = state.application_id().await;
-        let old_commands = state.client
-            .get_guild_commands(application, guild)
-            .await.unwrap();
-        for command in old_commands {
-            if let Some(slash_command) = commands.get(&command.id) {
-                if AvalonGame::is_command(slash_command.as_ref()) {
-                    let delete = state.client.delete_guild_command(application, guild, command.id).await;
-                    if let Err(e) = delete {
-                        error!("Failed to delete {} ({}) in guild {}, {:?}", command.name, command.id, guild, e);
-                    }
-                    commands.remove(&command.id);
-                }
+        guild: GuildId,
+        commands: RwLockWriteGuard<'_, GuildCommands<Self>>,
+        mut reaction_commands: RwLockWriteGuard<'_, Vec<Box<dyn ReactionCommand<Self>>>>,
+    ) -> ClientResult<()> {
+        reaction_commands.retain(|rc| !AvalonGame::is_reaction_command(rc.as_ref(), guild));
+        drop(reaction_commands);
+        // let everyone = state.cache.everyone_role(guild).await;
+        // let perms = commands.iter()
+        //     .map(|(&id, c)| GuildCommandPermissions {
+        //         id,
+        //         permissions: vec![CommandPermissions {
+        //             id: everyone.id.into(),
+        //             permission: c.command().default_permission,
+        //         }],
+        //     }).collect();
+        guild.batch_edit_permissions(state, vec![]).await?;
+        let perms = state.client.get_guild_application_command_permissions(
+            state.application_id().await,
+            guild,
+        ).await?;
+        for perm in perms {
+            if let Some(command) = state.global_commands.get().unwrap().get(&perm.id) {
+                println!("{} {:?}", command.name(), perm);
+            } else if let Some(command) = commands.get(&perm.id) {
+                println!("{} => {:?}", command.name(), perm.permissions);
+            } else {
+                println!("{:?}", perm);
             }
         }
-        let new = Self::create_guild_commands(&state, guild, self.starting_commands()).await;
-        commands.extend(new);
-        let result = create_command(
-            state, guild, &mut commands, StartCommand(HashSet::new()),
-            // state, guild, &mut commands, StartCommand(set!(GameType::Hangman)),
-        ).await;
-        let start_id = match result {
-            Ok(start_id) => start_id,
-            Err(e) => {
-                panic!("{}", e.display_error(&state).await);
-            }
-        };
-        // todo when `Entry.insert` is stabilized just use that
-        match state.bot.start.write().await.entry(guild) {
-            Entry::Occupied(mut o) => { o.insert(start_id); },
-            Entry::Vacant(v) => { v.insert(start_id); },
-        };
+        Ok(())
     }
 
     pub async fn most_recent_login(&self) -> Option<DateTime<Utc>> {
@@ -478,7 +459,15 @@ impl Bot {
     }
 
     pub async fn debug(&self) -> DebugBot<'_> {
-        let Self { config, hangman_games, guild_hist_words, start, first_log_in: ready, log_in: resume, avalon_games: games, user_games } = self;
+        let Self {
+            config,
+            hangman_games,
+            guild_hist_words,
+            first_log_in: ready,
+            log_in: resume,
+            avalon_games: games,
+            user_games
+        } = self;
         #[allow(clippy::eval_order_dependence)]
         DebugBot {
             config,
@@ -486,7 +475,6 @@ impl Bot {
             hangman_games: hangman_games.read().await,
             guild_hist_words: guild_hist_words.read().await,
             user_games: user_games.read().await,
-            start: start.read().await,
             ready: ready.get(),
             resume: resume.read().await,
         }
@@ -500,7 +488,15 @@ pub struct DebugBot<'a> {
     hangman_games: RwLockReadGuard<'a, HashMap<GuildId, Hangman>>,
     guild_hist_words: RwLockReadGuard<'a, IdMap<GuildHist>>,
     user_games: RwLockReadGuard<'a, HashMap<UserId, HashSet<GuildId>>>,
-    start: RwLockReadGuard<'a, HashMap<GuildId, CommandId>>,
     ready: Option<&'a DateTime<Utc>>,
     resume: RwLockReadGuard<'a, Option<DateTime<Utc>>>,
+}
+
+fn unpin_perms(role: &Role) -> bool {
+    role.permissions.intersects(
+        Permissions::ADMINISTRATOR |
+            Permissions::MANAGE_CHANNELS |
+            Permissions::MANAGE_GUILD |
+            Permissions::MANAGE_MESSAGES
+    )
 }

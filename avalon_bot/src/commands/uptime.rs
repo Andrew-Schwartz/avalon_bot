@@ -17,7 +17,7 @@ use crate::Bot;
 pub struct UptimeCommand;
 
 #[async_trait]
-impl SlashCommandData for UptimeCommand {
+impl SlashCommand for UptimeCommand {
     type Bot = Bot;
     type Data = ();
     type Use = Used;

@@ -5,7 +5,7 @@ use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::ChannelExt;
 
-use crate::{Bot, delete_command};
+use crate::Bot;
 use crate::hangman::guess::GuessCommand;
 use crate::hangman::hangman_command::HangmanCommand;
 
@@ -25,12 +25,8 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Defe
 
     // remove hangman command (start command too?)
     {
-        let guild = guild;
-        let commands = state.commands.read().await;
-        if let Some(commands) = commands.get(&guild) {
-            let mut commands = commands.write().await;
-            delete_command(state, guild, &mut commands, |c| c.is::<HangmanCommand>()).await?;
-        }
+        state.disable_command::<HangmanCommand>(guild).await?;
+        // todo edit start command
     }
 
     // set up reaction commands

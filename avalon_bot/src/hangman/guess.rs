@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use discorsd::async_trait;
+use discorsd::{async_trait, BotState};
 use discorsd::commands::ReactionCommand;
+use discorsd::errors::BotError;
 use discorsd::http::channel::embed;
 use discorsd::model::emoji::Emoji;
 use discorsd::model::ids::{GuildId, MessageId};
 use discorsd::model::message::Color;
 use discorsd::shard::dispatch::{ReactionType, ReactionUpdate};
 
-use crate::avalon::{BotError, BotState};
 use crate::Bot;
 use crate::hangman::{ASCII_ART, HangmanPlayers};
 

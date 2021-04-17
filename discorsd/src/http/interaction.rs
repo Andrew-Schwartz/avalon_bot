@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use serde::Serialize;
 
-use crate::commands::{CommandPermissions, GuildApplicationCommandPermission, PartialGuildApplicationCommandPermission};
+use crate::commands::{CommandPermissions, GuildApplicationCommandPermission, GuildCommandPermissions};
 use crate::http::{ClientResult, DiscordClient};
 use crate::http::channel::{embed, MessageAttachment, RichEmbed};
 use crate::http::routes::Route::*;
@@ -47,6 +47,7 @@ impl DiscordClient {
         &self,
         application: ApplicationId,
         id: CommandId,
+        // todo maybe don't support this it kinda breaks stuff
         new_name: Option<&'a str>,
         new_description: Option<&'a str>,
         new_options: Option<TopLevelOption>,
@@ -76,7 +77,7 @@ impl DiscordClient {
         self.delete(DeleteGlobalCommand(application, id)).await
     }
 
-    /// Takes a vec of application commands, overwriting existing commands that are registered
+    /// Takes a vec of application commands, overwriting ALL existing commands that are registered
     /// globally for this application. Updates will be available in all guilds after 1 hour.
     ///
     /// Commands that do not already exist will count toward daily application command create limits.
@@ -159,7 +160,7 @@ impl DiscordClient {
         self.delete(DeleteGuildCommand(application, guild, id)).await
     }
 
-    /// Takes a vec of application commands, overwriting existing commands for the guild.
+    /// Takes a vec of application commands, overwriting ALL existing commands for the guild.
     ///
     /// # Errors
     ///
@@ -318,7 +319,7 @@ impl DiscordClient {
     ) -> ClientResult<()> {
         self.put_unit(
             EditApplicationCommandPermissions(application, guild, command),
-            PartialGuildApplicationCommandPermission {
+            GuildCommandPermissions {
                 id: command,
                 permissions,
             },
@@ -336,7 +337,7 @@ impl DiscordClient {
         &self,
         application: ApplicationId,
         guild: GuildId,
-        permissions: Vec<PartialGuildApplicationCommandPermission>,
+        permissions: Vec<GuildCommandPermissions>,
     ) -> ClientResult<()> {
         self.put_unit(BatchEditApplicationCommandPermissions(application, guild), permissions).await
     }

@@ -3,18 +3,18 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use command_data_derive::CommandData;
-use discorsd::async_trait;
-use discorsd::commands::{SlashCommandData, Used};
+use discorsd::{async_trait, BotState};
+use discorsd::commands::*;
+use discorsd::errors::BotError;
 use discorsd::model::ids::*;
 
-use crate::avalon::{BotError, BotState, InteractionUse, Unused};
 use crate::Bot;
 
 #[derive(Copy, Clone, Debug)]
 pub struct LowLevelCommand;
 
 #[async_trait]
-impl SlashCommandData for LowLevelCommand {
+impl SlashCommand for LowLevelCommand {
     type Bot = Bot;
     type Data = Data;
     type Use = Used;
@@ -24,7 +24,7 @@ impl SlashCommandData for LowLevelCommand {
         "perform a raw rest request to Discord".into()
     }
 
-    fn usable_by_everyone(&self) -> bool {
+    fn default_permissions(&self) -> bool {
         false
     }
 
@@ -50,29 +50,56 @@ impl SlashCommandData for LowLevelCommand {
 
             vec
         }
+        let this_guild = interaction.guild().expect("ll only exists in testing server");
 
         let mut responses = match data {
             Data::Get(get) => match get {
                 Get::User { user } => {
                     if let Some(user) = state.cache.user(user).await {
                         format(user)
-                    } else if let Some(user) = state.client.get_user(user).await.ok() {
+                    } else if let Ok(user) = state.client.get_user(user).await {
                         format(user)
                     } else {
                         vec![String::from("Unknown user")]
                     }
                 }
                 Get::Message { channel, message_id, just_content } => {
-                    if let Ok(message) = message_id.parse() {
-                        if let Some(message) = state.cache.message(message).await {
-                            if just_content { vec![message.content] } else { format(message) }
-                        } else if let Some(message) = state.client.get_message(channel, message).await.ok() {
-                            if just_content { vec![message.content] } else { format(message) }
-                        } else {
-                            vec![String::from("Unknown message")]
-                        }
+                    if let Some(message) = state.cache.message(message_id).await {
+                        if just_content { vec![message.content] } else { format(message) }
+                    } else if let Ok(message) = state.client.get_message(channel, message_id).await {
+                        if just_content { vec![message.content] } else { format(message) }
                     } else {
-                        vec![String::from("Invalid message id")]
+                        vec![String::from("Unknown message")]
+                    }
+                }
+                Get::Member { user, guild } => {
+                    let guild = guild.unwrap_or(this_guild);
+                    if let Some(member) = state.cache.member(guild, user).await {
+                        format(member)
+                    } else if let Ok(member) = state.cache_guild_member(guild, user).await {
+                        format(member)
+                    } else {
+                        vec![String::from("Unknown guild member")]
+                    }
+                }
+                Get::Roles { guild } => {
+                    let guild = guild.unwrap_or(this_guild);
+                    if let Ok(roles) = state.client.get_guild_roles(guild).await {
+                        format(roles)
+                    } else {
+                        vec![String::from("Unknown guild")]
+                    }
+                }
+                Get::Guild { guild } => {
+                    let guild = guild.unwrap_or(this_guild);
+                    if let Some(guild) = state.cache.guild(guild).await {
+                        format(guild)
+                    }
+                    // else if let Ok() = state.client.get_guild {
+                    //
+                    // }
+                    else {
+                        vec![String::from("Unknown guild")]
                     }
                 }
             },
@@ -99,9 +126,22 @@ pub enum Get {
     User { user: UserId },
     Message {
         channel: ChannelId,
-        message_id: String,
+        message_id: MessageId,
         #[command(default)]
         just_content: bool,
+    },
+    Member {
+        user: UserId,
+        #[command(desc = "The guild to fetch the member for, or this guild if not set.")]
+        guild: Option<GuildId>,
+    },
+    Roles {
+        #[command(desc = "The guild to fetch the roles for, or this guild if not set.")]
+        guild: Option<GuildId>,
+    },
+    Guild {
+        #[command(desc = "The guild to fetch, or this guild if not set.")]
+        guild: Option<GuildId>,
     },
 }
 

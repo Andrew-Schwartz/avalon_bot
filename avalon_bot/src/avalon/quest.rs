@@ -1,25 +1,34 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use itertools::Itertools;
 use tokio::sync::Mutex;
 
-use discorsd::errors::AvalonError;
-use discorsd::http::channel::create_message;
+use command_data_derive::CommandData;
+use discorsd::{async_trait, BotState, UserMarkupExt};
+use discorsd::commands::*;
+use discorsd::errors::{AvalonError, BotError};
+use discorsd::http::channel::{create_message, embed};
+use discorsd::http::ClientResult;
+use discorsd::http::guild::CommandPermsExt;
+use discorsd::http::user::UserExt;
+use discorsd::model::ids::{Id, UserId};
 use discorsd::model::message::ChannelMessageId;
 
-use crate::{create_command, delete_command};
+use crate::avalon::AvalonPlayer;
+use crate::avalon::game::AvalonState;
 use crate::avalon::quest::QuestUserError::{Duplicate, NotPlaying};
 use crate::avalon::vote::{PartyVote, VoteStatus};
+use crate::Bot;
 use crate::utils::IterExt;
-
-use super::*;
 
 #[derive(Clone, Debug)]
 pub struct QuestCommand(pub usize);
 
 #[allow(clippy::use_self)]
 #[async_trait]
-impl SlashCommandData for QuestCommand {
+impl SlashCommand for QuestCommand {
     type Bot = Bot;
     type Data = QuestData;
     type Use = Used;
@@ -29,7 +38,7 @@ impl SlashCommandData for QuestCommand {
         "Choose who will go on the quest! Only the current leader can use this.".into()
     }
 
-    fn usable_by_everyone(&self) -> bool {
+    fn default_permissions(&self) -> bool {
         false
     }
 
@@ -119,13 +128,9 @@ impl SlashCommandData for QuestCommand {
                         //     }
                         // })
 
-                        let guard = state.commands.read().await;
-                        let mut commands = guard.get(&guild).unwrap().write().await;
-                        create_command(&*state, guild, &mut commands, VoteStatus).await?;
-                        delete_command(
-                            &*state, guild, &mut commands,
-                            |c| c.is::<QuestCommand>(),
-                        ).await?;
+                        state.enable_command::<VoteStatus>(guild).await?;
+                        state.command_id::<QuestCommand>(guild).await
+                            .disallow_users(&state, guild, &[leader.id()]).await?;
                         game.state = AvalonState::PartyVote(votes, party);
                     }
                     result

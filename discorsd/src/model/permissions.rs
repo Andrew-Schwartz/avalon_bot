@@ -10,119 +10,119 @@ bitflags! {
 		/// Allows creation of instant invites
 		///
 		/// T, V, S
-		const CREATE_INSTANT_INVITE = 0x000000001;
+		const CREATE_INSTANT_INVITE = 0x0000_0000_0001;
 		/// Allows kicking members
-		const KICK_MEMBERS = 0x000000002;
+		const KICK_MEMBERS = 0x0000_0000_0002;
 		/// Allows banning members
-		const BAN_MEMBERS = 0x000000004;
+		const BAN_MEMBERS = 0x0000_0000_0004;
 		/// Allows all permissions and bypasses channel permission overwrites
-		const ADMINISTRATOR = 0x000000008;
+		const ADMINISTRATOR = 0x0000_0000_0008;
 		/// Allows management and editing of channels
 		///
 		/// T, V, S
-		const MANAGE_CHANNELS = 0x000000010;
+		const MANAGE_CHANNELS = 0x0000_0000_0010;
 		/// Allows management and editing of the guild
-		const MANAGE_GUILD = 0x000000020;
+		const MANAGE_GUILD = 0x0000_0000_0020;
 		/// Allows for the addition of reactions to messages
 		///
 		/// T
-		const ADD_REACTIONS = 0x000000040;
+		const ADD_REACTIONS = 0x0000_0000_0040;
 		/// Allows for viewing of audit logs
-		const VIEW_AUDIT_LOG = 0x000000080;
+		const VIEW_AUDIT_LOG = 0x0000_0000_0080;
 		/// Allows for using priority speaker in a voice channel
 		///
 		/// V
-		const PRIORITY_SPEAKER = 0x000000100;
+		const PRIORITY_SPEAKER = 0x0000_0000_0100;
 		/// Allows the user to go live
 		///
 		/// V
-		const STREAM = 0x000000200;
+		const STREAM = 0x0000_0000_0200;
 		/// Allows guild members to view a channel, which includes reading messages in text channels
 		///
 		/// T, V, S
-		const VIEW_CHANNEL = 0x000000400;
+		const VIEW_CHANNEL = 0x0000_0000_0400;
 		/// Allows for sending messages in a channel
 		///
 		/// T
-		const SEND_MESSAGES = 0x000000800;
+		const SEND_MESSAGES = 0x0000_0000_0800;
 		/// Allows for sending of /tts messages
 		///
 		/// T
-		const SEND_TTS_MESSAGES = 0x000001000;
+		const SEND_TTS_MESSAGES = 0x0000_0000_1000;
 		/// Allows for deletion of other users messages
 		///
 		/// T
-		const MANAGE_MESSAGES = 0x000002000;
+		const MANAGE_MESSAGES = 0x0000_0000_2000;
 		/// Links sent by users with this permission will be auto-embedded
 		///
 		/// T
-		const EMBED_LINKS = 0x000004000;
+		const EMBED_LINKS = 0x0000_0000_4000;
 		/// Allows for uploading images and files
 		///
 		/// T
-		const ATTACH_FILES = 0x000008000;
+		const ATTACH_FILES = 0x0000_0000_8000;
 		/// Allows for reading of message history
 		///
 		/// T
-		const READ_MESSAGE_HISTORY = 0x000010000;
+		const READ_MESSAGE_HISTORY = 0x0000_0001_0000;
 		/// Allows for using the @everyone tag to notify all users in a channel, and the `@here` tag
 		/// to notify all online users in a channel
 		///
 		/// T
-		const MENTION_EVERYONE = 0x000020000;
+		const MENTION_EVERYONE = 0x0000_0002_0000;
 		/// Allows the usage of custom emojis from other servers
 		///
 		/// T
-		const USE_EXTERNAL_EMOJIS = 0x000040000;
+		const USE_EXTERNAL_EMOJIS = 0x0000_0004_0000;
 		/// Allows for viewing guild insights
-		const VIEW_GUILD_INSIGHTS = 0x000080000;
+		const VIEW_GUILD_INSIGHTS = 0x0000_0008_0000;
 		/// Allows for joining of a voice channel
 		///
 		/// V, S
-		const CONNECT = 0x000100000;
+		const CONNECT = 0x0000_0010_0000;
 		/// Allows for speaking in a voice channel
 		///
 		/// V
-		const SPEAK = 0x000200000;
+		const SPEAK = 0x0000_0020_0000;
 		/// Allows for muting members in a voice channel
 		///
 		/// V, S
-		const MUTE_MEMBERS = 0x000400000;
+		const MUTE_MEMBERS = 0x0000_0040_0000;
 		/// Allows for deafening of members in a voice channel
 		///
 		/// V, S
-		const DEAFEN_MEMBERS = 0x000800000;
+		const DEAFEN_MEMBERS = 0x0000_0080_0000;
 		/// Allows for moving of members between voice channels
 		///
 		/// V, S
-		const MOVE_MEMBERS = 0x001000000;
+		const MOVE_MEMBERS = 0x0000_0100_0000;
 		/// Allows for using voice-activity-detection in a voice channel
 		///
 		/// V, S
-		const USE_VAD = 0x002000000;
+		const USE_VAD = 0x0000_0200_0000;
 		/// Allows for modification of own nickname
-		const CHANGE_NICKNAME = 0x004000000;
+		const CHANGE_NICKNAME = 0x0000_0400_0000;
 		/// Allows for modification of other users nicknames
-		const MANAGE_NICKNAMES = 0x008000000;
+		const MANAGE_NICKNAMES = 0x0000_0800_0000;
 		/// Allows management and editing of roles
 		///
 		/// T, V, S
-		const MANAGE_ROLES = 0x010000000;
+		const MANAGE_ROLES = 0x0000_1000_0000;
 		/// Allows management and editing of webhooks
 		///
 		/// T
-		const MANAGE_WEBHOOKS = 0x020000000;
+		const MANAGE_WEBHOOKS = 0x0000_2000_0000;
 		/// Allows management and editing of emojis
-		const MANAGE_EMOJIS = 0x040000000;
+		const MANAGE_EMOJIS = 0x0000_4000_0000;
 		/// Allows members to use slash commands in text channels
 		///
 		/// T
-		const USE_SLASH_COMMANDS = 0x080000000;
+		const USE_SLASH_COMMANDS = 0x0000_8000_0000;
 		/// Allows for requesting to speak in stage channels. (This permission is under active
 		/// development and may be changed or removed.)
 		///
 		/// S
-		const REQUEST_TO_SPEAK = 0x100000000;
+		const REQUEST_TO_SPEAK = 0x0001_0000_0000;
     }
 }
 

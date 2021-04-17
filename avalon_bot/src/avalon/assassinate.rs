@@ -1,14 +1,23 @@
 use std::borrow::Cow;
+use std::sync::Arc;
 
+use command_data_derive::CommandData;
+use discorsd::{async_trait, BotState, UserMarkupExt};
+use discorsd::commands::*;
+use discorsd::errors::BotError;
+use discorsd::http::channel::embed;
+use discorsd::model::ids::UserId;
 use discorsd::model::message::Color;
 
-use super::*;
+use crate::avalon::characters::Character::Merlin;
+use crate::avalon::characters::Loyalty::Evil;
+use crate::Bot;
 
 #[derive(Clone, Debug)]
-pub struct Assassinate(pub UserId);
+pub struct AssassinateCommand(pub UserId);
 
 #[async_trait]
-impl SlashCommandData for Assassinate {
+impl SlashCommand for AssassinateCommand {
     type Bot = Bot;
     type Data = AssassinateData;
     type Use = Used;
@@ -18,7 +27,7 @@ impl SlashCommandData for Assassinate {
         "Assassinate who you think is Merlin".into()
     }
 
-    fn usable_by_everyone(&self) -> bool {
+    fn default_permissions(&self) -> bool {
         false
     }
 
@@ -80,7 +89,7 @@ impl SlashCommandData for Assassinate {
     }
 }
 
-#[derive(CommandData)]
+#[derive(CommandData, Debug)]
 pub struct AssassinateData {
     #[command(desc = "Your guess of who is Merlin")]
     target: UserId,

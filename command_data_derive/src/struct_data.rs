@@ -328,6 +328,7 @@ impl Struct {
                 let mut options = options;
                 let mut options = options.drain(0..).peekable();
                 let mut idx = 0;
+
                 while let Some(option) = options.next() {
                     // this first ^ option is always a single option or the first of a vararg
                     let matches_vararg = VARARGS[idx];
@@ -349,6 +350,7 @@ impl Struct {
                                 break
                             }
                         }
+                        #[allow(clippy::used_underscore_binding)]
                         #varargs_match
                     } else {
                         // todo move this in to fields_match too

@@ -12,6 +12,8 @@
     clippy::must_use_candidate,
     clippy::option_if_let_else,
     clippy::manual_non_exhaustive,
+    // pedantic
+    clippy::map_unwrap_or,
     // todo
     clippy::missing_errors_doc,
     clippy::missing_panics_doc,

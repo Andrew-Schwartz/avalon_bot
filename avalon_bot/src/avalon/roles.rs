@@ -1,19 +1,23 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use itertools::Itertools;
 use strum::{EnumCount, IntoEnumIterator};
 
+use command_data_derive::CommandData;
+use discorsd::{async_trait, BotState};
+use discorsd::commands::*;
+use discorsd::errors::BotError;
+
 use crate::avalon::characters::Character;
 use crate::Bot;
-
-use super::*;
 
 #[derive(Clone, Debug)]
 pub struct RolesCommand(pub Vec<Character>);
 
 #[async_trait]
-impl SlashCommandData for RolesCommand {
+impl SlashCommand for RolesCommand {
     type Bot = Bot;
     type Data = RoleData;
     type Use = Deferred;
@@ -40,12 +44,12 @@ impl SlashCommandData for RolesCommand {
             };
             (0..num_choices).map(|i| {
                 match i {
-                    0 => CommandDataOption::new_str("role1", first).required(),
-                    1 => CommandDataOption::new_str("role2", addl),
-                    2 => CommandDataOption::new_str("role3", addl),
-                    3 => CommandDataOption::new_str("role4", addl),
-                    4 => CommandDataOption::new_str("role5", addl),
-                    5 => CommandDataOption::new_str("role6", addl),
+                    0 => CommandDataOption::new_str("first", first).required(),
+                    1 => CommandDataOption::new_str("second", addl),
+                    2 => CommandDataOption::new_str("third", addl),
+                    3 => CommandDataOption::new_str("fourth", addl),
+                    4 => CommandDataOption::new_str("fifth", addl),
+                    5 => CommandDataOption::new_str("sixth", addl),
                     _ => unreachable!("harumph"),
                 }
             })
@@ -118,24 +122,21 @@ impl SlashCommandData for RolesCommand {
                 .downcast_mut::<Self>()
                 .unwrap();
             roles_cmd.0 = roles.clone();
-            state.client.create_guild_command(
-                state.application_id().await,
-                guild,
-                SlashCommand::command(roles_cmd),
-            ).await?;
-            config.start_command(&*state, &mut commands, config.startable(), guild).await?;
+            roles_cmd.edit_command(&state, guild, interaction.command).await?;
+            config.start_command(&state, commands, config.startable(), guild).await?;
         }
-        config.update_embed(&*state, &interaction).await?;
+        config.update_embed(&state, &interaction).await?;
         Ok(interaction)
     }
 }
 
 #[derive(CommandData)]
 pub enum RoleData {
-    #[command(desc = "Choose roles to add")]
-    Add(#[command(vararg = "role", default = "HashSet::new")] HashSet<Character>),
+    // todo                                       v
+    #[command(desc = "Choose roles to add"/*, enable_if = ""*/)]
+    Add(#[command(vararg = "role", va_ordinals, default = "HashSet::new")] HashSet<Character>),
     #[command(desc = "Choose roles to remove")]
-    Remove(#[command(vararg = "role", default = "HashSet::new")] HashSet<Character>),
+    Remove(#[command(vararg = "role", va_ordinals, default = "HashSet::new")] HashSet<Character>),
     #[command(desc = "Clear all roles")]
     Clear,
 }

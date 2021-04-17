@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use std::mem;
 
 use itertools::Itertools;
+use tokio::sync::RwLockWriteGuard;
 
-use discorsd::{BotState, http, UserMarkupExt};
-use discorsd::commands::Command;
+use discorsd::{BotState, GuildCommands, http, UserMarkupExt};
+use discorsd::commands::SlashCommandExt;
 use discorsd::http::channel::{ChannelExt, embed, RichEmbed};
 use discorsd::http::ClientResult;
 use discorsd::model::commands::*;
@@ -17,7 +17,7 @@ use crate::avalon::characters::Character;
 use crate::avalon::characters::Loyalty::Evil;
 use crate::avalon::lotl::ToggleLady;
 use crate::avalon::roles::RolesCommand;
-use crate::avalon::SlashCommand;
+use crate::avalon::SlashCommandRaw;
 use crate::commands::addme::AddMeCommand;
 use crate::commands::start::StartCommand;
 use crate::games::GameType;
@@ -123,74 +123,24 @@ impl AvalonConfig {
         Ok(())
     }
 
-    /// determine if Avalon can be started, and if it can be, include it in the list of games
-    /// available in the start command
+    /// Determine if Avalon can be started, and if it can be, include it in the list of games
+    /// available in the start command.
     pub async fn start_command(
         &mut self,
         state: &BotState<Bot>,
-        commands: &mut HashMap<CommandId, Box<dyn SlashCommand<Bot=Bot>>>,
-        enabled: bool,
+        mut commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
+        enable: bool,
         guild: GuildId,
     ) -> ClientResult<()> {
-        let start_id = *state.bot.start.read().await.get(&guild).unwrap();
-        let start = commands.get_mut(&start_id)
-            .map(|s| s.downcast_mut::<StartCommand>().unwrap())
-            .map(|s| (start_id, s));
-        match (start, enabled) {
-            // update list of startable games
-            (Some((id, start)), true) => {
-                if !start.0.contains(&GameType::Avalon) {
-                    start.0.insert(GameType::Avalon);
-                    let Command { description, options, .. } = start.command();
-                    state.client.edit_guild_command(
-                        state.application_id().await,
-                        guild,
-                        id,
-                        None,
-                        Some(description.as_ref()),
-                        Some(options),
-                        None,
-                    ).await?;
-                }
-            }
-            // disable StartCommand
-            (Some((id, start)), false) => {
-                start.0.remove(&GameType::Avalon);
-                if start.0.is_empty() {
-                    state.client.delete_guild_command(
-                        state.application_id().await,
-                        guild,
-                        id,
-                    ).await?;
-                    commands.remove(&id);
-                } else {
-                    let Command { description, options, .. } = start.command();
-                    state.client.edit_guild_command(
-                        state.application_id().await,
-                        guild,
-                        id,
-                        None,
-                        Some(description.as_ref()),
-                        Some(options),
-                        None,
-                    ).await?;
-                }
-            }
-            // enable StartCommand
-            (None, true) => {
-                let start = StartCommand(set!(GameType::Avalon));
-                let command = state.client.create_guild_command(
-                    state.application_id().await,
-                    guild,
-                    start.command(),
-                ).await?;
-                commands.insert(command.id, Box::new(start));
-                *state.bot.start.write().await.get_mut(&guild).unwrap() = command.id;
-                // self.start_id = Some(command.id);
-            }
-            // is (and should be) disabled :)
-            (None, false) => {}
+        let (start_id, start_command) = state.get_command_mut::<StartCommand>(guild, &mut commands).await;
+        let edit = if enable {
+            matches!(start_command.insert(GameType::Avalon), None)
+        } else {
+            matches!(start_command.remove(GameType::Avalon), Some(_))
         };
+        if edit {
+            start_command.edit_command(&state, guild, start_id).await?;
+        }
         Ok(())
     }
 
@@ -198,7 +148,7 @@ impl AvalonConfig {
         avalon::max_evil(self.players.len())
     }
 
-    pub fn is_setup_command(command: &dyn SlashCommand<Bot=Bot>) -> bool {
+    pub fn is_setup_command(command: &dyn SlashCommandRaw<Bot=Bot>) -> bool {
         command.is::<StartCommand>() ||
             command.is::<AddMeCommand>() ||
             command.is::<RolesCommand>() ||

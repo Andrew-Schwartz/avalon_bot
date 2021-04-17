@@ -17,7 +17,7 @@ use crate::Bot;
 pub struct UnpinCommand;
 
 #[async_trait]
-impl SlashCommandData for UnpinCommand {
+impl SlashCommand for UnpinCommand {
     type Bot = Bot;
     type Data = UnpinData;
     type Use = Used;
@@ -32,6 +32,7 @@ impl SlashCommandData for UnpinCommand {
     //     false
     // }
 
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<Unused>,

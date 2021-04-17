@@ -981,8 +981,9 @@ pub struct GuildApplicationCommandPermission {
     pub permissions: Vec<CommandPermissions>,
 }
 
+/// Partial [GuildApplicationCommandPermission](GuildApplicationCommandPermission)
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct PartialGuildApplicationCommandPermission {
+pub struct GuildCommandPermissions {
     /// the id of the command
     pub id: CommandId,
     /// the permissions for the command in the guild
@@ -1033,6 +1034,18 @@ impl CommandPermissions {
 pub enum UserRoleId {
     Role(RoleId),
     User(UserId),
+}
+
+impl From<RoleId> for UserRoleId {
+    fn from(role: RoleId) -> Self {
+        Self::Role(role)
+    }
+}
+
+impl From<UserId> for UserRoleId {
+    fn from(user: UserId) -> Self {
+        Self::User(user)
+    }
 }
 
 mod acp_impl {
@@ -1220,7 +1233,91 @@ impl<'de> Deserialize<'de> for InteractionData {
                 .expect("Already checked for 0 or > 1 options")
         }
 
-        let ACID { id, name: data_name, options } = ACID::deserialize(d)?;
+        let ACID { id, name: data_name, options, resolved } = ACID::deserialize(d)?;
+        // todo remove this when I know what it does
+        if let Some(resolved) = resolved {
+            println!("resolved = {:#?}", resolved);
+            /*
+resolved = Object({
+    "members": Object({
+        "243418816510558208": Object({
+            "is_pending": Bool(
+                false,
+            ),
+            "joined_at": String(
+                "2018-09-20T00:00:44.216000+00:00",
+            ),
+            "nick": String(
+                "SFE",
+            ),
+            "pending": Bool(
+                false,
+            ),
+            "permissions": String(
+                "8589934591",
+            ),
+            "premium_since": Null,
+            "roles": Array([
+                String(
+                    "592892380609511445",
+                ),
+            ]),
+        }),
+        "592500196303437826": Object({
+            "is_pending": Bool(
+                false,
+            ),
+            "joined_at": String(
+                "2019-06-23T23:58:06.499000+00:00",
+            ),
+            "nick": Null,
+            "pending": Bool(
+                false,
+            ),
+            "permissions": String(
+                "6546775617",
+            ),
+            "premium_since": Null,
+            "roles": Array([]),
+        }),
+    }),
+    "users": Object({
+        "243418816510558208": Object({
+            "avatar": String(
+                "b494112cc3dbd0c353ce3c017825fea1",
+            ),
+            "discriminator": String(
+                "7399",
+            ),
+            "id": String(
+                "243418816510558208",
+            ),
+            "public_flags": Number(
+                128,
+            ),
+            "username": String(
+                "Steadfast",
+            ),
+        }),
+        "592500196303437826": Object({
+            "avatar": Null,
+            "discriminator": String(
+                "5083",
+            ),
+            "id": String(
+                "592500196303437826",
+            ),
+            "public_flags": Number(
+                0,
+            ),
+            "username": String(
+                "RSteadfast",
+            ),
+        }),
+    }),
+})
+             */
+        }
         let options = if options.is_empty() {
             InteractionDataOption::Values(Vec::new())
         } else if options.len() > 1 {
@@ -1348,6 +1445,7 @@ pub struct ApplicationCommandInteractionData {
     /// the params + values from the user
     #[serde(default)]
     pub options: Vec<ApplicationCommandInteractionDataOption>,
+    pub resolved: Option<serde_json::Value>,
 }
 
 /// All options have names, and an option can either be a parameter and input value--in which case

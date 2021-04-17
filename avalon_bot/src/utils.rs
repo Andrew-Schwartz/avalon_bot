@@ -22,3 +22,11 @@ pub trait IterExt: ExactSizeIterator + Sized {
 }
 
 impl<I: ExactSizeIterator> IterExt for I {}
+
+pub trait StreamIter: IntoIterator + Sized {
+    fn stream(self) -> tokio::stream::Iter<Self::IntoIter> {
+        tokio::stream::iter(self)
+    }
+}
+
+impl<I: IntoIterator> StreamIter for I {}

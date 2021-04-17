@@ -5,6 +5,8 @@ use itertools::Itertools;
 use log::warn;
 
 use discorsd::{BotState, UserMarkupExt};
+use discorsd::commands::*;
+use discorsd::errors::BotError;
 use discorsd::http::channel::{ChannelExt, embed};
 use discorsd::http::ClientResult;
 use discorsd::http::user::UserExt;
@@ -12,14 +14,12 @@ use discorsd::model::ids::Id;
 use discorsd::model::message::ChannelMessageId;
 use discorsd::model::message::Color;
 
-use crate::{Bot, create_command, delete_command};
-use crate::avalon::{BotError, Deferred, InteractionUse, max_evil};
 use crate::avalon::characters::{Character, Loyalty};
 use crate::avalon::characters::Character::{LoyalServant, MinionOfMordred};
 use crate::avalon::config::AvalonConfig;
 use crate::avalon::game::AvalonGame;
-use crate::commands::stop::StopCommand;
-use crate::games::GameType;
+use crate::avalon::max_evil;
+use crate::Bot;
 
 pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Deferred>) -> Result<(), BotError> {
     let guild = interaction.guild().unwrap();
@@ -132,17 +132,20 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Defe
     })).await?;
 
     let commands = state.commands.read().await;
-    let mut commands = commands.get(&guild).unwrap().write().await;
-    create_command(&*state, guild, &mut commands, StopCommand(GameType::Avalon)).await?;
-    delete_command(
-        &*state, guild,
-        &mut commands,
-        AvalonConfig::is_setup_command,
-    ).await?;
-    game.start_round(
-        &*state,
-        guild,
-        &mut commands,
-    ).await?;
+    let commands = commands.get(&guild).unwrap().read().await;
+
+    let disabled_commands = commands.iter()
+        .map(|(_, c)| c)
+        .map(|c| {
+            let mut command = c.command();
+            if AvalonConfig::is_setup_command(&**c) {
+                command.default_permission = false;
+            }
+            command
+        })
+        .collect_vec();
+    state.client.bulk_overwrite_guild_commands(state.application_id().await, guild, disabled_commands).await?;
+
+    game.start_round(&*state, guild, commands).await?;
     Ok(())
 }

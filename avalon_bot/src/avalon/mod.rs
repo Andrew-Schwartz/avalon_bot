@@ -1,27 +1,23 @@
-use std::collections::HashMap;
 use std::fmt::{self, Debug};
-use std::sync::Arc;
 
 use itertools::Itertools;
 use log::warn;
 use rand::prelude::SliceRandom;
 use tokio::sync::RwLockWriteGuard;
 
-pub use command_data_derive::*;
-pub use discorsd::{async_trait, BotState, errors::BotError};
-use discorsd::{GuildCommands, UserMarkupExt};
-pub use discorsd::commands::*;
-use discorsd::http::channel::{ChannelExt, embed, embed_with, RichEmbed};
+use discorsd::BotState;
+use discorsd::commands::SlashCommandRaw;
+use discorsd::GuildCommands;
+use discorsd::http::channel::{ChannelExt, embed_with, RichEmbed};
 use discorsd::http::ClientResult;
-use discorsd::http::user::UserExt;
 use discorsd::model::guild::GuildMember;
 use discorsd::model::ids::*;
-use game::{AvalonGame, AvalonState};
+use game::AvalonGame;
 
-use crate::avalon::characters::Character::{self, LoyalServant, Merlin, MinionOfMordred};
+use crate::avalon::characters::Character::{self, LoyalServant, MinionOfMordred};
 use crate::avalon::characters::Loyalty::Evil;
 use crate::avalon::config::AvalonConfig;
-pub use crate::Bot;
+use crate::Bot;
 
 pub mod characters;
 pub mod quest;
@@ -34,6 +30,20 @@ pub mod lotl;
 pub mod game;
 pub mod board;
 pub mod start;
+
+pub fn commands() -> Vec<Box<dyn SlashCommandRaw<Bot=Bot>>> {
+    vec![
+        Box::new(roles::RolesCommand(Vec::new())),
+        Box::new(vote::VoteStatus),
+        Box::new(lotl::ToggleLady),
+        // these just filter based on id, so no bad requests or anything can be caused by this,
+        // and they are disabled to @everyone by default
+        Box::new(assassinate::AssassinateCommand(UserId(0))),
+        Box::new(lotl::LotlCommand(UserId(0))),
+        // similarly, just means no people can be sent on quest
+        Box::new(quest::QuestCommand(0)),
+    ]
+}
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
@@ -179,7 +189,7 @@ impl Avalon {
         *self = Self::default();
 
         let rcs = state.reaction_commands.write().await;
-        state.bot.reset_guild_commands(guild, state, commands, rcs).await;
+        state.bot.reset_guild_command_perms(state, guild, commands, rcs).await?;
         Ok(())
     }
 }

@@ -3,6 +3,7 @@ use std::fmt;
 use std::iter::{FromIterator, Map};
 use std::marker::PhantomData;
 
+use once_cell::sync::OnceCell;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
@@ -13,13 +14,14 @@ use crate::model::guild::{Guild, GuildMember, UnavailableGuild};
 use crate::model::ids::*;
 use crate::model::interaction::ApplicationCommand;
 use crate::model::message::{Message, Reaction};
+use crate::model::permissions::Role;
 use crate::model::user::User;
 use crate::shard::dispatch::PartialApplication;
 
 #[derive(Default, Debug)]
 pub struct Cache {
     pub(crate) user: RwLock<Option<User>>,
-    pub(crate) application: RwLock<Option<PartialApplication>>,
+    pub(crate) application: OnceCell<PartialApplication>,
 
     pub(crate) users: RwLock<IdMap<User>>,
 
@@ -42,8 +44,9 @@ pub struct Cache {
 }
 
 impl Cache {
-    pub async fn application_id(&self) -> ApplicationId {
-        self.application.read().await.unwrap().id
+    pub fn application_id(&self) -> ApplicationId {
+        // self.application.read().await.unwrap().id
+        self.application.get().unwrap().id
     }
 
     /// gets the current user
@@ -97,10 +100,11 @@ impl Cache {
             .unwrap_or_default()
     }
 
-    pub async fn guild_channels<G, F, C>(&self, id: G, filter_map: F) -> IdMap<C> where
-        G: Id<Id=GuildId> + Send,
-        C: Into<Channel> + Clone + Id<Id=ChannelId>,
-        F: FnMut(&Channel) -> Option<&C> + Send,
+    pub async fn guild_channels<G, F, C>(&self, id: G, filter_map: F) -> IdMap<C>
+        where
+            G: Id<Id=GuildId> + Send,
+            C: Into<Channel> + Clone + Id<Id=ChannelId>,
+            F: FnMut(&Channel) -> Option<&C> + Send,
     {
         self.guilds.read().await.get(id).iter()
             .flat_map(|g| &g.channels)
@@ -108,6 +112,27 @@ impl Cache {
             .cloned()
             .collect()
     }
+
+    pub async fn try_everyone_role<G>(&self, guild: G) -> Option<Role>
+        where
+            G: Id<Id=GuildId> + Send,
+    {
+        let guard = self.guilds.read().await;
+        guard.get(guild)
+            .map(|g| g.roles.iter()
+                .find(|r| r.name == "@everyone")
+                .expect("all guilds have `@everyone` role"))
+            .cloned()
+    }
+
+    // /// Assumes that the guild exists
+    // pub async fn everyone_role<G>(&self, guild: G) -> Role
+    //     where
+    //         G: Id<Id=GuildId> + Send,
+    // {
+    //     self.try_everyone_role(guild).await
+    //         .expect("the guild exists")
+    // }
 
     pub async fn command<C: Id<Id=CommandId> + Send>(&self, id: C) -> Option<ApplicationCommand> {
         self.commands.read().await.get(id).cloned()
@@ -139,7 +164,7 @@ impl Cache {
         #[allow(clippy::eval_order_dependence)]
         DebugCache {
             user: user.read().await,
-            application: application.read().await,
+            application: application.get(),
             users: users.read().await,
             unavailable_guilds: unavailable_guilds.read().await,
             guilds: guilds.read().await,
@@ -160,7 +185,7 @@ impl Cache {
 #[derive(Debug)]
 pub struct DebugCache<'a> {
     user: RwLockReadGuard<'a, Option<User>>,
-    application: RwLockReadGuard<'a, Option<PartialApplication>>,
+    application: Option<&'a PartialApplication>,
     users: RwLockReadGuard<'a, IdMap<User>>,
     unavailable_guilds: RwLockReadGuard<'a, IdMap<UnavailableGuild>>,
     guilds: RwLockReadGuard<'a, IdMap<Guild>>,

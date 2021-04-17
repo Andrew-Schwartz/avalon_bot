@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use tokio::sync::RwLockWriteGuard;
 
-use discorsd::{BotState, UserMarkupExt};
+use discorsd::{BotState, GuildCommands, UserMarkupExt};
 use discorsd::commands::*;
 use discorsd::http::channel::{ChannelExt, create_message, embed};
 use discorsd::http::ClientResult;
@@ -10,13 +10,13 @@ use discorsd::http::guild::CommandPermsExt;
 use discorsd::model::ids::*;
 use discorsd::model::message::{ChannelMessageId, Color};
 
-use crate::{Bot, create_command, delete_command};
 use crate::avalon::board::Board;
 use crate::avalon::vote::VoteStatus;
+use crate::Bot;
 use crate::commands::stop::{StopCommand, StopVoteCommand};
 
 use super::{
-    assassinate::Assassinate,
+    assassinate::AssassinateCommand,
     Avalon,
     AvalonPlayer,
     characters::{Character::{Assassin, Merlin}, Loyalty::Evil},
@@ -97,8 +97,9 @@ impl AvalonGame {
             .map(|image| ("board.jpg", image))
     }
 
-    pub fn is_command(command: &dyn SlashCommand<Bot=Bot>) -> bool {
-        command.is::<Assassinate>() ||
+    // todo was used in reset_commands, is it necessary anymore?
+    pub fn is_command(command: &dyn SlashCommandRaw<Bot=Bot>) -> bool {
+        command.is::<AssassinateCommand>() ||
             command.is::<LotlCommand>() ||
             command.is::<QuestCommand>() ||
             command.is::<StopCommand>() ||
@@ -117,7 +118,7 @@ impl Avalon {
         &mut self,
         state: &BotState<Bot>,
         guild: GuildId,
-        mut commands: RwLockWriteGuard<'_, HashMap<CommandId, Box<dyn SlashCommand<Bot=Bot>>>>,
+        mut commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
     ) -> ClientResult<()> {
         let game = self.game_mut();
         let new_state = if game.good_won.iter().filter(|g| **g).count() == 3 {
@@ -142,8 +143,10 @@ impl Avalon {
                         );
                     });
                 })).await?;
-                let mut assassinate = create_command(&*state, guild, &mut commands, Assassinate(assassin.id())).await?;
-                assassinate.allow_users(&state, guild, &[assassin.id()]).await?;
+                let (assassinate_id, assassinate) = state.get_command_mut::<AssassinateCommand>(guild, &mut commands).await;
+                assassinate_id.allow_users(&state, guild, &[assassin.id()]).await?;
+                assassinate.0 = assassin.id();
+                assassinate.edit_command(&state, guild, assassinate_id).await?;
 
                 AvalonState::Assassinate
             } else {
@@ -171,14 +174,16 @@ impl Avalon {
                     );
                 });
             })).await?;
-            let mut lotl_id = create_command(&*state, guild, &mut commands, LotlCommand(lotl.id())).await?;
+            let (lotl_id, lotl_command) = state.get_command_mut::<LotlCommand>(guild, &mut commands).await;
+            lotl_command.0 = lotl.id();
+            lotl_command.edit_command(&state, guild, lotl_id).await?;
             lotl_id.allow_users(&state, guild, &[lotl.id()]).await?;
 
             AvalonState::Lotl
         } else {
             game.round += 1;
             AvalonGame::advance_leader(&mut game.leader, game.players.len());
-            game.start_round(state, guild, &mut commands).await?;
+            game.start_round(state, guild, commands).await?;
             AvalonState::RoundStart
         };
         game.state = new_state;
@@ -191,14 +196,13 @@ impl AvalonGame {
         &mut self,
         state: &BotState<Bot>,
         guild: GuildId,
-        commands: &mut HashMap<CommandId, Box<dyn SlashCommand<Bot=Bot>>>,
+        mut commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
     ) -> ClientResult<()> {
         let round = self.round();
-        delete_command(
-            &*state, guild, commands,
-            |c| c.is::<VoteStatus>(),
-        ).await?;
-        let mut quest_id = create_command(&*state, guild, commands, QuestCommand(round.players)).await?;
+        state.disable_command::<VoteStatus>(guild).await?;
+        let (quest_id, quest) = state.get_command_mut::<QuestCommand>(guild, &mut commands).await;
+        quest.0 = round.players;
+        quest.edit_command(&state, guild, quest_id).await?;
         quest_id.allow_users(&state, guild, &[self.leader().id()]).await?;
 
         self.channel.send(&state.client, create_message(|m| {

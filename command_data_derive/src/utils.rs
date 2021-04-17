@@ -8,7 +8,7 @@ pub fn command_data_impl(command_type: Option<&Type>) -> (TokenStream2, TokenStr
     match command_type {
         None => {
             (quote! {
-                impl<C: ::discorsd::commands::SlashCommand> ::discorsd::model::commands::CommandData<C>
+                impl<C: ::discorsd::commands::SlashCommandRaw> ::discorsd::model::commands::CommandData<C>
             }, quote! {
                 C
             })

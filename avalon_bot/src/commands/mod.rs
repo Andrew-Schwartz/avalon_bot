@@ -1,4 +1,4 @@
-use discorsd::commands::SlashCommand;
+use discorsd::commands::SlashCommandRaw;
 
 use crate::Bot;
 
@@ -12,3 +12,11 @@ pub mod start;
 pub mod system_info;
 pub mod ll;
 pub mod unpin;
+
+pub fn commands() -> Vec<Box<dyn SlashCommandRaw<Bot=Bot>>> {
+    vec![
+        Box::new(addme::AddMeCommand),
+        Box::new(start::StartCommand::default()),
+        Box::new(stop::StopCommand::default()),
+    ]
+}

@@ -4,7 +4,7 @@ use std::ops::Range;
 use thiserror::Error;
 
 use crate::BotState;
-use crate::commands::{DmSource, GuildSource, SlashCommand};
+use crate::commands::{DmSource, GuildSource, SlashCommandRaw};
 use crate::http::{ClientError, DisplayClientError};
 use crate::model::ids::*;
 use crate::model::interaction::{InteractionSource, OptionValue};
@@ -139,7 +139,7 @@ impl CommandParseErrorInfo {
         }
     }
 
-    fn command_fail_message<B: Send + Sync>(&self, source: &str, command: Option<&dyn SlashCommand<Bot=B>>) -> String {
+    fn command_fail_message<B: Send + Sync>(&self, source: &str, command: Option<&dyn SlashCommandRaw<Bot=B>>) -> String {
         if let Some(command) = command {
             format!(
                 "Failed to parse command `{}` ({}) in {}: {:?}",
@@ -200,6 +200,7 @@ pub enum CommandOptionTypeParsed {
     ChannelId,
     RoleId,
     MessageId,
+    GuildId,
 }
 
 impl From<OptionType> for CommandParseError {

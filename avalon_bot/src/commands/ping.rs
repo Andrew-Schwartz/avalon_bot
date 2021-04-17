@@ -13,7 +13,7 @@ use crate::Bot;
 pub struct PingCommand;
 
 #[async_trait]
-impl SlashCommandData for PingCommand {
+impl SlashCommand for PingCommand {
     type Bot = Bot;
     type Data = ();
     type Use = Used;

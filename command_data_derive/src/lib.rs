@@ -100,7 +100,7 @@ fn dummy_impl(ty: &Ident) {
             }
         }
 
-        impl<C: ::discorsd::commands::SlashCommand> ::discorsd::model::commands::CommandData<C> for #ty {
+        impl<C: ::discorsd::commands::SlashCommandRaw> ::discorsd::model::commands::CommandData<C> for #ty {
             type Options = #fail_enum;
             fn from_options(_: Self::Options) -> ::std::result::Result<Self, ::discorsd::errors::CommandParseError> {
                 unimplemented!()
@@ -128,7 +128,7 @@ handle_attribute!(
     ///     user: UserId,
     /// }
     /// ```
-    self Field =>
+    self: Field =>
 
     "": Meta::Path(path), path =>
         /// Marks this field as optional in the Command in Discord, and if the user omits it, will use
@@ -221,7 +221,7 @@ handle_attribute!(
     ///     user: UserId,
     /// }
     /// ```
-    self Struct =>
+    self: Struct =>
 
     " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
         /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
@@ -245,7 +245,7 @@ handle_attribute!(
     ///     Clear,
     /// }
     /// ```
-    self DataVariant =>
+    self: DataVariant =>
     " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
         /// The description of this command option.
         ["desc" => self.desc = Some(str)]
@@ -278,7 +278,7 @@ handle_attribute!(
     /// ```
     ///
     /// All variants will be shown as lowercase in Discord.
-    self DataEnum =>
+    self: DataEnum =>
     " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
         /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
         /// can make decisions at runtime by taking functions callable as `fn(CommandType) -> SomeType`.
@@ -302,7 +302,7 @@ handle_attribute!(
     /// ```
     /// All variants must be unit structs.
     ///
-    self ChoicesVariant =>
+    self: ChoicesVariant =>
     "": Meta::Path(path), path =>
         /// Implement `Default` for this enum, with this field as the default.
         ["default" => self.default = true],

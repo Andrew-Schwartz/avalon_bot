@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;
 
@@ -20,8 +21,10 @@ use model::{HelloPayload, Payload, Resume};
 use crate::Bot;
 use crate::bot::BotState;
 use crate::cache::Update;
+use crate::commands::SlashCommandRaw;
 use crate::http::ClientError;
 use crate::macros::API_VERSION;
+use crate::model::ids::CommandId;
 use crate::serde_utils::nice_from_str;
 use crate::shard::model::Heartbeat;
 
@@ -351,7 +354,7 @@ impl<B: Bot + 'static> Shard<B> {
                 let app = ready.application.id;
                 let client = &self.state.client;
                 let global_commands = B::global_commands();
-                let ids = client
+                let commands: HashMap<CommandId, &'static dyn SlashCommandRaw<Bot=B>> = client
                     .bulk_overwrite_global_commands(
                         app,
                         global_commands.iter().map(|c| c.command()).collect(),
@@ -361,7 +364,11 @@ impl<B: Bot + 'static> Shard<B> {
                     .zip(global_commands)
                     .map(|(ac, c)| (ac.id, *c))
                     .collect();
-                let _ = self.state.global_commands.set(ids);
+                let command_names = commands.iter()
+                    .map(|(&id, command)| (command.name(), id))
+                    .collect();
+                let _result = self.state.global_commands.set(commands);
+                let _result = self.state.global_command_names.set(command_names);
             }
         }
         let bot = Arc::clone(&self.state);
@@ -395,6 +402,16 @@ impl<B: Bot + 'static> Shard<B> {
                 IntegrationUpdate(integration) => bot.bot.integration_update(
                     integration.guild_id,
                     integration.integration,
+                    Arc::clone(&bot),
+                ).await,
+                GuildRoleCreate(create) => bot.bot.role_create(
+                    create.guild_id,
+                    create.role,
+                    Arc::clone(&bot),
+                ).await,
+                GuildRoleUpdate(update) => bot.bot.role_update(
+                    update.guild_id,
+                    update.role,
                     Arc::clone(&bot),
                 ).await,
                 _ => Ok(())

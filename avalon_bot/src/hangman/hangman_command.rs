@@ -2,21 +2,22 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use command_data_derive::*;
-use discorsd::async_trait;
+use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
+use discorsd::errors::BotError;
 use discorsd::http::channel::{ChannelExt, embed};
 use discorsd::model::message::Color;
 
 use crate::{Bot, hangman};
-use crate::avalon::{BotError, BotState, InteractionUse, Unused};
 use crate::hangman::random_words::{GuildHist, Wordnik};
 use crate::hangman::RandomWord;
 
+// todo can be global now
 #[derive(Debug, Clone)]
 pub struct HangmanCommand;
 
 #[async_trait]
-impl SlashCommandData for HangmanCommand {
+impl SlashCommand for HangmanCommand {
     type Bot = Bot;
     type Data = HangmanData;
     type Use = Deferred;

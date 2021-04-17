@@ -177,7 +177,8 @@ pub struct PartialApplication {
 #[async_trait]
 impl Update for Ready {
     async fn update(&self, cache: &Cache) {
-        *cache.application.write().await = Some(self.application);
+        let _res = cache.application.set(self.application);
+        // *cache.application.write().await = Some(self.application);
         *cache.user.write().await = Some(self.user.clone());
         cache.users.write().await.insert(self.user.clone());
         cache.unavailable_guilds.write().await.extend(self.guilds.clone())

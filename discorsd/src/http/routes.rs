@@ -30,6 +30,7 @@ pub enum Route {
     DeleteUserReaction(ChannelId, MessageId, Emoji, UserId),
 
     // commands
+//    // although not used in the actual url, names are included to help debugging
     GetGlobalCommands(ApplicationId),
     CreateGlobalCommand(ApplicationId),
     EditGlobalCommand(ApplicationId, CommandId),

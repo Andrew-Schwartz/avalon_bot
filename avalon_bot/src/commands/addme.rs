@@ -15,7 +15,7 @@ use crate::games::GameType;
 pub struct AddMeCommand;
 
 #[async_trait]
-impl SlashCommandData for AddMeCommand {
+impl SlashCommand for AddMeCommand {
     type Bot = Bot;
     type Data = AddMeData;
     type Use = Used;
@@ -99,8 +99,8 @@ async fn avalon(
     };
 
     let guard = state.commands.read().await;
-    let mut commands = guard.get(&guild).unwrap().write().await;
-    config.start_command(state, &mut commands, config.startable(), guild).await?;
+    let commands = guard.get(&guild).unwrap().write().await;
+    config.start_command(state, commands, config.startable(), guild).await?;
     config.update_embed(state, &deferred).await?;
     deferred.delete(&state).await
 }

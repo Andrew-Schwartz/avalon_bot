@@ -1,19 +1,27 @@
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
+use itertools::Itertools;
+use log::error;
 use tokio::sync::Mutex;
 
-use discorsd::errors::AvalonError;
+use discorsd::{BotState, UserMarkupExt};
+use discorsd::async_trait;
+use discorsd::commands::*;
+use discorsd::errors::{AvalonError, BotError};
+use discorsd::http::channel::{ChannelExt, embed};
+use discorsd::http::ClientResult;
+use discorsd::http::user::UserExt;
 use discorsd::model::emoji::Emoji;
 use discorsd::model::ids::*;
 use discorsd::model::message::{ChannelMessageId, Color, EmbedField};
 use discorsd::shard::dispatch::{ReactionType::*, ReactionUpdate};
-use discorsd::UserMarkupExt;
 
-use crate::create_command;
+use crate::avalon::characters::Loyalty::Evil;
+use crate::avalon::game::{AvalonGame, AvalonState};
+use crate::Bot;
 use crate::utils::IterExt;
-
-use super::*;
 
 #[derive(Clone, Debug)]
 pub struct PartyVote {
@@ -97,9 +105,9 @@ impl ReactionCommand<Bot> for PartyVote {
                                     }
                                 })).await?;
                                 let guard = state.commands.read().await;
-                                let mut commands = guard.get(&guild).unwrap()
+                                let commands = guard.get(&guild).unwrap()
                                     .write().await;
-                                game.start_round(&state, guild, &mut commands).await?;
+                                game.start_round(&state, guild, commands).await?;
                                 AvalonState::RoundStart
                             }
                         }
@@ -171,16 +179,19 @@ impl ReactionCommand<Bot> for PartyVote {
                             votes.insert(msg, 0);
                         }
 
-                        // let quest_vote = QuestVote {
-                        //     guild: self.guild,
-                        //     messages: votes.keys().copied().collect(),
-                        // };
-                        // state.reaction_commands.write().await
-                        //     .push(Box::new(quest_vote));
-                        let guard = state.commands.read().await;
-                        let mut commands = guard.get(&guild).unwrap()
-                            .write().await;
-                        create_command(&*state, guild, &mut commands, VoteStatus).await?;
+                        let quest_vote = QuestVote {
+                            guild: self.guild,
+                            messages: votes.keys().copied().collect(),
+                        };
+                        state.reaction_commands.write().await
+                            .push(Box::new(quest_vote));
+
+                        // let guard = state.commands.read().await;
+                        // let mut commands = guard.get(&guild).unwrap()
+                        //     .write().await;
+                        // .allow_everyone(&state, guild).await?;
+                        state.enable_command::<VoteStatus>(guild).await?;
+
                         AvalonState::Questing(votes)
                     };
                     state.reaction_commands.write().await
@@ -288,7 +299,7 @@ impl ReactionCommand<Bot> for QuestVote {
                         );
                 }
             } else {
-                unreachable!("state: {:?}", game.state)
+                error!("unreachable state: `{:?}`, {}:{}:{}", game.state, file!(), line!(), column!());
             }
         }
         Ok(())
@@ -299,7 +310,7 @@ impl ReactionCommand<Bot> for QuestVote {
 pub struct VoteStatus;
 
 #[async_trait]
-impl SlashCommandData for VoteStatus {
+impl SlashCommand for VoteStatus {
     type Bot = Bot;
     type Data = ();
     type Use = Used;

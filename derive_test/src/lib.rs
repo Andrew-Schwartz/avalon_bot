@@ -32,7 +32,7 @@ mod tests {
         };
     }
 
-    fn assert_same_json_value(correct: &str, modeled: impl discorsd::commands::SlashCommand) {
+    fn assert_same_json_value(correct: &str, modeled: impl discorsd::commands::SlashCommandRaw) {
         use serde_json::Value;
 
         let correct: Value = serde_json::from_str(correct).unwrap();

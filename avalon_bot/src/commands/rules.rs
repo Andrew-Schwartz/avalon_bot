@@ -15,7 +15,7 @@ use crate::games::GameType;
 pub struct RulesCommand;
 
 #[async_trait]
-impl SlashCommandData for RulesCommand {
+impl SlashCommand for RulesCommand {
     type Bot = Bot;
     type Data = RulesData;
     type Use = Deferred;

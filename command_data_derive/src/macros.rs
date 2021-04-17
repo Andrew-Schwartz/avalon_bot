@@ -1,7 +1,7 @@
 macro_rules! handle_attribute {
     (
         $(#[doc = $type_doc:literal])+
-        $self:ident $ty:ty =>
+        $self:ident: $ty:ty =>
         $(
             $group_name:literal: $nested_meta_pattern:pat, $path:ident =>
             $(
@@ -26,6 +26,7 @@ macro_rules! handle_attribute {
                         )
                     ),+
                 ];
+                // todo search for similar options? (ordinals -> va_ordinals)
                 let options_finding_error = |n_span, ident: &str, default| {
                     OPTIONS.iter()
                         .filter_map(|(opts, patt)|

@@ -31,7 +31,7 @@ pub fn enum_impl(ty: &Ident, data: DataEnum) -> TokenStream2 {
 
         // todo this probably has to be able to be specialized too
         //  maybe not?
-        impl<C: ::discorsd::commands::SlashCommand> ::discorsd::model::commands::CommandData<C> for #ty {
+        impl<C: ::discorsd::commands::SlashCommandRaw> ::discorsd::model::commands::CommandData<C> for #ty {
             // all choice enums are built from a ValueOption
             type Options = ::discorsd::model::interaction::ValueOption;
 

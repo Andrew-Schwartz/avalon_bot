@@ -10,7 +10,7 @@ use tokio::time::{Duration, Instant};
 
 use crate::{BotState, utils};
 use crate::cache::Cache;
-use crate::commands::{Interaction, SlashCommand};
+use crate::commands::{Interaction, SlashCommandRaw};
 use crate::errors::*;
 use crate::http::{ClientResult, DiscordClient};
 use crate::http::interaction::WebhookMessage;
@@ -285,7 +285,7 @@ macro_rules! option_primitives {
     ($($ty:ty, $method:ident, $ctor_fn:ident, $ctor_ty:ty);+ $(;)?) => {
         $(
             #[allow(clippy::use_self)]
-            impl<C: SlashCommand> CommandData<C> for $ty {
+            impl<C: SlashCommandRaw> CommandData<C> for $ty {
                 type Options = ValueOption;
 
                 fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
@@ -321,7 +321,8 @@ option_primitives!(
 macro_rules! option_integers {
     ($($ty:ty, $parsed_type:ident);+ $(;)?) => {
         $(
-            impl<C: SlashCommand> CommandData<C> for $ty {
+            #[allow(clippy::use_self)]
+            impl<C: SlashCommandRaw> CommandData<C> for $ty {
                 type Options = ValueOption;
 
                 fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
@@ -356,35 +357,42 @@ option_integers!(
     u64, U64;
 );
 
-// todo maybe make a general macro to parse any Id type from a string
-// impl parsing stuff for MessageId by parsing a String option
-impl<C: SlashCommand> CommandData<C> for MessageId {
-    type Options = ValueOption;
+macro_rules! option_ids {
+    ($($id:ty, $cotp:ident);+ $(;)?) => {
+        $(
+            impl<C: SlashCommandRaw> CommandData<C> for $id {
+                type Options = ValueOption;
 
-    fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
-        options.lower.string()
-            // todo better error?
-            .and_then(|s| s.parse().map_err(|_| OptionType {
-                value: OptionValue::String(s),
-                desired: CommandOptionTypeParsed::MessageId,
-            }))
-            .map_err(|e| e.into())
-    }
+                fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
+                    options.lower.string()
+                        .and_then(|s| s.parse().map_err(|_| OptionType {
+                            value: OptionValue::String(s),
+                            desired: CommandOptionTypeParsed::$cotp,
+                        }))
+                        .map_err(|e| e.into())
+                }
 
-    type VecArg = DataOption;
+                type VecArg = DataOption;
 
-    fn make_args(_: &C) -> Vec<Self::VecArg> {
-        unreachable!()
-    }
+                fn make_args(_: &C) -> Vec<Self::VecArg> {
+                    unreachable!()
+                }
+            }
+
+            impl OptionCtor for $id {
+                type Data = &'static str;
+
+                fn option_ctor(cdo: CommandDataOption<Self::Data>) -> DataOption {
+                    DataOption::String(cdo)
+                }
+            }
+        )+
+    };
 }
-
-impl OptionCtor for MessageId {
-    type Data = &'static str;
-
-    fn option_ctor(cdo: CommandDataOption<Self::Data>) -> DataOption {
-        DataOption::String(cdo)
-    }
-}
+option_ids!(
+    MessageId, MessageId;
+    GuildId, GuildId;
+);
 
 pub trait OptionCtor {
     type Data;
@@ -608,15 +616,15 @@ pub enum VarargState {
 impl VarargState {
     pub fn number(self) -> Option<usize> {
         match self {
-            VarargState::Fixed(n) => Some(n),
-            VarargState::Variable => None,
-            VarargState::None => panic!("Tried to get the number of varargs for a non-vararg option"),
+            Self::Fixed(n) => Some(n),
+            Self::Variable => None,
+            Self::None => panic!("Tried to get the number of varargs for a non-vararg option"),
         }
     }
 }
 
 // the big boi himself
-pub trait CommandData<Command: SlashCommand>: Sized {
+pub trait CommandData<Command: SlashCommandRaw>: Sized {
     // function to go from InteractionData -> Self
     type Options: OptionsLadder + Send;
     // has to return the name on a Err because it's moved
@@ -635,7 +643,7 @@ pub trait CommandData<Command: SlashCommand>: Sized {
 }
 
 // let `()` be used for commands with no options
-impl<Command: SlashCommand> CommandData<Command> for () {
+impl<Command: SlashCommandRaw> CommandData<Command> for () {
     type Options = InteractionDataOption;
 
     fn from_options(_: Self::Options) -> Result<Self, CommandParseError> {
@@ -650,7 +658,7 @@ impl<Command: SlashCommand> CommandData<Command> for () {
 }
 
 // impl for some containers
-impl<C: SlashCommand, T: CommandData<C>> CommandData<C> for Option<T> {
+impl<C: SlashCommandRaw, T: CommandData<C>> CommandData<C> for Option<T> {
     type Options = T::Options;
 
     fn from_options(data: Self::Options) -> Result<Self, CommandParseError> {
@@ -669,7 +677,7 @@ impl<C: SlashCommand, T: CommandData<C>> CommandData<C> for Option<T> {
 impl<T, C, S> CommandData<C> for HashSet<T, S>
     where
         T: CommandData<C, VecArg=DataOption, Options=ValueOption> + Eq + Hash,
-        C: SlashCommand,
+        C: SlashCommandRaw,
         S: BuildHasher + Default,
 {
     type Options = Vec<ValueOption>;
@@ -699,7 +707,7 @@ impl<T, C, S> CommandData<C> for HashSet<T, S>
 impl<T, C> CommandData<C> for Vec<T>
     where
         T: CommandData<C, VecArg=DataOption, Options=ValueOption>,
-        C: SlashCommand,
+        C: SlashCommandRaw,
 {
     type Options = Vec<ValueOption>;
 
@@ -725,7 +733,7 @@ impl<T, C> CommandData<C> for Vec<T>
 impl<T, C, const N: usize> CommandData<C> for [T; N]
     where
         T: CommandData<C, VecArg=DataOption, Options=ValueOption>,
-        C: SlashCommand,
+        C: SlashCommandRaw,
 {
     type Options = Vec<ValueOption>;
 

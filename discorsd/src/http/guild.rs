@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::BotState;
-use crate::commands::{CommandPermissions, PartialGuildApplicationCommandPermission};
+use crate::commands::{ApplicationCommand, CommandPermissions, GuildCommandPermissions};
 use crate::http::{ClientResult, DiscordClient};
 use crate::http::routes::Route::*;
 use crate::model::guild::GuildMember;
@@ -18,7 +18,7 @@ impl DiscordClient {
 
     // todo link docs
     /// Adds a role to a guild member.
-    /// Requires the [Permissions::MANAGE_ROLES](Permissions::MANAGE_ROLES) MANAGE_ROLES permission
+    /// Requires the [Permissions::MANAGE_ROLES](Permissions::MANAGE_ROLES) permission
     ///
     /// Fires a Guild Member Update Gateway event.
     pub async fn add_guild_member_role(
@@ -31,7 +31,7 @@ impl DiscordClient {
     }
 
     /// Removes a role to a guild member.
-    /// Requires the MANAGE_ROLES permission
+    /// Requires the [Permissions::MANAGE_ROLES](Permissions::MANAGE_ROLES) permission
     ///
     /// Fires a Guild Member Update Gateway event.
     pub async fn remove_guild_member_role(
@@ -48,7 +48,7 @@ impl DiscordClient {
         self.get(GetGuildRoles(guild)).await
     }
 
-    /// Create a new role for the guild. Requires the MANAGE_ROLES permission.
+    /// Create a new role for the guild. Requires the [Permissions::MANAGE_ROLES](Permissions::MANAGE_ROLES) permission.
     ///
     /// Fires a Guild Role Create Gateway event.
     pub async fn create_guild_role(&self, guild: GuildId, role: CreateRole) -> ClientResult<Role> {
@@ -106,7 +106,8 @@ impl CreateRole {
 #[async_trait]
 pub trait CommandPermsExt {
     async fn edit_permissions<B, State>(
-        &mut self,
+        // todo should this really take mut self?
+        &self,
         state: State,
         guild: GuildId,
         permissions: Vec<CommandPermissions>,
@@ -114,8 +115,17 @@ pub trait CommandPermsExt {
         where B: Send + Sync + 'static,
               State: AsRef<BotState<B>> + Send;
 
+    async fn default_permissions<B, State>(
+        &self,
+        state: State,
+        guild: GuildId,
+        usable: bool,
+    ) -> ClientResult<ApplicationCommand>
+        where B: Send + Sync + 'static,
+              State: AsRef<BotState<B>> + Send;
+
     async fn allow_roles<B, State, Roles, R>(
-        &mut self,
+        &self,
         state: State,
         guild: GuildId,
         roles: Roles,
@@ -133,7 +143,7 @@ pub trait CommandPermsExt {
     }
 
     async fn disallow_roles<B, State, Roles, R>(
-        &mut self,
+        &self,
         state: State,
         guild: GuildId,
         roles: Roles,
@@ -151,7 +161,7 @@ pub trait CommandPermsExt {
     }
 
     async fn allow_users<B, State, Users, U>(
-        &mut self,
+        &self,
         state: State,
         guild: GuildId,
         users: Users,
@@ -169,7 +179,7 @@ pub trait CommandPermsExt {
     }
 
     async fn disallow_users<B, State, Users, U>(
-        &mut self,
+        &self,
         state: State,
         guild: GuildId,
         users: Users,
@@ -188,10 +198,11 @@ pub trait CommandPermsExt {
 }
 
 // todo maybe it makes more sense to specifically impl this on `&CommandId`, `Command`, and `&mut Command`??
+//  and ApplicationCommand
 #[async_trait]
-impl<C: Id<Id=CommandId> + Send> CommandPermsExt for C {
+impl<C: Id<Id=CommandId> + Send + Sync> CommandPermsExt for C {
     async fn edit_permissions<B, State>(
-        &mut self,
+        &self,
         state: State,
         guild: GuildId,
         permissions: Vec<CommandPermissions>,
@@ -208,15 +219,39 @@ impl<C: Id<Id=CommandId> + Send> CommandPermsExt for C {
             permissions,
         ).await
     }
+
+    async fn default_permissions<B, State>(
+        &self,
+        state: State,
+        guild: GuildId,
+        usable: bool,
+    ) -> ClientResult<ApplicationCommand>
+        where
+            B: Send + Sync + 'static,
+            State: AsRef<BotState<B>> + Send,
+    {
+        let state = state.as_ref();
+        state.client.edit_guild_command(
+            state.application_id().await,
+            guild,
+            self.id(),
+            None,
+            None,
+            None,
+            Some(usable),
+        ).await
+    }
 }
 
 // todo duplicate ^ here?
 #[async_trait]
 pub trait GuildCommandPermsExt {
+    /// This endpoint will overwrite ALL existing permissions for all commands in a guild, even
+    /// those not in the [permissions](permissions) list.
     async fn batch_edit_permissions<B, State>(
         &self,
         state: State,
-        permissions: Vec<PartialGuildApplicationCommandPermission>,
+        permissions: Vec<GuildCommandPermissions>,
     ) -> ClientResult<()>
         where B: Send + Sync + 'static,
               State: AsRef<BotState<B>> + Send;
@@ -227,7 +262,7 @@ impl<G: Id<Id=GuildId> + Send + Sync> GuildCommandPermsExt for G {
     async fn batch_edit_permissions<B, State>(
         &self,
         state: State,
-        permissions: Vec<PartialGuildApplicationCommandPermission>,
+        permissions: Vec<GuildCommandPermissions>,
     ) -> ClientResult<()>
         where B: Send + Sync + 'static,
               State: AsRef<BotState<B>> + Send,

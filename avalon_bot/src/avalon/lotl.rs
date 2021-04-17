@@ -1,17 +1,24 @@
 use std::borrow::Cow;
+use std::sync::Arc;
 
+use command_data_derive::CommandData;
+use discorsd::{async_trait, BotState, UserMarkupExt};
+use discorsd::commands::*;
+use discorsd::errors::BotError;
 use discorsd::http::channel::create_message;
+use discorsd::http::guild::CommandPermsExt;
+use discorsd::http::user::UserExt;
+use discorsd::model::ids::{Id, UserId};
 
-use crate::delete_command;
-
-use super::*;
+use crate::avalon::game::AvalonGame;
+use crate::Bot;
 
 #[derive(Clone, Debug)]
 pub struct LotlCommand(pub UserId);
 
 #[allow(clippy::use_self)]
 #[async_trait]
-impl SlashCommandData for LotlCommand {
+impl SlashCommand for LotlCommand {
     type Bot = Bot;
     type Data = LadyData;
     type Use = Used;
@@ -21,7 +28,7 @@ impl SlashCommandData for LotlCommand {
         "Learn a player's true alignment".into()
     }
 
-    fn usable_by_everyone(&self) -> bool {
+    fn default_permissions(&self) -> bool {
         false
     }
 
@@ -72,18 +79,18 @@ impl SlashCommandData for LotlCommand {
                         let target_idx = game.players.iter()
                             .position(|p| p.id() == target.id())
                             .unwrap();
-                        let guard = state.commands.read().await;
-                        let mut commands = guard.get(&guild).unwrap()
-                            .write().await;
-                        delete_command(
-                            &*state, guild, &mut commands,
-                            |c| c.is::<LotlCommand>(),
-                        ).await?;
+                        state.command_id::<LotlCommand>(guild).await
+                            .disallow_users(&state, guild, &[self.0]).await?;
+
                         game.lotl = Some(target_idx);
                         game.prev_ladies.push(self.0);
                         game.round += 1;
                         AvalonGame::advance_leader(&mut game.leader, game.players.len());
-                        game.start_round(&*state, guild, &mut commands).await?;
+
+                        let guard = state.commands.read().await;
+                        let commands = guard.get(&guild).unwrap()
+                            .write().await;
+                        game.start_round(&*state, guild, commands).await?;
                         interaction.delete(&state).await
                     }
                 }
@@ -98,7 +105,7 @@ impl SlashCommandData for LotlCommand {
     }
 }
 
-#[derive(CommandData)]
+#[derive(CommandData, Debug)]
 pub struct LadyData {
     #[command(desc = "The player whose alignment you want to see.")]
     target: UserId,
@@ -107,8 +114,9 @@ pub struct LadyData {
 #[derive(Clone, Debug)]
 pub struct ToggleLady;
 
+// todo a setup command (group)
 #[async_trait]
-impl SlashCommandData for ToggleLady {
+impl SlashCommand for ToggleLady {
     type Bot = Bot;
     type Data = ToggleData;
     type Use = Deferred;

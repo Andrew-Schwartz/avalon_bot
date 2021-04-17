@@ -9,7 +9,7 @@ use crate::model::ids::*;
 
 #[derive(Debug, Default)]
 pub struct RateLimit {
-    // limit: Option<u32>,
+    limit: Option<u32>,
     remaining: Option<u32>,
     reset: Option<Instant>,
 }
@@ -31,7 +31,7 @@ impl RateLimit {
 impl fmt::Display for RateLimit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("RateLimit")
-            // .field("limit", &self.limit)
+            .field("limit", &self.limit)
             .field("remaining", &self.remaining)
             .field("reset", &self.reset.and_then(|reset| reset.checked_duration_since(Instant::now())))
             .finish()
@@ -138,7 +138,7 @@ impl RateLimiter {
     pub async fn rate_limit(&self, key: &BucketKey) {
         if let Some(rate_limit) = self.0.get(key) {
             if let Some(duration) = rate_limit.limit() {
-                log::info!("{:?} -> {}", key, rate_limit);
+                log::info!("{:?} ==> {}", key, rate_limit);
                 tokio::time::delay_for(duration).await;
             }
         }
@@ -146,9 +146,9 @@ impl RateLimiter {
 
     pub fn update(&mut self, key: BucketKey, headers: &HeaderMap) {
         let rate_limit = self.0.entry(key).or_default();
-        // if let Some(limit) = headers.get("X-RateLimit-Limit") {
-        //     rate_limit.limit = Some(limit.to_str().unwrap().parse().unwrap());
-        // }
+        if let Some(limit) = headers.get("X-RateLimit-Limit") {
+            rate_limit.limit = Some(limit.to_str().unwrap().parse().unwrap());
+        }
         if let Some(remaining) = headers.get("X-RateLimit-Remaining") {
             rate_limit.remaining = Some(remaining.to_str().unwrap().parse().unwrap());
         }
@@ -156,5 +156,6 @@ impl RateLimiter {
             let secs = reset_after.to_str().unwrap().parse().unwrap();
             rate_limit.reset = Some(Instant::now() + Duration::from_secs_f64(secs));
         }
+        // println!("{:?} ==> {}", key, rate_limit);
     }
 }

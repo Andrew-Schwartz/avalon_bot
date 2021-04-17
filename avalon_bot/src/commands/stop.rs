@@ -10,12 +10,16 @@ use discorsd::model::ids::*;
 use discorsd::model::message::Color;
 use discorsd::shard::dispatch::{ReactionType, ReactionUpdate};
 
-use crate::{async_trait, Bot, create_command};
+use crate::{async_trait, Bot};
 use crate::avalon::AvalonPlayer;
 use crate::games::GameType;
 
-#[derive(Debug, Copy, Clone)]
-pub struct StopCommand(pub GameType);
+// todo make stop take a list of stoppable games
+#[derive(Debug, Copy, Clone, Default)]
+pub struct StopCommand {
+    pub game: GameType,
+    pub default_permissions: bool,
+}
 
 impl StopCommand {
     pub const CONFIRM: char = '✅';
@@ -23,7 +27,7 @@ impl StopCommand {
 }
 
 #[async_trait]
-impl SlashCommandData for StopCommand {
+impl SlashCommand for StopCommand {
     type Bot = Bot;
     type Data = ();
     type Use = Used;
@@ -32,8 +36,12 @@ impl SlashCommandData for StopCommand {
     fn description(&self) -> Cow<'static, str> {
         format!(
             "Stop the current game of {}. Requires 2 additional players to confirm.",
-            self.0.name()
+            self.game.name()
         ).into()
+    }
+
+    fn default_permissions(&self) -> bool {
+        self.default_permissions
     }
 
     async fn run(&self,
@@ -63,24 +71,25 @@ impl SlashCommandData for StopCommand {
         {
             let players = state.bot.avalon_games.read().await
                 .get(&guild)
-                .unwrap().game_ref()
+                .unwrap()
+                .game_ref()
                 .players.iter()
                 .map(AvalonPlayer::id)
                 .collect();
             let mut reaction_commands = state.reaction_commands.write().await;
-            let vote = StopVoteCommand(id, guild, players, interaction.user().id, self.0);
+            let vote = StopVoteCommand(id, guild, players, interaction.user().id, self.game);
             reaction_commands.push(Box::new(vote));
         }
         {
             let guard = state.commands.read().await;
             let mut commands = guard.get(&guild).unwrap()
                 .write().await;
-            state.client.delete_guild_command(
-                state.application_id().await,
-                guild,
-                interaction.command,
-            ).await?;
-            commands.remove(&interaction.command);
+            let this_cmd = commands.get_mut(&interaction.command)
+                .unwrap()
+                .downcast_mut::<Self>()
+                .unwrap();
+            this_cmd.default_permissions = false;
+            this_cmd.edit_command(&state, guild, interaction.command).await?;
         }
         Ok(interaction)
     }
@@ -140,9 +149,11 @@ impl ReactionCommand<Bot> for StopVoteCommand {
             }
             {
                 let commands = state.commands.read().await;
-                let mut commands = commands.get(&self.1).unwrap()
-                    .write().await;
-                create_command(&*state, self.1, &mut commands, StopCommand(self.4)).await?;
+                let mut commands = commands.get(&self.1).unwrap().write().await;
+                let (stop_id, stop_command) = state.get_command_mut::<StopCommand>(self.1, &mut commands).await;
+                stop_command.game = self.4;
+                stop_command.default_permissions = true;
+                stop_command.edit_command(&state, self.1, stop_id).await?;
             }
         }
 

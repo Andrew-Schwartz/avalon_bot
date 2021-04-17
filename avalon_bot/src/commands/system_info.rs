@@ -7,12 +7,12 @@ use once_cell::sync::Lazy;
 use sysinfo::{ComponentExt, ProcessorExt, System, SystemExt};
 
 use command_data_derive::*;
-use discorsd::async_trait;
+use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
+use discorsd::errors::BotError;
 use discorsd::http::channel::embed;
 use discorsd::model::message::Color;
 
-use crate::avalon::{BotError, BotState};
 use crate::Bot;
 
 static SYS_INFO: Lazy<Mutex<System>> = Lazy::new(|| Mutex::new(System::new_all()));
@@ -21,7 +21,7 @@ static SYS_INFO: Lazy<Mutex<System>> = Lazy::new(|| Mutex::new(System::new_all()
 pub struct SysInfoCommand;
 
 #[async_trait]
-impl SlashCommandData for SysInfoCommand {
+impl SlashCommand for SysInfoCommand {
     type Bot = Bot;
     type Data = Data;
     type Use = Used;
