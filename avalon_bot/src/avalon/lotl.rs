@@ -114,7 +114,6 @@ pub struct LadyData {
 #[derive(Clone, Debug)]
 pub struct ToggleLady;
 
-// todo a setup command (group)
 #[async_trait]
 impl SlashCommand for ToggleLady {
     type Bot = Bot;

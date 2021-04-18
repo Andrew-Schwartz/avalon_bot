@@ -1234,7 +1234,6 @@ impl<'de> Deserialize<'de> for InteractionData {
         }
 
         let ACID { id, name: data_name, options, resolved } = ACID::deserialize(d)?;
-        // todo remove this when I know what it does
         if let Some(resolved) = resolved {
             println!("resolved = {:#?}", resolved);
             /*
@@ -1445,6 +1444,7 @@ pub struct ApplicationCommandInteractionData {
     /// the params + values from the user
     #[serde(default)]
     pub options: Vec<ApplicationCommandInteractionDataOption>,
+    // todo deal with this, its more data if you use one of the ID options
     pub resolved: Option<serde_json::Value>,
 }
 

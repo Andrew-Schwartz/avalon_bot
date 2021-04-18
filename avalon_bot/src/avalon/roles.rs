@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use itertools::Itertools;
-use strum::{EnumCount, IntoEnumIterator};
+use strum::EnumCount;
 
 use command_data_derive::CommandData;
 use discorsd::{async_trait, BotState};
@@ -11,6 +11,7 @@ use discorsd::commands::*;
 use discorsd::errors::BotError;
 
 use crate::avalon::characters::Character;
+use crate::avalon::characters::Character::{LoyalServant, MinionOfMordred};
 use crate::Bot;
 
 #[derive(Clone, Debug)]
@@ -25,59 +26,6 @@ impl SlashCommand for RolesCommand {
 
     fn description(&self) -> Cow<'static, str> {
         "Pick which roles will be available in the next game of Avalon.".into()
-    }
-
-    fn options(&self) -> TopLevelOption {
-        // println!("RoleData::make_args(self) = {:#?}", RoleData::make_args(self));
-        let roles: HashSet<Character> = self.0.iter().cloned().collect();
-        let make_opts = |first, addl, already_present| {
-            let choices = Character::iter()
-                .skip(2)
-                .filter(|c| roles.contains(c) == already_present)
-                .map(Character::name)
-                .map(CommandChoice::new_str)
-                .collect_vec();
-            let num_choices = if already_present {
-                roles.len()
-            } else {
-                Character::COUNT - 2 - roles.len()
-            };
-            (0..num_choices).map(|i| {
-                match i {
-                    0 => CommandDataOption::new_str("first", first).required(),
-                    1 => CommandDataOption::new_str("second", addl),
-                    2 => CommandDataOption::new_str("third", addl),
-                    3 => CommandDataOption::new_str("fourth", addl),
-                    4 => CommandDataOption::new_str("fifth", addl),
-                    5 => CommandDataOption::new_str("sixth", addl),
-                    _ => unreachable!("harumph"),
-                }
-            })
-                .map(|opt| opt.choices(choices.clone()))
-                .map(DataOption::String)
-                .collect()
-        };
-        let mut commands = Vec::new();
-        if roles.len() < Character::COUNT - 2 {
-            commands.push(SubCommand {
-                name: "add",
-                description: "Choose roles to add",
-                options: make_opts("The role to add", "Additional role to add", false),
-            });
-        }
-        if !roles.is_empty() {
-            commands.push(SubCommand {
-                name: "remove",
-                description: "Choose roles to remove",
-                options: make_opts("The role to remove", "Additional role to remove", true),
-            });
-            commands.push(SubCommand {
-                name: "clear",
-                description: "Clear all roles",
-                options: Vec::new(),
-            });
-        }
-        TopLevelOption::Commands(commands)
     }
 
     async fn run(&self,
@@ -131,12 +79,44 @@ impl SlashCommand for RolesCommand {
 }
 
 #[derive(CommandData)]
+#[command(command = "RolesCommand")]
 pub enum RoleData {
-    // todo                                       v
-    #[command(desc = "Choose roles to add"/*, enable_if = ""*/)]
-    Add(#[command(vararg = "role", va_ordinals, default = "HashSet::new")] HashSet<Character>),
-    #[command(desc = "Choose roles to remove")]
-    Remove(#[command(vararg = "role", va_ordinals, default = "HashSet::new")] HashSet<Character>),
-    #[command(desc = "Clear all roles")]
+    #[command(desc = "Choose roles to add", enable_if = "add_roles")]
+    Add(
+        #[command(va_ordinals, va_count = "add_count", required = 1, retain = "add_choice")]
+        HashSet<Character>
+    ),
+    #[command(desc = "Choose roles to remove", enable_if = "remove_roles")]
+    Remove(
+        #[command(va_ordinals, va_count = "remove_count", required = 1, retain = "remove_choice")]
+        HashSet<Character>
+    ),
+    #[command(desc = "Clear all roles", enable_if = "remove_roles")]
     Clear,
+}
+
+fn add_count(command: &RolesCommand) -> usize {
+    Character::COUNT - 2 - command.0.len()
+}
+
+fn add_choice(command: &RolesCommand, choice: &CommandChoice<&'static str>) -> bool {
+    choice.value != LoyalServant &&
+        choice.value != MinionOfMordred &&
+        !command.0.iter().any(|c| choice.value == c)
+}
+
+fn remove_count(command: &RolesCommand) -> usize {
+    command.0.len()
+}
+
+fn remove_choice(command: &RolesCommand, choice: &CommandChoice<&'static str>) -> bool {
+    command.0.iter().any(|c| choice.value == c)
+}
+
+fn add_roles(command: &RolesCommand) -> bool {
+    command.0.len() < Character::COUNT - 2
+}
+
+fn remove_roles(command: &RolesCommand) -> bool {
+    !command.0.is_empty()
 }

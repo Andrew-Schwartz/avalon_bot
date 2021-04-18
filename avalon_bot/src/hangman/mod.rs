@@ -165,28 +165,22 @@ impl HangmanConfig {
     pub async fn update_embed(
         &mut self,
         state: &BotState<Bot>,
-        interaction: InteractionUse<Unused>,
-    ) -> http::ClientResult<InteractionUse<Used>> {
+        interaction: &InteractionUse<Deferred>,
+    ) -> http::ClientResult<()> {
         let embed = self.embed();
         match &mut self.message {
             Some(message) if message.channel == interaction.channel => {
-                let is_last_message = state.cache.text_channel(interaction.channel).await
-                    .and_then(|c| c.last_message_id.map(|id| id == message.id))
-                    .unwrap_or(false);
-                if is_last_message {
-                    message.edit(&state.client, embed).await?;
-                } else {
-                    let new = interaction.channel.send(&state, embed).await?;
-                    let old = mem::replace(message, new);
-                    old.delete(&state.client).await?;
-                }
+                // not a followup so it doesn't get deleted
+                let new = interaction.channel.send(&state, embed).await?;
+                let old = mem::replace(message, new);
+                old.delete(&state.client).await?;
             }
             Some(_) | None => {
                 let new = interaction.channel.send(&state, embed).await?;
                 self.message = Some(new);
             }
         }
-        interaction.delete(&state).await
+        Ok(())
     }
 }
 

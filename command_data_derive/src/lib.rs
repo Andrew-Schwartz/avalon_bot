@@ -137,13 +137,8 @@ handle_attribute!(
         // todo is this necessary? it's never used
         /// Make this field required (note: fields are required by default, unless they are an `Option`).
         ["required" => self.default = None]
-        /// Only applicable for `vararg` fields. Name the command options "One", "Two", "Three", etc.
-        ["va_ordinals" => self.vararg.names = VarargNames::Ordinals]
-        /// Only applicable for `vararg` fields. Name this vararg field "{vararg}1", "{vararg}2",
-        /// where {vararg} is the key on the `vararg` option.
-        ///
-        /// Note: this is the default naming behavior used for varargs.
-        ["va_indexed" => self.vararg.names = VarargNames::Index],
+        /// Makes this field a `vararg`. Names the command options "One", "Two", "Three", etc.
+        ["va_ordinals" => self.vararg.get_or_insert_with(Default::default).names = VarargNames::Ordinals],
 
     " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
         /// The description of this command option. If omitted, will use the field's name as the
@@ -164,7 +159,7 @@ handle_attribute!(
         /// created by appending a counting integer to `{str}`. Allows the user to chose multiple
         /// options of this field's type.
         /// See also `ordinals`, `counts`, `va_count`, and `va_names`.
-        ["vararg" => self.vararg.root = Some(str)]
+        ["vararg" => self.vararg.get_or_insert_with(Default::default).names = VarargNames::Index(str)]
         // todo reorder doc so the type = ... part comes first cuz its basically always going to be
         //  set if you're doing this
         /// How to filter the choices, if `choices` is true.
@@ -182,22 +177,22 @@ handle_attribute!(
         /// `fn<C: SlashCommand>(&C) -> usize` to pick how many vararg options to display.
         /// The the same generic rules apply as above. If you want a fixed number of varargs in the
         /// command, set `required` to an int.
-        ["va_count" => self.vararg.num = VarargNum::Function(str.parse()?)]
+        ["va_count" => self.vararg.get_or_insert_with(Default::default).num = VarargNum::Function(str.parse()?)]
         /// How to name the vararg options. Must be callable as a function
         /// `fn<N>(usize) -> N where N: Into<Cow<'static, str>`.
-        ["va_names" => self.vararg.names = VarargNames::Function(str.parse()?)],
+        ["va_names" => self.vararg.get_or_insert_with(Default::default).names = VarargNames::Function(str.parse()?)],
 
     " = {int}": Meta::NameValue(MetaNameValue { path, lit: Lit::Int(int), .. }), path =>
         /// The number of vararg options to show.
-        ["va_count" => self.vararg.num = VarargNum::Count(int.base10_parse()?)]
+        ["va_count" => self.vararg.get_or_insert_with(Default::default).num = VarargNum::Count(int.base10_parse()?)]
         /// The number of vararg options required. If `va_count` is greater than this, the excess
         /// options will be optional.
-        ["required" => self.vararg.required = if self.ty.array_type().is_some() {
+        ["required" => self.vararg.get_or_insert_with(Default::default).required = if self.ty.array_type().is_some() {
             // if its an array require all of them
             None
         } else {
             Some(int.base10_parse()?)
-        }]
+        }],
 );
 
 handle_attribute!(
@@ -226,7 +221,7 @@ handle_attribute!(
     " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
         /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
         /// can make decisions at runtime by taking functions callable as `fn(&CommandType) -> SomeType`.
-        ["command" => self.command_type = Some(str.parse()?)]
+        ["command" => self.command_type = Some(str.parse()?)],
 );
 
 handle_attribute!(
@@ -251,6 +246,12 @@ handle_attribute!(
         ["desc" => self.desc = Some(str)]
         /// What to rename this field as in the Command.
         ["rename" => self.rename = Some(str)]
+        /// todo docs
+        ["enable_if" => self.enable_if = Some(str.parse()?)],
+
+    // " = {other}": Meta::NameValue(MetaNameValue { path, lit, .. }), path =>
+    //     /// fasjdas
+    //     ["i_hope" => todo!("{:?}", lit)],
 );
 
 handle_attribute!(
@@ -282,7 +283,7 @@ handle_attribute!(
     " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
         /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
         /// can make decisions at runtime by taking functions callable as `fn(CommandType) -> SomeType`.
-        ["command" => self.command_type = Some(str.parse()?)]
+        ["command" => self.command_type = Some(str.parse()?)],
 );
 
 handle_attribute!(
@@ -310,5 +311,5 @@ handle_attribute!(
     " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
         /// The string to show in Discord for this choice. Useful when you want to display a multiple
         /// word long choice.
-        ["choice" => self.choice = Some(str)]
+        ["choice" => self.choice = Some(str)],
 );

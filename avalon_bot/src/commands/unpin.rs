@@ -27,11 +27,6 @@ impl SlashCommand for UnpinCommand {
         "Unpins all/some messages from this channel".into()
     }
 
-    // todo everyone can use it in dms, only ppl with Manage Messages or higher can in guilds
-    // fn usable_by_everyone(&self) -> bool {
-    //     false
-    // }
-
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
@@ -92,7 +87,6 @@ pub enum UnpinData {
         // todo compile error if the description is too long 👀
         #[command(desc = "How many messages to unpin (negative unpins all but this many)")]
         // Same as old (#pins - number)")]
-        // todo take i64 and negative means exclude
         number: i64,
     },
     #[command(desc = "Unpin the oldest n messages in this channel")]

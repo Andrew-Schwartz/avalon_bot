@@ -3,7 +3,7 @@ use std::iter::FromIterator;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_error::*;
 use quote::{quote, quote_spanned};
-use syn::{Attribute, DataEnum, Fields, Ident, LitStr, Type};
+use syn::{Attribute, DataEnum, Fields, Ident, LitStr, Path, Type};
 use syn::spanned::Spanned;
 
 use crate::struct_data::{Field, Struct};
@@ -28,6 +28,8 @@ pub struct Variant {
     pub rename: Option<LitStr>,
     fields: Fields,
     pub desc: Option<LitStr>,
+    /// fn<C>(c: &C) -> bool
+    pub enable_if: Option<Path>,
 }
 
 impl Variant {
@@ -57,6 +59,7 @@ impl From<syn::Variant> for Variant {
             rename: None,
             fields: variant.fields,
             desc: None,
+            enable_if: None,
         };
         for attr in &attrs {
             if !attr.path.is_ident("command") { continue; }
@@ -100,21 +103,30 @@ impl Enum {
     }
 
     fn make_args_vec(&self, command_type: &TokenStream2) -> TokenStream2 {
-        let branches = self.variants.iter().map(|v| {
+        let chains = self.variants.iter().map(|v| {
             // todo filter out the attributes this used
             let strukt = Struct::from_fields(v.fields.clone(), &[]);
             let name = v.name();
             let desc = v.description(&name);
             let options = strukt.data_options(command_type);
+            let take = if let Some(enable) = &v.enable_if {
+                quote_spanned! { enable.span() =>
+                    .take(#enable(command) as usize)
+                }
+            } else {
+                TokenStream2::new()
+            };
             quote_spanned! { v.ident.span() =>
-                <Self::VecArg as ::discorsd::commands::VecArgLadder>::make(
+                ::std::iter::once(<Self::VecArg as ::discorsd::commands::VecArgLadder>::make(
                     #name, #desc, #options
-                )
+                ))#take
             }
         });
 
         quote! {
-            vec![#(#branches,)*]
+            ::std::iter::empty()
+                #(.chain(#chains))*
+                .collect()
         }
     }
 
@@ -138,7 +150,7 @@ impl Enum {
                             } else {
                                 Some(false)
                             }
-                        },
+                        }
                         _ => Some(true),
                     }
                 }

@@ -41,7 +41,6 @@ impl SlashCommand for AddMeCommand {
     }
 }
 
-// fixme: doesn't work if just `player` is given
 #[derive(CommandData)]
 pub struct AddMeData {
     #[command(default, desc = "The game to add you to, or Avalon if not specified")]
@@ -132,5 +131,7 @@ async fn hangman(
         }
     }
 
-    config.update_embed(state, interaction).await
+    let deferred = interaction.defer(&state).await?;
+    config.update_embed(state, &deferred).await?;
+    deferred.delete(&state).await
 }

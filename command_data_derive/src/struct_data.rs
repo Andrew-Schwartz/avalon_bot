@@ -47,10 +47,10 @@ pub struct Field {
     pub default: Option<Path>,
     /// function to determine if this field is required, must be callable as
     /// `fn<C: SlashCommand>(command: &C) -> bool`, where the generic is not necessary if the
-    /// struct's type is specified (`#[command(type = "MyCommand")]`
+    /// struct's type is specified (`#[command(type = "MyCommand")]`)
     pub required: Option<Path>,
     /// see [Vararg](Vararg) for details
-    pub vararg: Vararg,
+    pub vararg: Option<Vararg>,
     /// how to filter the choices, if `choices` is true
     ///
     /// must be a function callable as
@@ -101,21 +101,14 @@ pub struct UnnamedField {
 
 #[derive(Debug, Default)]
 pub struct Vararg {
-    /// the root of the vararg parameter, for example `player` for player1, player2, player3, ...
-    pub root: Option<LitStr>,
-    /// `fn<C: SlashCommand>(command: &C) -> usize` to pick how many vararg options to display
-    pub num: VarargNum,
-    // todo make count hold the name & get rid of root, then just make the vararg field in struct optional
+    // /// the root of the vararg parameter, for example `player` for player1, player2, player3, ...
+    // pub root: Option<LitStr>,
     /// how to name the vararg options
     pub names: VarargNames,
+    /// `fn<C: SlashCommand>(command: &C) -> usize` to pick how many vararg options to display
+    pub num: VarargNum,
     /// how many varargs are required. If `None`, all are required
     pub required: Option<usize>,
-}
-
-impl Vararg {
-    pub const fn is_some(&self) -> bool {
-        self.root.is_some()
-    }
 }
 
 #[derive(Debug)]
@@ -141,17 +134,26 @@ impl Default for VarargNum {
 
 #[derive(Debug)]
 pub enum VarargNames {
-    /// if root is `player`, names will be `player1`, `player2`, etc
-    Index,
-    /// names will be `first`, `second`, `third`, etc (up to 20)
+    /// names will be `first`, `second`, `third`, etc
     Ordinals,
+    /// if the `LitStr` is "player", the names will be `player1`, `player2`, etc
+    Index(LitStr),
     /// names given by this function, callable as `fn<C: Into<Cow<'static, str>>(n: usize) -> C`
     Function(Path),
 }
 
 impl Default for VarargNames {
     fn default() -> Self {
-        Self::Index
+        Self::Ordinals
+    }
+}
+
+impl VarargNames {
+    fn as_index(&self) -> Option<&LitStr> {
+        match self {
+            Self::Index(root) => Some(root),
+            _ => None,
+        }
     }
 }
 
@@ -160,9 +162,12 @@ impl Field {
         match &self.name {
             FieldIdent::Named(named) => named.rename.as_ref()
                 .map(LitStr::value)
-                .or_else(|| self.vararg.root.as_ref().map(LitStr::value))
+                .or_else(|| self.vararg.as_ref()
+                    .and_then(|v| v.names.as_index())
+                    .map(LitStr::value))
                 .unwrap_or_else(|| named.ident.to_string()),
-            FieldIdent::Unnamed(unnamed) => self.vararg.root.as_ref()
+            FieldIdent::Unnamed(unnamed) => self.vararg.as_ref()
+                .and_then(|v| v.names.as_index())
                 .map_or_else(|| unnamed.index.index.to_string(), LitStr::value),
         }
     }
@@ -181,9 +186,9 @@ impl VarargNames {
         }
     }
 
-    fn names(&self, root: &LitStr) -> TokenStream2 {
+    fn names(&self) -> TokenStream2 {
         match self {
-            VarargNames::Index => quote! {
+            VarargNames::Index(root) => quote! {
                 (1..).map(|i| format!(concat!(#root, "{}"), i))
             },
             VarargNames::Ordinals => {
@@ -200,9 +205,9 @@ impl VarargNames {
 
     /// Determine if an option is part of a vararg.
     /// Called as the body of a closure with parameters `option_name: &str` and `idx: usize`, returns `bool`
-    fn matches_vararg(&self, root: &LitStr) -> TokenStream2 {
+    fn matches_vararg(&self) -> TokenStream2 {
         match self {
-            VarargNames::Index => quote! {
+            VarargNames::Index(root) => quote! {
                 option_name.strip_prefix(#root)
                     .and_then(|num| num.parse::<usize>().ok())
                     == Some(idx)
@@ -353,11 +358,11 @@ impl Struct {
                         #[allow(clippy::used_underscore_binding)]
                         #varargs_match
                     } else {
-                        // todo move this in to fields_match too
-                        match idx {
+                        loop {
+                            // maybe?
+                            // #[allow(clippy::used_underscore_binding)]
                             #fields_match
-                            // there were too many args
-                            _ => return Err(CommandParseError::BadOrder(option.name, idx, 0..#num_fields))
+                            idx += 1;
                         }
                     }
                     idx += 1;
@@ -392,14 +397,22 @@ impl Struct {
                 }
             } else {
                 quote_spanned! { ty.span() =>
-                    #i => builder.#builder_ident = Some(
-                        <#ty as ::discorsd::commands::CommandData<#command_ty>>::from_options(option)?
-                    )
+                    #i => if option.name == FIELDS[#i] {
+                        builder.#builder_ident = Some(
+                            <#ty as ::discorsd::commands::CommandData<#command_ty>>::from_options(option)?
+                        );
+                        break
+                    }
                 }
             }
         });
+        let num_fields = self.fields.len();
         quote! {
-            #(#branches,)*
+            match idx {
+                #(#branches,)*
+                #num_fields => return Err(CommandParseError::BadOrder(option.name, idx, 0..#num_fields)),
+                _ => {}
+            }
         }
     }
 
@@ -485,8 +498,8 @@ impl Struct {
 
     fn varargs_array(&self) -> TokenStream2 {
         let vararg_names = self.fields.iter().map(|f| {
-            if f.vararg.is_some() {
-                let fn_body = f.vararg.names.matches_vararg(f.vararg.root.as_ref().unwrap());
+            if let Some(vararg) = &f.vararg {
+                let fn_body = vararg.names.matches_vararg();
                 quote_spanned! { f.name.span() => |option_name, idx| { #fn_body } }
             } else {
                 quote_spanned! { f.name.span() => |_, _| false }
@@ -497,8 +510,8 @@ impl Struct {
 
     pub fn data_options(&self, command_type: &TokenStream2) -> TokenStream2 {
         let chain = self.fields.iter().map(|f| {
-            if f.vararg.is_some() {
-                f.vararg_option(command_type)
+            if let Some(vararg) = &f.vararg {
+                f.vararg_option(vararg, command_type)
             } else {
                 let name = f.arg_name();
                 let desc = f.desc.as_ref()
@@ -582,14 +595,13 @@ impl Field {
         }
     }
 
-    fn vararg_option(&self, command_type: &TokenStream2) -> TokenStream2 {
+    fn vararg_option(&self, vararg: &Vararg, command_type: &TokenStream2) -> TokenStream2 {
         let ty = &self.ty;
-        let root = self.vararg.root.as_ref().unwrap();
-        let names = self.vararg.names.names(root);
-        let take = self.vararg.num.take_n();
-        // todo make this settable too, default to ?names?
-        let descriptions = VarargNames::Index.names(root);
-        let single_opt = self.single_option(None, self.vararg.required);
+        let names = vararg.names.names();
+        let take = vararg.num.take_n();
+        // todo make this settable too
+        let descriptions = &names;
+        let single_opt = self.single_option(None, vararg.required);
 
         quote! {
             // `command` is in scope from `CommandData::make_args` param

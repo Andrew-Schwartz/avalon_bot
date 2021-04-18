@@ -8,7 +8,7 @@ macro_rules! handle_attribute {
                 $(#[doc = $doc:literal])+
                 [$str:literal => $($str_effect:tt)*]
             )+
-        ),+
+        ),+ $(,)?
     ) => {
         impl $ty {
             fn handle_attribute($self: &mut Self, attr: &syn::Attribute) {
