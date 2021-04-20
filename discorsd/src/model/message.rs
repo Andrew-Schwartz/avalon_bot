@@ -118,14 +118,7 @@ impl Message {
     }
 }
 
-id_eq!(Message);
-impl Id for Message {
-    type Id = MessageId;
-
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-}
+id_impl!(Message => MessageId);
 
 // todo why isn't this just a tuple??? (maybe can make a trait ext bound that either order works for)
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]

@@ -204,14 +204,8 @@ pub struct TextChannel {
     pub last_pin_timestamp: Option<DateTime<Utc>>,
 }
 
-id_eq!(TextChannel);
-impl Id for TextChannel {
-    type Id = ChannelId;
+id_impl!(TextChannel => id: ChannelId);
 
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-}
 impl From<TextChannel> for Channel {
     fn from(c: TextChannel) -> Self {
         Self::Text(c)
@@ -233,14 +227,8 @@ pub struct DmChannel {
     pub last_pin_timestamp: Option<DateTime<Utc>>,
 }
 
-id_eq!(DmChannel);
-impl Id for DmChannel {
-    type Id = ChannelId;
+id_impl!(DmChannel => id: ChannelId);
 
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-}
 impl From<DmChannel> for Channel {
     fn from(c: DmChannel) -> Self {
         Self::Dm(c)
@@ -286,14 +274,8 @@ pub struct VoiceChannel {
     pub parent_id: Option<ChannelId>,
 }
 
-id_eq!(VoiceChannel);
-impl Id for VoiceChannel {
-    type Id = ChannelId;
+id_impl!(VoiceChannel => id: ChannelId);
 
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-}
 impl From<VoiceChannel> for Channel {
     fn from(c: VoiceChannel) -> Self {
         Self::Voice(c)
@@ -322,14 +304,8 @@ pub struct GroupDmChannel {
     pub last_pin_timestamp: Option<DateTime<Utc>>,
 }
 
-id_eq!(GroupDmChannel);
-impl Id for GroupDmChannel {
-    type Id = ChannelId;
+id_impl!(GroupDmChannel => id: ChannelId);
 
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-}
 impl From<GroupDmChannel> for Channel {
     fn from(c: GroupDmChannel) -> Self {
         Self::GroupDm(c)
@@ -350,19 +326,10 @@ pub struct CategoryChannel {
     // pub permission_overwrites: Vec<Overwrite>,
     /// the name of the channel (2-100 characters)
     pub name: String,
-    // /// whether the channel is nsfw
-    // #[serde(default)]
-    // pub nsfw: bool,
 }
 
-id_eq!(CategoryChannel);
-impl Id for CategoryChannel {
-    type Id = ChannelId;
+id_impl!(CategoryChannel => id: ChannelId);
 
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-}
 impl From<CategoryChannel> for Channel {
     fn from(c: CategoryChannel) -> Self {
         Self::Category(c)
@@ -399,14 +366,8 @@ pub struct NewsChannel {
     pub last_pin_timestamp: Option<DateTime<Utc>>,
 }
 
-id_eq!(NewsChannel);
-impl Id for NewsChannel {
-    type Id = ChannelId;
+id_impl!(NewsChannel => id: ChannelId);
 
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-}
 impl From<NewsChannel> for Channel {
     fn from(c: NewsChannel) -> Self {
         Self::News(c)
@@ -437,14 +398,8 @@ pub struct StoreChannel {
     pub parent_id: Option<ChannelId>,
 }
 
-id_eq!(StoreChannel);
-impl Id for StoreChannel {
-    type Id = ChannelId;
+id_impl!(StoreChannel => id: ChannelId);
 
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-}
 impl From<StoreChannel> for Channel {
     fn from(c: StoreChannel) -> Self {
         Self::Store(c)

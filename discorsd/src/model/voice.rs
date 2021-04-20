@@ -31,14 +31,7 @@ pub struct VoiceState {
     pub suppress: bool,
 }
 
-id_eq!(VoiceState);
-impl Id for VoiceState {
-    type Id = UserId;
-
-    fn id(&self) -> Self::Id {
-        self.user_id
-    }
-}
+id_impl!(VoiceState => user_id: UserId);
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct VoiceRegion {

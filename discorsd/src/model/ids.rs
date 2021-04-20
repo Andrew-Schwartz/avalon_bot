@@ -102,13 +102,45 @@ id_impl!(
 );
 
 mod sealed {
-    pub trait IsId: Copy + std::hash::Hash + Eq {}
+    use std::fmt::Debug;
+
+    pub trait IsId: Copy + std::hash::Hash + Eq + Debug {}
 }
 
 pub trait Id: PartialEq {
     type Id: IsId;
 
     fn id(&self) -> Self::Id;
+}
+
+/// Impl [Id](Id) for a type, using its `id` field to get the id
+/// ```rust
+/// # struct MessageId;
+/// struct Message {
+///     id: Message,
+/// # /*
+///     ...
+/// # */
+/// }
+/// id_impl!(Message, id: MessageId);
+/// ```
+///
+/// Also impl's `PartialEq` by calling [id_eq](id_eq)
+macro_rules! id_impl {
+    ($ty:ty => $id:ident: $id_ty:ty) => {
+        impl $crate::model::ids::Id for $ty {
+            type Id = $id_ty;
+
+            fn id(&self) -> Self::Id {
+                self.$id
+            }
+        }
+
+        id_eq!($ty);
+    };
+    ($ty:ty => $id_ty:ty) => {
+        id_impl!($ty => id: $id_ty);
+    };
 }
 
 /// impl `PartialEq` for a type that has an id

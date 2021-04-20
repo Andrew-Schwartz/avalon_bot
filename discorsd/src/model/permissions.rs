@@ -183,11 +183,4 @@ pub struct RoleTags {
 	premium_subscriber: Option<()>,
 }
 
-id_eq!(Role);
-impl Id for Role {
-	type Id = RoleId;
-
-	fn id(&self) -> Self::Id {
-		self.id
-	}
-}
+id_impl!(Role => RoleId);

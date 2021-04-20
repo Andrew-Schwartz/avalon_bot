@@ -130,15 +130,7 @@ pub struct Guild {
     /// approximate number of non-offline members in this guild, returned from the `GET /guild/<id>` endpoint when `with_counts` is `true`
     pub approximate_presence_count: Option<u32>,
 }
-
-id_eq!(Guild);
-impl Id for Guild {
-    type Id = GuildId;
-
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-}
+id_impl!(Guild => id: GuildId);
 
 impl Guild {
     /// The url where this guild's icon can be retrieved from Discord, if it has an icon. The

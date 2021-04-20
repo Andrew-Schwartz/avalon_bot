@@ -1,8 +1,10 @@
 use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
+use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::ser::SerializeSeq;
@@ -10,10 +12,13 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::errors::{CommandOptionTypeParsed, OptionType};
 use crate::http::channel::{embed, RichEmbed};
+use crate::IdMap;
+use crate::model::channel::ChannelType;
 use crate::model::guild::GuildMember;
 use crate::model::ids::*;
 use crate::model::ids::{CommandId, InteractionId};
 use crate::model::message::{AllowedMentions, MessageFlags};
+use crate::model::permissions::{Permissions, Role};
 use crate::model::user::User;
 use crate::serde_utils::BoolExt;
 
@@ -854,15 +859,7 @@ pub struct ApplicationCommand {
     #[serde(default)]
     pub options: Vec<ApplicationCommandOption>,
 }
-
-id_eq!(ApplicationCommand);
-impl Id for ApplicationCommand {
-    type Id = CommandId;
-
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-}
+id_impl!(ApplicationCommand => id: CommandId);
 
 /// You can specify a maximum of 10 choices per option.
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -1207,9 +1204,7 @@ pub struct ValueOption {
 pub enum InteractionDataOption {
     Group(GroupOption),
     Command(CommandOption),
-    // default (see empty lady command)
-    Values(/*#[serde(default)]*/ Vec<ValueOption>),
-    // None,
+    Values(Vec<ValueOption>),
 }
 
 impl<'de> Deserialize<'de> for InteractionData {
@@ -1233,90 +1228,13 @@ impl<'de> Deserialize<'de> for InteractionData {
                 .expect("Already checked for 0 or > 1 options")
         }
 
-        let ACID { id, name: data_name, options, resolved } = ACID::deserialize(d)?;
-        if let Some(resolved) = resolved {
-            println!("resolved = {:#?}", resolved);
-            /*
-resolved = Object({
-    "members": Object({
-        "243418816510558208": Object({
-            "is_pending": Bool(
-                false,
-            ),
-            "joined_at": String(
-                "2018-09-20T00:00:44.216000+00:00",
-            ),
-            "nick": String(
-                "SFE",
-            ),
-            "pending": Bool(
-                false,
-            ),
-            "permissions": String(
-                "8589934591",
-            ),
-            "premium_since": Null,
-            "roles": Array([
-                String(
-                    "592892380609511445",
-                ),
-            ]),
-        }),
-        "592500196303437826": Object({
-            "is_pending": Bool(
-                false,
-            ),
-            "joined_at": String(
-                "2019-06-23T23:58:06.499000+00:00",
-            ),
-            "nick": Null,
-            "pending": Bool(
-                false,
-            ),
-            "permissions": String(
-                "6546775617",
-            ),
-            "premium_since": Null,
-            "roles": Array([]),
-        }),
-    }),
-    "users": Object({
-        "243418816510558208": Object({
-            "avatar": String(
-                "b494112cc3dbd0c353ce3c017825fea1",
-            ),
-            "discriminator": String(
-                "7399",
-            ),
-            "id": String(
-                "243418816510558208",
-            ),
-            "public_flags": Number(
-                128,
-            ),
-            "username": String(
-                "Steadfast",
-            ),
-        }),
-        "592500196303437826": Object({
-            "avatar": Null,
-            "discriminator": String(
-                "5083",
-            ),
-            "id": String(
-                "592500196303437826",
-            ),
-            "public_flags": Number(
-                0,
-            ),
-            "username": String(
-                "RSteadfast",
-            ),
-        }),
-    }),
-})
-             */
-        }
+        let ACID {
+            id,
+            name: data_name,
+            options,
+            // mostly exists for webhook bots, so we don't process it
+            resolved: _
+        } = ACID::deserialize(d)?;
         let options = if options.is_empty() {
             InteractionDataOption::Values(Vec::new())
         } else if options.len() > 1 {
@@ -1444,9 +1362,45 @@ pub struct ApplicationCommandInteractionData {
     /// the params + values from the user
     #[serde(default)]
     pub options: Vec<ApplicationCommandInteractionDataOption>,
-    // todo deal with this, its more data if you use one of the ID options
-    pub resolved: Option<serde_json::Value>,
+    /// the values of role/user/channel parameters in the command
+    pub resolved: Option<ApplicationCommandInteractionDataResolved>,
 }
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ApplicationCommandInteractionDataResolved {
+    pub users: Option<IdMap<User>>,
+    pub members: Option<HashMap<String, PartialGuildMember>>,
+    pub roles: Option<IdMap<Role>>,
+    pub channels: Option<IdMap<PartialChannel>>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct PartialGuildMember {
+    /// this users guild nickname
+    pub nick: Option<String>,
+    /// array of role object ids
+    pub roles: HashSet<RoleId>,
+    /// when the user joined the guild
+    pub joined_at: DateTime<Utc>,
+    /// when the user started boosting the guild
+    pub premium_since: Option<DateTime<Utc>>,
+    /// whether the user has passed the guild's Membership Screening requirements
+    #[serde(default)]
+    pub pending: bool,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct PartialChannel {
+    /// the id of this channel
+    pub id: ChannelId,
+    /// the name of the channel (2-100 characters)
+    pub name: String,
+    #[serde(rename = "type")]
+    pub kind: ChannelType,
+    /// undocumented in Discord
+    pub permissions: Permissions,
+}
+id_impl!(PartialChannel => id: ChannelId);
 
 /// All options have names, and an option can either be a parameter and input value--in which case
 /// `value` will be set--or it can denote a subcommand or group--in which case it will contain a

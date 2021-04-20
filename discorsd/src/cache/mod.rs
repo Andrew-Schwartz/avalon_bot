@@ -1,11 +1,12 @@
 use std::collections::hash_map::{self, Entry, HashMap};
 use std::fmt;
+use std::fmt::Debug;
 use std::iter::{FromIterator, Map};
 use std::marker::PhantomData;
 
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::{SeqAccess, Visitor};
+use serde::de::{MapAccess, SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use tokio::sync::{RwLock, RwLockReadGuard};
 
@@ -266,7 +267,7 @@ impl<T: Id> IntoIterator for IdMap<T> {
     type IntoIter = Map<hash_map::IntoIter<T::Id, T>, fn((T::Id, T)) -> T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        // todo: use this when stablized
+        // todo: use this when stabilized
         // self.0.into_values()
         self.0.into_iter().map(|(_, t)| t)
     }
@@ -304,29 +305,46 @@ impl<I: Id> FromIterator<(I::Id, I)> for IdMap<I> {
     }
 }
 
-struct IdMapVisitor<T>(PhantomData<T>);
+struct IdMapVisitor<I>(PhantomData<I>);
 
-impl<'de, T: Id + Deserialize<'de>> Visitor<'de> for IdMapVisitor<T> {
-    type Value = IdMap<T>;
+impl<'de, I> Visitor<'de> for IdMapVisitor<I>
+    where I: Id + Deserialize<'de>,
+          I::Id: Deserialize<'de>,
+{
+    type Value = IdMap<I>;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("a sequence of channels")
+        f.write_str("a sequence of objects with ids, or a map of ids to objects")
     }
 
     fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
-        let mut map = IdMap::new(HashMap::with_capacity(seq.size_hint().unwrap_or(0)));
+        let mut this = IdMap::new(HashMap::with_capacity(seq.size_hint().unwrap_or(0)));
 
         while let Some(channel) = seq.next_element()? {
-            map.insert(channel);
+            this.insert(channel);
         }
 
-        Ok(map)
+        Ok(this)
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        let mut this = IdMap::new(HashMap::with_capacity(map.size_hint().unwrap_or(0)));
+
+        while let Some((id, v)) = map.next_entry::<I::Id, _>()? {
+            println!("id = {:?}", id);
+            this.insert(v);
+        }
+
+        Ok(this)
     }
 }
 
-impl<'de, I: Id + Deserialize<'de>> Deserialize<'de> for IdMap<I> {
+impl<'de, I> Deserialize<'de> for IdMap<I> where
+    I: Id + Deserialize<'de>,
+    I::Id: Deserialize<'de>,
+{
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        d.deserialize_seq(IdMapVisitor(PhantomData))
+        d.deserialize_any(IdMapVisitor(PhantomData))
     }
 }
 
