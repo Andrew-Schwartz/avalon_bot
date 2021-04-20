@@ -10,7 +10,7 @@ mod tests {
             #[derive(Debug, Clone)]
             struct Perms;
             #[discorsd::async_trait]
-            impl discorsd::commands::SlashCommandData for Perms {
+            impl discorsd::commands::SlashCommand for Perms {
                 type Bot = TestBot;
                 type Data = $data;
                 type Use = discorsd::commands::Used;

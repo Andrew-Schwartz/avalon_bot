@@ -1,12 +1,14 @@
 use std::borrow::Cow;
 
+use futures::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 
+use crate::http::{ClientResult, DiscordClient};
+use crate::model::{Gif, ImageFormat, Png};
 use crate::model::ids::*;
 pub use crate::model::ids::{EmojiId, RoleId};
 use crate::model::user::User;
 use crate::serde_utils::BoolExt;
-use crate::model::{Gif, ImageFormat, Png};
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
@@ -142,5 +144,26 @@ impl From<String> for Emoji {
 impl From<char> for Emoji {
     fn from(name: char) -> Self {
         Self::Unicode { name: name.to_string() }
+    }
+}
+
+impl DiscordClient {
+    /// For each emoji in [emojis](emojis) in order, get the users who reacted with that emoji to
+    /// this message.
+    pub async fn get_all_reactions<Emojis, E>(
+        &self,
+        channel: ChannelId,
+        message: MessageId,
+        emojis: Emojis,
+    ) -> ClientResult<Vec<Vec<User>>>
+        where
+            Emojis: IntoIterator<Item=E> + Send,
+            <Emojis as IntoIterator>::IntoIter: Send,
+            E: Into<Emoji>,
+    {
+        futures::stream::iter(emojis)
+            .then(|emoji| self.get_reactions(channel, message, emoji.into()))
+            .try_collect()
+            .await
     }
 }

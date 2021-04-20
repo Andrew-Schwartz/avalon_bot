@@ -219,7 +219,7 @@ pub trait BotExt: Bot + 'static {
 
         let command = state.global_commands.get().unwrap().get(&interaction.command);
         if let Some(command) = command {
-            command.run(state, interaction, data).await?;
+            command.run(Arc::clone(&state), interaction, data).await?;
         } else {
             let command = {
                 let guard = state.commands.read().await;
@@ -228,7 +228,7 @@ pub trait BotExt: Bot + 'static {
                 commands.get(&interaction.command).cloned()
             };
             if let Some(command) = command {
-                command.run(state, interaction, data).await?;
+                command.run(Arc::clone(&state), interaction, data).await?;
             }
         };
         Ok(())

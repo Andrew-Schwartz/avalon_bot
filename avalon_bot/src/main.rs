@@ -368,7 +368,7 @@ impl Bot {
             let rcs = state.reaction_commands.write().await;
 
             Self::reset_guild_command_perms(
-                &state, guild.id, &mut commands, rcs,
+                state, guild.id, &mut commands, rcs,
             ).await?;
 
             // set up perms for `/unpin`

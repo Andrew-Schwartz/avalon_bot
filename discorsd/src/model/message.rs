@@ -127,6 +127,7 @@ impl Id for Message {
     }
 }
 
+// todo why isn't this just a tuple??? (maybe can make a trait ext bound that either order works for)
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub struct ChannelMessageId {
     pub channel: ChannelId,

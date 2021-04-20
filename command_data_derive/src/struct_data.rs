@@ -149,7 +149,7 @@ impl Default for VarargNames {
 }
 
 impl VarargNames {
-    fn as_index(&self) -> Option<&LitStr> {
+    const fn as_index(&self) -> Option<&LitStr> {
         match self {
             Self::Index(root) => Some(root),
             _ => None,

@@ -67,19 +67,31 @@ impl<Scd: SlashCommand> SlashCommandRaw for Scd
                     let self_use = SlashCommand::run(self, Arc::clone(&state), interaction, data).await?;
                     self_use.finalize(&state).await.map_err(|e| e.into())
                 }
-                Err(error) => Err(CommandParseErrorInfo {
+                Err(error) => {
+                    let interaction = interaction.respond(
+                        state,
+                        ephemeral(format!("Error parsing command: ```rs\n{:?}```", error)),
+                    ).await?;
+                    Err(CommandParseErrorInfo {
+                        name: interaction.command_name,
+                        id: interaction.command,
+                        source: interaction.source,
+                        error,
+                    }.into())
+                }
+            },
+            Err(error) => {
+                let interaction = interaction.respond(
+                    state,
+                    ephemeral(format!("Error parsing command: ```rs\n{:?}```", error)),
+                ).await?;
+                Err(CommandParseErrorInfo {
                     name: interaction.command_name,
                     id: interaction.command,
                     source: interaction.source,
                     error,
                 }.into())
-            },
-            Err(error) => Err(CommandParseErrorInfo {
-                name: interaction.command_name,
-                id: interaction.command,
-                source: interaction.source,
-                error,
-            }.into())
+            }
         }
     }
 }

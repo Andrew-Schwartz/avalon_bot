@@ -81,6 +81,7 @@ bot_error_from!(AvalonError, GameError);
 pub enum AvalonError {
     TooManyPlayers(usize),
     Stopped,
+    NotVoting,
 }
 
 impl Display for AvalonError {
@@ -88,6 +89,7 @@ impl Display for AvalonError {
         match self {
             Self::TooManyPlayers(n) => write!(f, "Too many players! {} is more than the maximum number of players (10).", n),
             Self::Stopped => f.write_str("Game Already Over"),
+            Self::NotVoting => f.write_str("No longer in the voting phase"),
         }
     }
 }

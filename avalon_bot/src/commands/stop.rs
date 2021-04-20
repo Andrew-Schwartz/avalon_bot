@@ -17,7 +17,7 @@ use discorsd::shard::dispatch::{ReactionType, ReactionUpdate};
 use crate::{async_trait, Bot};
 use crate::avalon::AvalonPlayer;
 use crate::games::GameType;
-use crate::utils::IterExt;
+use crate::utils::ListIterGrammatically;
 
 #[derive(Debug, Clone, Default)]
 pub struct StopCommand {
@@ -142,7 +142,7 @@ impl SlashCommand for StopCommand {
                 }
                 Ok(interaction)
             }
-            GameType::Hangman => todo!(),
+            GameType::Hangman => todo!("figure out how to stop hangman"),
             GameType::Kittens => todo!(),
         }
     }

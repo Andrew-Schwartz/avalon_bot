@@ -90,7 +90,12 @@ impl DiscordClient {
     /// # Errors
     ///
     /// If the http request fails
-    pub async fn create_reaction<E: Into<Emoji> + Send>(&self, channel: ChannelId, message: MessageId, emoji: E) -> ClientResult<()> {
+    pub async fn create_reaction<E: Into<Emoji> + Send>(
+        &self,
+        channel: ChannelId,
+        message: MessageId,
+        emoji: E,
+    ) -> ClientResult<()> {
         self.put_unit(CreateReaction(channel, message, emoji.into()), "").await
     }
 
@@ -99,7 +104,12 @@ impl DiscordClient {
     /// # Errors
     ///
     /// If the http request fails
-    pub async fn delete_own_reaction<E: Into<Emoji> + Send>(&self, channel: ChannelId, message: MessageId, emoji: E) -> ClientResult<()> {
+    pub async fn delete_own_reaction<E: Into<Emoji> + Send>(
+        &self,
+        channel: ChannelId,
+        message: MessageId,
+        emoji: E,
+    ) -> ClientResult<()> {
         self.delete(DeleteOwnReaction(channel, message, emoji.into())).await
     }
 
@@ -109,8 +119,29 @@ impl DiscordClient {
     /// # Errors
     ///
     /// If the http request fails
-    pub async fn delete_user_reaction<E: Into<Emoji> + Send>(&self, channel: ChannelId, message: MessageId, user: UserId, emoji: E) -> ClientResult<()> {
+    pub async fn delete_user_reaction<E: Into<Emoji> + Send>(
+        &self,
+        channel: ChannelId,
+        message: MessageId,
+        user: UserId,
+        emoji: E,
+    ) -> ClientResult<()> {
         self.delete(DeleteUserReaction(channel, message, emoji.into(), user)).await
+    }
+
+    /// Get a list of users that reacted with this emoji.
+    ///
+    /// # Errors
+    ///
+    /// If the http request fails, or fails to deserialize the response into a `Vec<User>`
+    pub async fn get_reactions<E: Into<Emoji> + Send>(
+        &self,
+        channel: ChannelId,
+        message: MessageId,
+        emoji: E,
+    ) -> ClientResult<Vec<User>> {
+        // todo query params
+        self.get(GetReactions(channel, message, emoji.into())).await
     }
 
     /// Post a typing indicator for the specified channel. Generally bots should not implement this

@@ -63,24 +63,32 @@ impl Avalon {
         if let Self::Config(cfg) = self {
             cfg
         } else {
-            panic!("Expected Avalon to be in the Config state")
+            panic!("expected Avalon to be in the Config state")
+        }
+    }
+
+    pub fn try_game_mut(&mut self) -> Option<&mut AvalonGame> {
+        if let Self::Game(game) = self {
+            Some(game)
+        } else {
+            None
         }
     }
 
     pub fn game_mut(&mut self) -> &mut AvalonGame {
+        self.try_game_mut().expect("expected Avalon to be in the Game state")
+    }
+
+    pub fn try_game_ref(&self) -> Option<&AvalonGame> {
         if let Self::Game(game) = self {
-            game
+            Some(game)
         } else {
-            panic!("Expected Avalon to be in the Game state")
+            None
         }
     }
 
     pub fn game_ref(&self) -> &AvalonGame {
-        if let Self::Game(game) = self {
-            game
-        } else {
-            panic!("Expected Avalon to be in the Game state")
-        }
+        self.try_game_ref().expect("expected Avalon to be in the Game state")
     }
 
     pub fn start(&mut self, channel: ChannelId) -> &mut AvalonGame {

@@ -1558,6 +1558,13 @@ pub struct InteractionMessage {
     flags: MessageFlags,
 }
 
+pub fn ephemeral<C: Into<Cow<'static, str>>>(content: C) -> InteractionMessage {
+    message(|m| {
+        m.content(content);
+        m.ephemeral();
+    })
+}
+
 pub fn message<F: FnOnce(&mut InteractionMessage)>(builder: F) -> InteractionMessage {
     InteractionMessage::build(builder)
 }

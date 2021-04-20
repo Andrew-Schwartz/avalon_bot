@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 use tokio::sync::Mutex;
+use tokio::time::Duration;
 
 use command_data_derive::CommandData;
 use discorsd::{async_trait, BotState, UserMarkupExt};
@@ -21,7 +22,7 @@ use crate::avalon::game::AvalonState;
 use crate::avalon::quest::QuestUserError::{Duplicate, NotPlaying};
 use crate::avalon::vote::{PartyVote, VoteStatus};
 use crate::Bot;
-use crate::utils::IterExt;
+use crate::utils::{ArrayIter, ListIterGrammatically};
 
 #[derive(Clone, Debug)]
 pub struct QuestCommand(pub usize);
@@ -119,14 +120,55 @@ impl SlashCommand for QuestCommand {
                             votes.insert(msg, 0);
                         }
 
-                        // todo
-                        // tokio::spawn(async move {
-                        //     let duration = Duration::from_secs(5);
-                        //     let mut interval = tokio::time::interval_at(Instant::now() + duration, duration);
-                        //     while true {
-                        //         interval.tick().await
-                        //     }
-                        // })
+                        tokio::spawn({
+                            let state = Arc::clone(&state);
+                            async move {
+                                let mut interval = tokio::time::interval(Duration::from_secs(30));
+                                loop {
+                                    interval.tick().await;
+                                    let opt = (|| async {
+                                        let mut game_guard = state.bot.avalon_games.write().await;
+                                        let avalon = game_guard.get_mut(&guild)?;
+                                        let game = avalon.try_game_mut()?;
+                                        let (votes, _) = if let AvalonState::PartyVote(votes, party) = &mut game.state {
+                                            Some((votes, party))
+                                        } else {
+                                            None
+                                        }?;
+                                        let mut all_decided = true;
+                                        for (&(msg, user), vote) in votes {
+                                            #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                                            if let Ok(channel) = user.dm(&state).await {
+                                                let reactions: Result<Vec<_>, _> = state.client.get_all_reactions(
+                                                    channel.id, msg,
+                                                    [PartyVote::APPROVE, PartyVote::REJECT].array_iter(),
+                                                ).await.map(|vec| vec.into_iter()
+                                                    .map(|vec| vec.into_iter()
+                                                        .filter(|u| u.id == user)
+                                                        .count() as i32)
+                                                    .collect());
+                                                if let Ok(&[approve, reject]) = reactions.as_deref() {
+                                                    *vote = approve - reject;
+                                                    if *vote == 0 { all_decided = false }
+                                                }
+                                            }
+                                        }
+                                        if all_decided {
+                                            // todo probably shouldn't ignore but meh
+                                            let _ignored = crate::avalon::vote::party_vote_results(
+                                                &state, guild, avalon,
+                                            ).await;
+                                            None
+                                        } else {
+                                            Some(())
+                                        }
+                                    })().await;
+                                    if opt.is_none() {
+                                        break;
+                                    }
+                                }
+                            }
+                        });
 
                         state.enable_command::<VoteStatus>(guild).await?;
                         state.command_id::<QuestCommand>(guild).await

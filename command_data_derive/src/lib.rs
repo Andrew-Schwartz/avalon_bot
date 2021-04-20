@@ -34,6 +34,8 @@ mod struct_data;
 mod enum_data;
 mod enum_choices;
 
+// TODO: fix all uses of Result (& option?) to be absolute
+
 /// See Documentation macros
 #[proc_macro_derive(CommandData, attributes(command))]
 #[proc_macro_error]
@@ -179,12 +181,13 @@ handle_attribute!(
         /// command, set `required` to an int.
         ["va_count" => self.vararg.get_or_insert_with(Default::default).num = VarargNum::Function(str.parse()?)]
         /// How to name the vararg options. Must be callable as a function
-        /// `fn<N>(usize) -> N where N: Into<Cow<'static, str>`.
+        /// `fn(usize) -> N`, where `N: Into<Cow<'static, str>`.
         ["va_names" => self.vararg.get_or_insert_with(Default::default).names = VarargNames::Function(str.parse()?)],
 
     " = {int}": Meta::NameValue(MetaNameValue { path, lit: Lit::Int(int), .. }), path =>
         /// The number of vararg options to show.
         ["va_count" => self.vararg.get_or_insert_with(Default::default).num = VarargNum::Count(int.base10_parse()?)]
+        // todo rename to va_req or something, and make one that takes a fn too
         /// The number of vararg options required. If `va_count` is greater than this, the excess
         /// options will be optional.
         ["required" => self.vararg.get_or_insert_with(Default::default).required = if self.ty.array_type().is_some() {

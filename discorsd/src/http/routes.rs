@@ -28,6 +28,7 @@ pub enum Route {
     CreateReaction(ChannelId, MessageId, Emoji),
     DeleteOwnReaction(ChannelId, MessageId, Emoji),
     DeleteUserReaction(ChannelId, MessageId, Emoji, UserId),
+    GetReactions(ChannelId, MessageId, Emoji),
 
     // commands
 //    // although not used in the actual url, names are included to help debugging
@@ -84,6 +85,7 @@ impl Route {
             CreateReaction(c, m, e) => api!("/channels/{}/messages/{}/reactions/{}/@me", c, m, e.as_reaction()),
             DeleteOwnReaction(c, m, e) => api!("/channels/{}/messages/{}/reactions/{}/@me", c, m, e.as_reaction()),
             DeleteUserReaction(c, m, e, u) => api!("/channels/{}/messages/{}/reactions/{}/{}", c, m, e.as_reaction(), u),
+            GetReactions(c, m, e) => api!("/channels/{}/messages/{}/reactions/{}", c, m, e.as_reaction()),
 
             GetGlobalCommands(a) => api!("/applications/{}/commands", a),
             CreateGlobalCommand(a) => api!("/applications/{}/commands", a),
@@ -104,11 +106,11 @@ impl Route {
             GetGuildApplicationCommandPermissions(a, g) => api!("/applications/{}/guilds/{}/commands/permissions", a, g),
             GetApplicationCommandPermissions(a, g, c) => api!("/applications/{}/guilds/{}/commands/{}/permissions", a, g, c),
             EditApplicationCommandPermissions(a, g, c) => api!("/applications/{}/guilds/{}/commands/{}/permissions", a, g, c),
+
             BatchEditApplicationCommandPermissions(a, g) => api!("/applications/{}/guilds/{}/commands/permissions", a, g),
-
             GetUser(u) => api!("/users/{}", u),
-            CreateDm => api!("/users/@me/channels"),
 
+            CreateDm => api!("/users/@me/channels"),
             GetGuildMember(g, u) => api!("/guilds/{}/members/{}", g, u),
             AddGuildMemberRole(g, u, r) => api!("/guild/{}/members/{}/roles/{}", g, u, r),
             RemoveGuildMemberRole(g, u, r) => api!("/guild/{}/members/{}/roles/{}", g, u, r),
@@ -167,25 +169,29 @@ impl Route {
             &GetChannel(c) => format!("GetChannel({})", channel(c).await),
             &TriggerTyping(c) => format!("TriggerTyping({})", channel(c).await),
             &GetPinnedMessages(c) => format!("GetPinnedMessages({})", channel(c).await),
-            &PinMessage(c, m) => format!("PinMessage({}/{})", channel(c).await, m),
-            &UnpinMessage(c, m) => format!("UnpinMessage({}/{})", channel(c).await, m),
-            &GetMessage(c, m) => format!("GetMessage({}/{})", channel(c).await, m),
+            &PinMessage(c, m) => format!("PinMessage({}, {})", channel(c).await, m),
+            &UnpinMessage(c, m) => format!("UnpinMessage({}, {})", channel(c).await, m),
+            &GetMessage(c, m) => format!("GetMessage({}, {})", channel(c).await, m),
             &PostMessage(c) => format!("PostMessage({})", channel(c).await),
-            &EditMessage(c, m) => format!("EditMessage({}/{})", channel(c).await, m),
-            &DeleteMessage(c, m) => format!("DeleteMessage({}/{})", channel(c).await, m),
+            &EditMessage(c, m) => format!("EditMessage({}, {})", channel(c).await, m),
+            &DeleteMessage(c, m) => format!("DeleteMessage({}, {})", channel(c).await, m),
             CreateReaction(c, m, e) => format!(
-                "CreateReaction({}/{}/{})",
+                "CreateReaction({}, {}, {})",
                 channel(*c).await, m, e.as_reaction()
             ),
             DeleteOwnReaction(c, m, e) => format!(
-                "DeleteOwnReaction({}/{}/{})",
+                "DeleteOwnReaction({}, {}, {})",
                 channel(*c).await, m, e.as_reaction()
             ),
             DeleteUserReaction(c, m, e, u) => format!(
-                "DeleteUserReaction({}/{}/{}/{})",
+                "DeleteUserReaction({}, {}, {}, {})",
                 channel(*c).await, m, e.as_reaction(), user(*u).await
             ),
-            // don't display ApplicationId because it'll always be the same
+            GetReactions(c, m, e) => format!(
+                "GetReactions({}, {}, {})",
+                channel(*c).await, m, e.as_reaction()
+            ),
+            //  don't display ApplicationId because it'll always be the same
             GetGlobalCommands(_) => format!("GetGlobalCommands"),
             CreateGlobalCommand(_) => format!("CreateGlobalCommand"),
             &EditGlobalCommand(_, c) => format!("EditGlobalCommand({})", command(c).await),
@@ -194,11 +200,11 @@ impl Route {
             &GetGuildCommands(_, g) => format!("GetGuildCommands({})", guild(g).await),
             &CreateGuildCommand(_, g) => format!("CreateGuildCommand({})", guild(g).await),
             &EditGuildCommand(_, g, c) => format!(
-                "EditGuildCommand({}/{})",
+                "EditGuildCommand({}, {})",
                 guild(g).await, command(c).await
             ),
             &DeleteGuildCommand(_, g, c) => format!(
-                "DeleteGuildCommand({}/{})",
+                "DeleteGuildCommand({}, {})",
                 guild(g).await, command(c).await
             ),
             &BulkOverwriteGuildCommands(_, g) => format!(
