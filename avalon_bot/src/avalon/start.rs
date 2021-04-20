@@ -66,9 +66,14 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Defe
                 let image = player.role.image();
                 e.image(image);
             })).await?;
-            // todo message this user to let them know their pins are full
             if let Err(e) = message.pin(&state).await {
                 warn!("Failed to pin character: {}", e.display_error(&state).await);
+                let _ignore = player.send_dm(
+                    &state,
+                    "I tried to pin your role so that you could refer back to it, but it seems like \
+                     your pins in this DM may be full. Try using the `\\unpin` command to clean some \
+                     of them up!",
+                ).await;
             }
             Ok(ChannelMessageId::from(message))
         });

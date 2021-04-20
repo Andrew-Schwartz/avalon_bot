@@ -31,7 +31,6 @@ pub struct AvalonConfig {
 
     /// the interaction whose message is being edited to show the game settings
     pub message: Option<Message>,
-    // pub start_id: Option<CommandId>,
 }
 
 impl AvalonConfig {

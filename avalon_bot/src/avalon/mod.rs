@@ -37,7 +37,7 @@ pub fn commands() -> Vec<Box<dyn SlashCommandRaw<Bot=Bot>>> {
         Box::new(vote::VoteStatus),
         Box::new(lotl::ToggleLady),
         // these just filter based on id, so no bad requests or anything can be caused by this,
-        // and they are disabled to @everyone by default
+        // and they are disabled to everyone by default
         Box::new(assassinate::AssassinateCommand(UserId(0))),
         Box::new(lotl::LotlCommand(UserId(0))),
         // similarly, just means no people can be sent on quest

@@ -131,12 +131,6 @@ bitflags! {
 #[allow(clippy::use_self)]
 serde_bitflag!(UserFlags, u32);
 
-// impl UserFlags {
-//     fn a() {
-//         Self::from_bits(128)
-//     }
-// }
-
 /// Premium types denote the level of premium a user has.
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]

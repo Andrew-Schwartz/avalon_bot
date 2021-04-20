@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::sync::Arc;
 
 use itertools::Itertools;
@@ -22,7 +23,6 @@ use discorsd::shard::dispatch::{ReactionType::*, ReactionUpdate};
 use crate::avalon::Avalon;
 use crate::avalon::characters::Loyalty::Evil;
 use crate::avalon::game::{AvalonGame, AvalonState};
-use crate::avalon::rounds::Round;
 use crate::Bot;
 use crate::utils::{ArrayIter, ListIterGrammatically};
 
@@ -66,7 +66,16 @@ impl ReactionCommand<Bot> for PartyVote {
                 *vote += delta;
 
                 if votes.iter().filter(|(_, v)| **v == 0).count() == 0 {
-                    party_vote_results(&state, guild, avalon).await?;
+                    let owned_avalon = std::mem::take(avalon);
+                    match party_vote_results(Arc::clone(&state), guild, owned_avalon).await {
+                        Ok(a) => {
+                            *avalon = a;
+                        }
+                        Err((a, e)) => {
+                            *avalon = a;
+                            return Err(e);
+                        }
+                    }
                 }
             } else {
                 unreachable!("state: {:?}", game.state)
@@ -108,14 +117,22 @@ impl ReactionCommand<Bot> for QuestVote {
             let mut guard = state.bot.avalon_games.write().await;
             let avalon = guard.get_mut(&self.guild).unwrap();
             let game = avalon.game_mut();
-            let round = game.round();
             let AvalonGame { state: avalon_state, .. } = game;
             if let AvalonState::Questing(votes) = avalon_state {
                 let vote = votes.get_mut(&(reaction.message_id, reaction.user_id)).unwrap();
                 *vote += delta;
 
                 if votes.iter().filter(|(_, v)| **v == 0).count() == 0 {
-                    quest_vote_results(&state, round, self.guild, avalon).await?;
+                    let owned_avalon = std::mem::take(avalon);
+                    match quest_vote_results(Arc::clone(&state), self.guild, owned_avalon).await {
+                        Ok(a) => {
+                            *avalon = a;
+                        }
+                        Err((a, e)) => {
+                            *avalon = a;
+                            return Err(e);
+                        }
+                    }
                 }
             } else {
                 error!("unreachable state: `{:?}`, {}:{}:{}", game.state, file!(), line!(), column!());
@@ -168,11 +185,69 @@ impl SlashCommand for VoteStatus {
     }
 }
 
-pub async fn party_vote_results(
-    state: &Arc<BotState<Bot>>,
+pub async fn vote_checker<G, F, Fut>(
+    state: Arc<BotState<Bot>>,
     guild: GuildId,
-    avalon: &mut Avalon,
-) -> Result<(), BotError> {
+    yes_no: [char; 2],
+    votes_getter: G,
+    proceed: F,
+) where
+    G: Fn(&mut AvalonState) -> Option<&mut HashMap<(MessageId, UserId), i32>>,
+    F: Fn(Arc<BotState<Bot>>, GuildId, Avalon) -> Fut + 'static,
+    Fut: Future<Output=Result<Avalon, (Avalon, BotError)>> + 'static,
+{
+    let mut interval = tokio::time::interval(Duration::from_secs(30));
+    loop {
+        interval.tick().await;
+        let opt = (|| async {
+            let mut game_guard = state.bot.avalon_games.write().await;
+            let avalon = game_guard.get_mut(&guild)?;
+            let game = avalon.try_game_mut()?;
+            let votes = votes_getter(&mut game.state)?;
+            let mut all_voted = true;
+            for (&(msg, user), vote) in votes {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+                if let Ok(channel) = user.dm(&state).await {
+                    let reactions: Result<Vec<_>, _> = state.client.get_all_reactions(
+                        channel.id, msg, yes_no.array_iter(),
+                    ).await.map(|vec| vec.into_iter()
+                        .map(|vec| vec.into_iter()
+                            .filter(|u| u.id == user)
+                            .count() as i32)
+                        .collect());
+                    if let Ok(&[yes, no]) = reactions.as_deref() {
+                        *vote = yes - no;
+                        if *vote == 0 { all_voted = false }
+                    }
+                }
+            }
+            if all_voted {
+                let owned_avalon = std::mem::take(avalon);
+                match proceed(Arc::clone(&state), guild, owned_avalon).await {
+                    Ok(a) => {
+                        *avalon = a;
+                    }
+                    Err((a, e)) => {
+                        *avalon = a;
+                        error!("{}", e.display_error(&state).await)
+                    }
+                }
+                None
+            } else {
+                Some(())
+            }
+        })().await;
+        if opt.is_none() {
+            break;
+        }
+    }
+}
+
+pub async fn party_vote_results(
+    state: Arc<BotState<Bot>>,
+    guild: GuildId,
+    mut avalon: Avalon,
+) -> Result<Avalon, (Avalon, BotError)> {
     // `avalon` is write locked, so it still in the game state
     let game = avalon.game_mut();
     let AvalonGame { state: avalon_state, players, .. } = game;
@@ -200,16 +275,20 @@ pub async fn party_vote_results(
                     let guard = state.commands.read().await;
                     let commands = guard.get(&guild).unwrap()
                         .write().await;
-                    return avalon.game_over(state, guild, commands, embed(|e| {
+                    let result = avalon.game_over(&state, guild, commands, embed(|e| {
                         e.color(Color::RED);
                         e.title("With 5 rejected parties in a row, the bad guys win");
                         if let Some(board) = board {
                             e.image(board);
                         }
-                    })).await.map_err(|e| e.into());
+                    })).await;
+                    return match result {
+                        Ok(()) => Ok(avalon),
+                        Err(e) => Err((avalon, e.into())),
+                    };
                 }
                 rejects => {
-                    game.channel.send(&state, embed(|e| {
+                    let result = game.channel.send(&state, embed(|e| {
                         match rejects {
                             1 => e.title("There is now 1 reject"),
                             r => e.title(format!("There are now {} rejects in a row", r)),
@@ -218,20 +297,29 @@ pub async fn party_vote_results(
                         if let Some(board) = board {
                             e.image(board);
                         }
-                    })).await?;
+                    })).await;
+                    if let Err(e) = result {
+                        return Err((avalon, e.into()));
+                    }
                     let guard = state.commands.read().await;
                     let commands = guard.get(&guild).unwrap()
                         .write().await;
-                    game.start_round(state, guild, commands).await?;
+                    let result = game.start_round(&state, guild, commands).await;
+                    if let Err(e) = result {
+                        return Err((avalon, e.into()));
+                    }
                     AvalonState::RoundStart
                 }
             }
         } else {
             game.rejected_quests = 0;
-            game.channel.send(&state, embed(|e| {
+            let result = game.channel.send(&state, embed(|e| {
                 e.title("The party has been accepted!");
                 e.fields(vote_summary);
-            })).await?;
+            })).await;
+            if let Err(e) = result {
+                return Err((avalon, e.into()));
+            }
 
             let mut handles = Vec::new();
             let command_idx: Arc<Mutex<Option<usize>>> = Arc::new(Mutex::new(None));
@@ -241,7 +329,7 @@ pub async fn party_vote_results(
                     .unwrap()
                     .role
                     .loyalty();
-                let state = Arc::clone(state);
+                let state = Arc::clone(&state);
                 let command_idx = Arc::clone(&command_idx);
                 let handle = tokio::spawn(async move {
                     let msg = user.send_dm(&*state, format!(
@@ -287,57 +375,20 @@ pub async fn party_vote_results(
             }
             let mut votes = HashMap::new();
             for res in futures::future::join_all(handles).await {
-                let msg = res.expect("quote votes tasks do not panic")?;
+                let msg = match res.expect("quote votes tasks do not panic") {
+                    Ok(msg) => msg,
+                    Err(e) => return Err((avalon, e)),
+                };
                 votes.insert(msg, 0);
             }
 
-            tokio::spawn({
-                let state = Arc::clone(state);
-                async move {
-                    let mut interval = tokio::time::interval(Duration::from_secs(30));
-                    loop {
-                        interval.tick().await;
-                        let opt = (|| async {
-                            let mut game_guard = state.bot.avalon_games.write().await;
-                            let avalon = game_guard.get_mut(&guild)?;
-                            let game = avalon.try_game_mut()?;
-                            let votes = if let AvalonState::Questing(votes) = &mut game.state {
-                                Some(votes)
-                            } else {
-                                None
-                            }?;
-                            let mut all_voted = true;
-                            for (&(msg, user), vote) in votes {
-                                #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-                                if let Ok(channel) = user.dm(&state).await {
-                                    let reactions: Result<Vec<_>, _> = state.client.get_all_reactions(
-                                        channel.id, msg,
-                                        [QuestVote::SUCCEED, QuestVote::FAIL].array_iter(),
-                                    ).await.map(|vec| vec.into_iter()
-                                        .map(|vec| vec.into_iter()
-                                            .filter(|u| u.id == user)
-                                            .count() as i32)
-                                        .collect());
-                                    if let Ok(&[succeed, fail]) = reactions.as_deref() {
-                                        *vote = succeed - fail;
-                                        if *vote == 0 { all_voted = false }
-                                    }
-                                }
-                            }
-                            if all_voted {
-                                // todo probably shouldn't ignore but meh
-                                let _ignored = quest_vote_results(&state, game.round(), guild, avalon).await;
-                                None
-                            } else {
-                                Some(())
-                            }
-                        })().await;
-                        if opt.is_none() {
-                            break;
-                        }
-                    }
-                }
-            });
+            tokio::spawn(vote_checker(
+                Arc::clone(&state),
+                guild,
+                [QuestVote::SUCCEED, QuestVote::FAIL],
+                AvalonState::questing_vote_mut,
+                quest_vote_results,
+            ));
 
             let quest_vote = QuestVote {
                 guild,
@@ -346,7 +397,9 @@ pub async fn party_vote_results(
             state.reaction_commands.write().await
                 .push(Box::new(quest_vote));
 
-            state.enable_command::<VoteStatus>(guild).await?;
+            if let Err(e) = state.enable_command::<VoteStatus>(guild).await {
+                return Err((avalon, e.into()));
+            }
 
             AvalonState::Questing(votes)
         };
@@ -359,24 +412,24 @@ pub async fn party_vote_results(
             );
         game.state = new_state;
     }
-    Ok(())
+    Ok(avalon)
 }
 
 pub async fn quest_vote_results(
-    state: &Arc<BotState<Bot>>,
-    round: Round,
+    state: Arc<BotState<Bot>>,
     guild: GuildId,
-    avalon: &mut Avalon,
-) -> Result<(), BotError> {
+    mut avalon: Avalon,
+) -> Result<Avalon, (Avalon, BotError)> {
     // `avalon` is write locked, so it still in the game state
     let game = avalon.game_mut();
+    let round = game.round();
     if let AvalonState::Questing(votes) = &mut game.state {
         let fails = votes.iter().filter(|(_, v)| **v == -1).count();
         let questers = votes.keys().map(|(_, u)| u).list_grammatically(UserId::ping_nick, "and");
 
         if fails >= round.fails {
             game.good_won.push(false);
-            game.channel.send(&state.client, embed(|e| {
+            let result = game.channel.send(&state, embed(|e| {
                 e.color(Color::RED);
                 e.title(format!(
                     "There {}", if fails == 1 {
@@ -389,11 +442,14 @@ pub async fn quest_vote_results(
                 if let Some(board) = game.board_image() {
                     e.image(board);
                 }
-            })).await?
+            })).await;
+            if let Err(e) = result {
+                return Err((avalon, e.into()));
+            }
         } else {
             game.good_won.push(true);
             let nvotes = votes.len();
-            game.channel.send(&state.client, embed(|e| {
+            let result = game.channel.send(&state, embed(|e| {
                 e.color(Color::BLUE);
                 e.title(if fails == 0 {
                     format!("All {} were successes", nvotes)
@@ -404,20 +460,26 @@ pub async fn quest_vote_results(
                 if let Some(board) = game.board_image() {
                     e.image(board);
                 }
-            })).await?
+            })).await;
+            if let Err(e) = result {
+                return Err((avalon, e.into()));
+            }
         };
         let guard = state.commands.read().await;
         let commands = guard.get(&guild).unwrap()
             .write().await;
-        avalon.end_round(state, guild, commands).await?;
+        let result = avalon.end_round(&state, guild, commands).await;
+        if let Err(e) = result {
+            return Err((avalon, e.into()));
+        }
 
         state.reaction_commands.write().await
             .retain(|rc|
                 !matches!(
-                rc.downcast_ref::<QuestVote>(),
-                Some(QuestVote { guild: cmd_guild, .. }) if *cmd_guild == guild
-            )
+                    rc.downcast_ref::<QuestVote>(),
+                    Some(QuestVote { guild: cmd_guild, .. }) if *cmd_guild == guild
+                )
             );
     }
-    Ok(())
+    Ok(avalon)
 }

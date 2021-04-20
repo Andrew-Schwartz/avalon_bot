@@ -94,7 +94,6 @@ pub struct Bot {
     hangman_games: RwLock<HashMap<GuildId, Hangman>>,
     guild_hist_words: RwLock<IdMap<GuildHist>>,
     user_games: RwLock<HashMap<UserId, HashSet<GuildId>>>,
-    // start: RwLock<HashMap<GuildId, CommandId>>,
     first_log_in: OnceCell<DateTime<Utc>>,
     log_in: RwLock<Option<DateTime<Utc>>>,
 }
@@ -103,13 +102,10 @@ impl Bot {
     fn new(config: Config) -> Self {
         Self {
             config,
-            // commands: Default::default(),
-            // reaction_commands: Default::default(),
             avalon_games: Default::default(),
             hangman_games: Default::default(),
             guild_hist_words: Default::default(),
             user_games: Default::default(),
-            // start: Default::default(),
             first_log_in: Default::default(),
             log_in: Default::default(),
         }

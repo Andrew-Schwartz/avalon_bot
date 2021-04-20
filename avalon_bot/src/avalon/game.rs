@@ -230,3 +230,19 @@ pub enum AvalonState {
     Assassinate,
     Lotl,
 }
+
+impl AvalonState {
+    pub fn party_vote_mut(&mut self) -> Option<&mut HashMap<(MessageId, UserId), i32>> {
+        match self {
+            Self::PartyVote(votes, _) => Some(votes),
+            _ => None,
+        }
+    }
+
+    pub fn questing_vote_mut(&mut self) -> Option<&mut HashMap<(MessageId, UserId), i32>> {
+        match self {
+            Self::Questing(votes) => Some(votes),
+            _ => None,
+        }
+    }
+}

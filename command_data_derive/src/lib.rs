@@ -251,10 +251,6 @@ handle_attribute!(
         ["rename" => self.rename = Some(str)]
         /// todo docs
         ["enable_if" => self.enable_if = Some(str.parse()?)],
-
-    // " = {other}": Meta::NameValue(MetaNameValue { path, lit, .. }), path =>
-    //     /// fasjdas
-    //     ["i_hope" => todo!("{:?}", lit)],
 );
 
 handle_attribute!(
