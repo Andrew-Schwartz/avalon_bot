@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_tungstenite::tungstenite::http::StatusCode;
-use backoff::{ExponentialBackoff, future::FutureOperation};
+use backoff::ExponentialBackoff;
 use log::{error, warn};
 use reqwest::{Client, Method, multipart, Response};
 use reqwest::header::{AUTHORIZATION, HeaderMap};
@@ -113,7 +113,7 @@ impl DiscordClient {
     {
         let Request { method, route, query, body, multipart, getter } = request;
         let key = BucketKey::from(&route);
-        (|| async {
+        let async_operation = || async {
             let mut builder = self.client.request(method.clone(), &route.url());
             if let Some(query) = &query {
                 builder = builder.query(query);
@@ -144,13 +144,13 @@ impl DiscordClient {
             } else {
                 Ok(getter(response).await?)
             }
-        }).retry_notify(
-            // todo make it wait exactly how long ratelimit says if it was ratelimited? is that
-            //  possible? is that even a problem, it might only be for emojis and those arent accurate idk
+        };
+        backoff::future::retry_notify(
             ExponentialBackoff {
                 max_elapsed_time: Some(Duration::from_secs(10)),
                 ..Default::default()
             },
+            async_operation,
             |e: ClientError, dur|
                 if !matches!(e, ClientError::Http(StatusCode::TOO_MANY_REQUESTS, Route::CreateReaction(_, _, _))) {
                     warn!("Error in request after {:?}: {}", dur, e)

@@ -117,7 +117,7 @@ impl<B: Bot + 'static> Shard<B> {
         }
         if let Some(delay) = delay.into() {
             info!("delaying for {:?}", delay);
-            tokio::time::delay_for(delay).await;
+            tokio::time::sleep(delay).await;
         }
     }
 
@@ -309,7 +309,7 @@ impl<B: Bot + 'static> Shard<B> {
                 } else {
                     self.reset_connection_state();
 
-                    let delay = rand::thread_rng().gen_range(1, 6);
+                    let delay = rand::thread_rng().gen_range(1..=5);
                     self.close(CloseFrame {
                         code: CloseCode::Restart,
                         reason: "(non-resumable) Invalid Session".into(),

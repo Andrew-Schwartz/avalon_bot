@@ -1108,7 +1108,7 @@ impl Update for MessageDeleteBulk {
     async fn update(&self, cache: &Cache) {
         let Self { ids, channel_id, guild_id } = self;
         let (channel_id, guild_id) = (*channel_id, *guild_id);
-        tokio::stream::iter(ids.iter().copied())
+        futures::stream::iter(ids.iter().copied())
             .map(|id| MessageDelete { id, channel_id, guild_id })
             .for_each(|delete| async move { delete.update(cache).await })
             .await;

@@ -91,7 +91,7 @@ impl Wordnik {
                     let source = format!("https://www.wordnik.com/words/{}", word);
                     break (word, source);
                 }
-                tokio::time::delay_for(Duration::from_secs(1)).await;
+                tokio::time::sleep(Duration::from_secs(1)).await;
             }
         }
     }

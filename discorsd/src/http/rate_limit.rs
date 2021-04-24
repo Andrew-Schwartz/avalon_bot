@@ -141,7 +141,7 @@ impl RateLimiter {
         if let Some(rate_limit) = self.0.get(key) {
             if let Some(duration) = rate_limit.limit() {
                 log::info!("{:?} ==> {}", key, rate_limit);
-                tokio::time::delay_for(duration).await;
+                tokio::time::sleep(duration).await;
             }
         }
     }

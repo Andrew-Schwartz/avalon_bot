@@ -2,7 +2,6 @@ use std::ffi::OsStr;
 use std::io;
 use std::path::Path;
 
-use array_init::IsArray;
 use thiserror::Error;
 
 use ImageHashError::*;
@@ -58,10 +57,12 @@ impl<T> TryRemove<T> for Vec<T> {
     }
 }
 
-pub fn array_try_from_iter<Array, Iterable, F, Error>(iterable: Iterable, mut not_enough_elements: F) -> Result<Array, Error>
+pub fn array_try_from_iter<T, Iterable, F, Error, const N: usize>(
+    iterable: Iterable,
+    mut not_enough_elements: F,
+) -> Result<[T; N], Error>
     where
-        Iterable: IntoIterator<Item=Result<Array::Item, Error>>,
-        Array: IsArray,
+        Iterable: IntoIterator<Item=Result<T, Error>>,
     // really should be able to be `FnOnce` but try_array_init's signature can't show that
         F: FnMut(usize) -> Error,
 {

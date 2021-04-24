@@ -126,7 +126,7 @@ async fn main() -> shard::ShardResult<()> {
         .init();
 
     tokio::spawn(async {
-        use tokio::{io::AsyncWriteExt, fs::File, time::delay_for};
+        use tokio::{io::AsyncWriteExt, fs::File, time::sleep};
 
         loop {
             match File::create("uptime.txt").await {
@@ -138,7 +138,7 @@ async fn main() -> shard::ShardResult<()> {
             }
 
             // write file every 15 mins
-            delay_for(std::time::Duration::from_secs(60 * 15)).await;
+            sleep(std::time::Duration::from_secs(60 * 15)).await;
         }
     });
 
