@@ -394,6 +394,24 @@ pub struct UpdateStatus {
     pub afk: bool,
 }
 
+impl UpdateStatus {
+    fn none() -> Self {
+        Self {
+            since: None,
+            activities: None,
+            status: StatusType::Online,
+            afk: false,
+        }
+    }
+
+    pub fn with_activity(activity: Activity) -> Self {
+        Self {
+            activities: Some(vec![activity]),
+            ..Self::none()
+        }
+    }
+}
+
 impl From<UpdateStatus> for Payload {
     fn from(us: UpdateStatus) -> Self {
         Self::UpdateStatus(us)
@@ -566,7 +584,7 @@ bitflags! {
         const PLAY = 1 << 5;
     }
 }
-serde_bitflag!(ActivityFlags, u8);
+serde_bitflag!(ActivityFlags: u8);
 
 /// Sent when a client wants to join, move, or disconnect from a voice channel.
 #[derive(Serialize, Debug)]

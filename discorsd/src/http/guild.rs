@@ -247,7 +247,7 @@ impl<C: Id<Id=CommandId> + Send + Sync> CommandPermsExt for C {
 #[async_trait]
 pub trait GuildCommandPermsExt {
     /// This endpoint will overwrite ALL existing permissions for all commands in a guild, even
-    /// those not in the [permissions](permissions) list.
+    /// those not in the `permissions` list.
     async fn batch_edit_permissions<B, State>(
         &self,
         state: State,

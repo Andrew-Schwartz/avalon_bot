@@ -2,13 +2,14 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use command_data_derive::CommandData;
-use discorsd::{async_trait, BotState, UserMarkupExt};
+use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::create_message;
 use discorsd::http::guild::CommandPermsExt;
 use discorsd::http::user::UserExt;
 use discorsd::model::ids::{Id, UserId};
+use discorsd::model::user::UserMarkupExt;
 
 use crate::avalon::game::AvalonGame;
 use crate::Bot;

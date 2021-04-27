@@ -8,8 +8,7 @@ use log::error;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 
-use discorsd::{BotState, UserMarkupExt};
-use discorsd::async_trait;
+use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::{AvalonError, BotError};
 use discorsd::http::channel::{ChannelExt, embed};
@@ -18,6 +17,7 @@ use discorsd::http::user::UserExt;
 use discorsd::model::emoji::Emoji;
 use discorsd::model::ids::*;
 use discorsd::model::message::{ChannelMessageId, Color, EmbedField};
+use discorsd::model::user::UserMarkupExt;
 use discorsd::shard::dispatch::{ReactionType::*, ReactionUpdate};
 
 use crate::avalon::Avalon;
@@ -192,9 +192,9 @@ pub async fn vote_checker<G, F, Fut>(
     votes_getter: G,
     proceed: F,
 ) where
-    G: Fn(&mut AvalonState) -> Option<&mut HashMap<(MessageId, UserId), i32>>,
-    F: Fn(Arc<BotState<Bot>>, GuildId, Avalon) -> Fut + 'static,
-    Fut: Future<Output=Result<Avalon, (Avalon, BotError)>> + 'static,
+    G: Fn(&mut AvalonState) -> Option<&mut HashMap<(MessageId, UserId), i32>> + Send + Sync,
+    F: Fn(Arc<BotState<Bot>>, GuildId, Avalon) -> Fut + 'static + Send + Sync,
+    Fut: Future<Output=Result<Avalon, (Avalon, BotError)>> + 'static + Send,
 {
     let mut interval = tokio::time::interval(Duration::from_secs(30));
     loop {

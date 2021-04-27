@@ -1,3 +1,5 @@
+//! Rust structures representing the information sent by Discord's API.
+
 use std::fmt::{self, Display};
 
 use serde::{Deserialize, Serialize};
@@ -22,7 +24,8 @@ pub mod message;
 pub mod interaction;
 pub mod commands;
 
-/// Information returned from the `/gateway/bot` endpoint, as in [`DiscordClient::gateway`]
+/// Information returned from the `/gateway/bot` endpoint, as in
+/// [gateway](crate::http::DiscordClient::gateway).
 #[derive(Deserialize, Debug)]
 pub struct BotGateway {
     /// The WSS URL that can be used for connecting to the gateway
@@ -47,9 +50,9 @@ impl Display for DiscordError {
 }
 
 /// <https://discord.com/developers/docs/topics/opcodes-and-status-codes#json-json-error-codes>
-#[allow(clippy::upper_case_acronyms)]
 #[derive(Deserialize_repr, Debug)]
 #[repr(u32)]
+#[allow(clippy::upper_case_acronyms, clippy::use_self)]
 pub enum DiscordErrorType {
     /// General error (such as a malformed request body, amongst other things)
     General = 0,

@@ -50,9 +50,11 @@ impl Cache {
         self.application.get().unwrap().id
     }
 
-    /// gets the current user
+    /// Gets the current user.
     ///
-    /// panics if somehow used before [Ready](crate::shard::dispatch::Ready) is received
+    /// # Panics
+    ///
+    /// If somehow used before [`Ready`](crate::shard::dispatch::Ready) is received.
     pub async fn own_user(&self) -> User {
         self.user.read().await.clone().expect("should not get `bot.user` before `Ready` fires")
     }
@@ -202,6 +204,7 @@ pub struct DebugCache<'a> {
     commands: RwLockReadGuard<'a, IdMap<ApplicationCommand>>,
 }
 
+/// A map of objects, with keys given by the object's id
 #[derive(Debug, Clone)]
 pub struct IdMap<T: Id>(HashMap<T::Id, T>);
 

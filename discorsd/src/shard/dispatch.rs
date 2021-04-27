@@ -147,8 +147,9 @@ impl<'a> Update for DispatchPayload {
 ///
 /// `guilds` are the guilds of which your bot is a member. They start out as unavailable when you
 /// connect to the gateway. As they become available, your bot will be notified via
-/// [`DispatchPayload::GuildCreate`] events. `private_channels` will be an empty array. As bots
-/// receive private messages, they will be notified via [`DispatchPayload::ChannelCreate`] events.
+/// [`GuildCreate`](crate::shard::dispatch::GuildCreate) events. `private_channels` will be an empty
+/// array. As bots receive private messages, they will be notified via
+/// [`ChannelCreate`](crate::shard::dispatch::ChannelCreate) events.
 #[derive(Deserialize, Debug, Clone)]
 #[non_exhaustive]
 pub struct Ready {
@@ -166,6 +167,7 @@ pub struct Ready {
     pub application: PartialApplication,
 }
 
+/// Partial information about a Bot's application containing it's id and flags.
 #[derive(Copy, Clone, Deserialize, Debug)]
 pub struct PartialApplication {
     /// the id of the app
@@ -173,6 +175,18 @@ pub struct PartialApplication {
     /// the application's public flags
     pub flags: Option<u32>,
 }
+
+bitflags! {
+    pub struct ApplicationFlags: u32 {
+        const GATEWAY_PRESENCE = 1 << 12;
+        const GATEWAY_PRESENCE_LIMITED = 1 << 13;
+        const GATEWAY_GUILD_MEMBERS = 1 << 14;
+        const GATEWAY_GUILD_MEMBERS_LIMITED = 1 << 15;
+        const VERIFICATION_PENDING_GUILD_LIMIT = 1 << 16;
+        const EMBEDDED = 1 << 17;
+    }
+}
+serde_bitflag!(ApplicationFlags: u32);
 
 #[async_trait]
 impl Update for Ready {

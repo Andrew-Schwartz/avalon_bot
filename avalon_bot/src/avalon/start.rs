@@ -4,7 +4,7 @@ use std::sync::Arc;
 use itertools::Itertools;
 use log::warn;
 
-use discorsd::{BotState, UserMarkupExt};
+use discorsd::BotState;
 use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::{ChannelExt, embed};
@@ -13,6 +13,7 @@ use discorsd::http::user::UserExt;
 use discorsd::model::ids::Id;
 use discorsd::model::message::ChannelMessageId;
 use discorsd::model::message::Color;
+use discorsd::model::user::UserMarkupExt;
 
 use crate::avalon::characters::{Character, Loyalty};
 use crate::avalon::characters::Character::{LoyalServant, MinionOfMordred};

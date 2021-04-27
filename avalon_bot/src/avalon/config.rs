@@ -3,7 +3,7 @@ use std::mem;
 use itertools::Itertools;
 use tokio::sync::RwLockWriteGuard;
 
-use discorsd::{BotState, GuildCommands, http, UserMarkupExt};
+use discorsd::{BotState, GuildCommands, http};
 use discorsd::commands::SlashCommandExt;
 use discorsd::http::channel::{ChannelExt, embed, RichEmbed};
 use discorsd::http::ClientResult;
@@ -11,6 +11,7 @@ use discorsd::model::commands::*;
 use discorsd::model::guild::GuildMember;
 use discorsd::model::ids::*;
 use discorsd::model::message::Message;
+use discorsd::model::user::UserMarkupExt;
 
 use crate::{avalon, Bot};
 use crate::avalon::characters::Character;

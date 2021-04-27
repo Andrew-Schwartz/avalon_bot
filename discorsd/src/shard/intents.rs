@@ -25,5 +25,5 @@ bitflags! {
         const PRIVELEGED = Intents::GUILD_PRESENCES.bits | Intents::GUILD_MEMBERS.bits;
     }
 }
-#[allow(clippy::use_self)]
-serde_bitflag!(Intents, u16);
+// #[allow(clippy::use_self)]
+serde_bitflag!(Intents: u16);

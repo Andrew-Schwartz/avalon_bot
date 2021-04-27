@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::fmt;
 
 use futures::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
@@ -20,7 +21,7 @@ pub enum Emoji {
 impl Emoji {
     /// The url where this image can be retrieved from Discord, if this is a [Custom](Self::Custom)
     /// emoji. Will either be a `.png` or a `.gif`, depending on whether this emoji is
-    /// [animated](Emoji::animated).
+    /// [animated](CustomEmoji::animated).
     ///
     /// The returned image size can be changed by appending a querystring of `?size=desired_size` to
     /// the URL. Image size can be any power of two between 16 and 4096.
@@ -50,6 +51,15 @@ impl Emoji {
         match self {
             Self::Custom(_) => None,
             Self::Unicode { name } => Some(name),
+        }
+    }
+}
+
+impl fmt::Display for Emoji {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Custom(c) => c.fmt(f),
+            Self::Unicode { name } => f.write_str(name),
         }
     }
 }
@@ -85,18 +95,15 @@ pub struct CustomEmoji {
     #[serde(default)]
     pub available: bool,
 }
+id_impl!(CustomEmoji => EmojiId);
 
-impl Id for CustomEmoji {
-    type Id = EmojiId;
-
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-}
-
-impl PartialEq for CustomEmoji {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+impl fmt::Display for CustomEmoji {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.animated {
+            write!(f, "<a:{}:{}>", self.name, self.id)
+        } else {
+            write!(f, "<:{}:{}>", self.name, self.id)
+        }
     }
 }
 
@@ -115,7 +122,7 @@ impl CustomEmoji {
     }
 
     /// The url where this image can be retrieved from Discord. Will either be a `.png` or a `.gif`,
-    /// depending on whether this emoji is [animated](Emoji::animated)
+    /// depending on whether this emoji is [animated](Self::animated)
     ///
     /// The returned image size can be changed by appending a querystring of `?size=desired_size` to
     /// the URL. Image size can be any power of two between 16 and 4096.
@@ -148,7 +155,7 @@ impl From<char> for Emoji {
 }
 
 impl DiscordClient {
-    /// For each emoji in [emojis](emojis) in order, get the users who reacted with that emoji to
+    /// For each emoji in `emojis` in order, get the users who reacted with that emoji to
     /// this message.
     pub async fn get_all_reactions<Emojis, E>(
         &self,

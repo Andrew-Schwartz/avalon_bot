@@ -1,3 +1,16 @@
+//! General infrastructure for using `discorsd`, including the [`Bot`](Bot) trait, which handles
+//! events your bot receives, and the [`BotState`](BotState) struct, which stores your bot's state
+//! and can be accessed in most of [`Bot`](Bot)'s methods.
+//!
+//! Many functions pass around or take as a parameter `Arc<BotState<B>>`, where `B` is the type of
+//! your Bot. Other functions will be generic over a type parameter named `State` where
+//! `State: AsRef<BotState<B>>`. This allows you to pass a `&state` to such functions, no matter if
+//! the `state` you have is a `BotState<B>`, a `&BotState<B>`, or an `Arc<BotState<B>>`.
+//!
+//! Similarly, many functions take generic `Client` parameter where `Client: AsRef<DiscordClient>`.
+//! This allows you to pass a reference to any of the above state types, or a reference to a
+//! `DiscordClient` or `&DiscordClient`.
+
 use std::collections::HashMap;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
@@ -24,59 +37,62 @@ use crate::shard::dispatch::{MessageUpdate, ReactionUpdate};
 use crate::shard::model::Identify;
 use crate::shard::Shard;
 
-pub type GuildCommands<B> = HashMap<CommandId, Box<dyn SlashCommandRaw<Bot=B>>>;
+/// Maps `GuildId` to a `RwLock<V>`.
 pub type GuildIdMap<V> = HashMap<GuildId, RwLock<V>>;
+/// Maps `CommandId` to a `SlashCommand`.
+pub type GuildCommands<B> = HashMap<CommandId, Box<dyn SlashCommandRaw<Bot=B>>>;
 
+/// Stores the state of your Bot.
 pub struct BotState<B: Send + Sync + 'static> {
+    /// The client, including your bot's token.
     pub client: DiscordClient,
+    /// All information received in events.
+    /// Also updated by `BotState::cache_SOMETHING`, which is otherwise the same as
+    /// `DiscordClient::get_SOMETHING`.
     pub cache: Cache,
+    /// Your bot type, storing whatever other data you need.
     pub bot: B,
+    /// The [`SlashCommand`](SlashCommand)s your bot has created, mapped by guild.
     pub commands: RwLock<GuildIdMap<GuildCommands<B>>>,
+    /// The [`SlashCommand`](SlashCommand) ids your bot has created, by name in each guild.
     pub command_names: RwLock<GuildIdMap<HashMap<&'static str, CommandId>>>,
+    /// The global [`SlashCommand`](SlashCommand)s your bot has created.
     pub global_commands: OnceCell<HashMap<CommandId, &'static dyn SlashCommandRaw<Bot=B>>>,
+    /// The global [`SlashCommand`](SlashCommand) ids your bot has created, by name.
     pub global_command_names: OnceCell<HashMap<&'static str, CommandId>>,
+    /// The [`ReactionCommand`](ReactionCommand)s your bot is using.
     pub reaction_commands: RwLock<Vec<Box<dyn ReactionCommand<B>>>>,
 }
 
-impl<B: Send + Sync> AsRef<BotState<B>> for BotState<B> {
+impl<B: Send + Sync> AsRef<Self> for BotState<B> {
     fn as_ref(&self) -> &Self {
         self
     }
 }
 
 impl<B: Send + Sync> BotState<B> {
-    /// gets the current user
+    /// Gets the current [`User`](User).
     ///
-    /// panics if somehow used before [`Ready`](crate::shard::dispatch::Ready) is received
+    /// # Panics
+    ///
+    /// If somehow used before [`Ready`](crate::shard::dispatch::Ready) is received.
     pub async fn user(&self) -> User {
         self.cache.own_user().await
     }
 
-    // todo update docs
-    /// gets the bot's `ApplicationId`. The first time this is called, performs the
-    /// [`DiscordClient::application_information`](DiscordClient::application_information)
-    /// get request, otherwise recalls the id from the cache.
+    /// Gets the bot's `ApplicationId`.
     ///
-    /// panics if [`DiscordClient::application_information`](DiscordClient::application_information)
-    /// fails
+    /// # Panics
+    ///
+    /// If somehow used before [`Ready`](crate::shard::dispatch::Ready) is received.
     pub async fn application_id(&self) -> ApplicationId {
-        if let Some(id) = self.cache.application.get() {
-            id.id
-        } else {
-            todo!("if this hasn't errored in a while just get rid of this branch");
-            // let app = self.client.application_information().await
-            //     .expect("application_information should not fail");
-            // let result = self.cache.application.set(PartialApplication { id: app.id, flags: app.flags });
-            // // *self.cache.application.write().await = Some(PartialApplication { id: app.id, flags: app.flags });
-            // match result {
-            //     Ok(()) => app.id,
-            //     // just means that the once_cell was set in the meantime, oh well, return the id
-            //     Err(partial) => partial.id,
-            // }
-        }
+        self.cache.application
+            .get()
+            .expect("")
+            .id
     }
 
-    /// Get the id of command [C](C) in this [guild](guild).
+    /// Get the id of command `C` in this `guild`.
     ///
     /// # Note
     ///
@@ -90,7 +106,7 @@ impl<B: Send + Sync> BotState<B> {
             .copied()
     }
 
-    /// Get the id of command [C](C) in this [guild](guild).
+    /// Get the id of command `C` in this `guild`.
     ///
     /// # Note
     ///
@@ -99,7 +115,7 @@ impl<B: Send + Sync> BotState<B> {
     ///
     /// # Panics
     ///
-    /// Panics if the bot is not in this [guild](guild), or if the command [C](C) does not exist
+    /// Panics if the bot is not in this `guild`, or if the command `C` does not exist
     /// in this guild.
     pub async fn command_id<C: SlashCommand<Bot=B>>(&self, guild: GuildId) -> CommandId {
         *self.command_names.read().await
@@ -110,7 +126,7 @@ impl<B: Send + Sync> BotState<B> {
             .unwrap_or_else(|| panic!("{} exists", C::NAME))
     }
 
-    /// Get the id of the global command [C](C).
+    /// Get the id of the global command `C`.
     ///
     /// # Note
     ///
@@ -119,8 +135,8 @@ impl<B: Send + Sync> BotState<B> {
     ///
     /// # Panics
     ///
-    /// Panics if the bot has not received the [Ready](DispatchEvent::Ready) event yet, or if the
-    /// command [C](C) does not exist is not a global command.
+    /// Panics if the bot has not received the [Ready](crate::shard::dispatch::Ready) event yet, or if the
+    /// command `C` does not exist is not a global command.
     pub async fn global_command_id<C: SlashCommand<Bot=B>>(&self) -> CommandId {
         *self.global_command_names.get()
             .expect("Bot hasn't connected yet")
@@ -128,16 +144,41 @@ impl<B: Send + Sync> BotState<B> {
             .unwrap_or_else(|| panic!("{} exists", C::NAME))
     }
 
+    /// Edits the [`default_permission`](crate::commands::Command::default_permission) to be true
+    /// for command `C` in this `guild`, meaning that everyone in the guild will be able to use it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the bot is not in this `guild`, or if the command `C` does not exist.
+    /// in this guild.
     pub async fn enable_command<C: SlashCommand<Bot=B>>(&self, guild: GuildId) -> ClientResult<ApplicationCommand> {
         self.command_id::<C>(guild).await
             .default_permissions(self, guild, true).await
     }
 
+
+    /// Edits the [`default_permission`](crate::commands::Command::default_permission) to be true
+    /// for command `C` in this `guild`, meaning that no one in the guild will be able to use it
+    /// unless the command's permissions were edited to allow their [`UserId`](UserId) or a
+    /// [`RoleId`] they have.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the bot is not in this `guild`, or if the command `C` does not exist.
+    /// in this guild.
     pub async fn disable_command<C: SlashCommand<Bot=B>>(&self, guild: GuildId) -> ClientResult<ApplicationCommand> {
         self.command_id::<C>(guild).await
             .default_permissions(self, guild, false).await
     }
 
+    /// Get a mutable [`SlashCommand`](SlashCommand) `C` by type.
+    ///
+    /// A mutable reference to a [`RwLockWriteGuard`](RwLockWriteGuard) must be passed in, which the
+    /// lifetime of the returned mutable reference is tied to.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the bot is not in this `guild`, or if the command `C` does not exist.
     #[allow(clippy::needless_lifetimes)]
     pub async fn get_command_mut<'c, C: SlashCommand<Bot=B>>(
         &self,
@@ -172,13 +213,49 @@ impl<B: Debug + Send + Sync> Debug for BotState<B> {
 //     }
 // }
 
+/// The most important trait to implement, as it determines how to connect your bot to Discord,
+/// what Slash Commands to send to Discord, and how to handle the various events that a Discord bot
+/// can witness.
+///
+///
+/// ```rust
+/// # use discorsd::{Bot, async_trait};
+/// # use discorsd::shard::model::{Identify, UpdateStatus, Activity, ActivityType};
+/// # use discorsd::shard::intents::Intents;
+/// struct MyBot {
+///     token: String
+/// }
+///
+/// #[async_trait]
+/// impl Bot for MyBot {
+///     fn token(&self) -> String { self.token.clone() }
+///
+///     fn identify(&self) -> Identify {
+///         Identify::new(self.token())
+///             .presence(UpdateStatus::with_activity(
+///                         // "listening to /help"
+///                         Activity::for_bot("/help", ActivityType::Listening)
+///             ))
+///     }
+/// }
+/// ```
 #[allow(unused)]
 #[async_trait]
 pub trait Bot: Send + Sync + Sized {
-    fn token(&self) -> &str;
+    /// Register your Discord bot's token. This is the only method you are required to implement,
+    /// though your bot will be very boring if you don't implement any other methods.
+    fn token(&self) -> String;
 
-    fn identify(&self) -> Identify { Identify::new(self.token().to_string()) }
+    /// How to identify this bot to discord. Defaults to do nothing but set the bot's token and
+    /// accept all [`Intents`](crate::shard::intents::Intents).
+    ///
+    /// See [`Identify`](Identify) for more information.
+    fn identify(&self) -> Identify { Identify::new(self.token()) }
 
+    /// All of the bot's global commands as a static slice. This is called once when the bot
+    /// receives the [`Ready`](crate::shard::dispatch::Ready) event, sending these commands to
+    /// Discord and registering them in the bot's [`BotState`](crate::BotState) in order to run
+    /// them when invoked.
     fn global_commands() -> &'static [&'static dyn SlashCommandRaw<Bot=Self>] { &[] }
 
     fn guild_commands() -> Vec<Box<dyn SlashCommandRaw<Bot=Self>>> { Vec::new() }
@@ -208,12 +285,16 @@ pub trait Bot: Send + Sync + Sized {
     }
 }
 
+/// Extension methods for [Bot]s.
 #[async_trait]
 pub trait BotExt: Bot + 'static {
+    /// Run the bot. Should likely be the last line of `main`.
     async fn run(self) -> shard::ShardResult<()> {
         BotRunner::from(self).run().await
     }
 
+    /// Respond to an interaction with the matching [SlashCommand]. Should likely be used in the
+    /// [Bot::interaction](Bot::interaction) method.
     async fn slash_command(interaction: Interaction, state: Arc<BotState<Self>>) -> Result<(), BotError> {
         let (interaction, data) = InteractionUse::from(interaction);
 
@@ -245,7 +326,7 @@ struct BotRunner<B: Bot + 'static> {
 impl<B: Bot + 'static> From<B> for BotRunner<B> {
     fn from(bot: B) -> Self {
         let state = Arc::new(BotState {
-            client: DiscordClient::single(bot.token().to_string()),
+            client: DiscordClient::single(bot.token()),
             cache: Default::default(),
             bot,
             commands: Default::default(),

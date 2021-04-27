@@ -117,12 +117,18 @@ pub trait Id: PartialEq {
 /// ```rust
 /// # struct MessageId;
 /// struct Message {
-///     id: Message,
+///     id: MessageId,
 /// # /*
 ///     ...
 /// # */
 /// }
-/// id_impl!(Message, id: MessageId);
+/// id_impl!(Message => id: MessageId);
+/// ```
+/// If the `id` field is named `id`, the macro invocation can be abbreviated to
+/// ```rust
+/// # struct MessageId;
+/// # struct Message { id: MessageId }
+/// id_impl!(Message => MessageId);
 /// ```
 ///
 /// Also impl's `PartialEq` by calling [id_eq](id_eq)

@@ -5,12 +5,13 @@ use std::mem;
 use itertools::Itertools;
 use tokio::sync::RwLockWriteGuard;
 
-use discorsd::{BotState, GuildCommands, http, IdMap, UserMarkupExt};
+use discorsd::{BotState, GuildCommands, http, IdMap};
 use discorsd::commands::*;
 use discorsd::http::channel::{ChannelExt, embed, RichEmbed};
 use discorsd::http::ClientResult;
 use discorsd::model::ids::{ChannelId, GuildId, UserId};
 use discorsd::model::message::Message;
+use discorsd::model::user::UserMarkupExt;
 
 use crate::Bot;
 use crate::hangman::random_words::{GuildHist, Wordnik};

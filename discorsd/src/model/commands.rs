@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fmt::Debug;
 use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
@@ -689,9 +689,33 @@ impl<T, C, S> CommandData<C> for HashSet<T, S>
     type VecArg = DataOption;
 
     fn make_args(c: &C) -> Vec<Self::VecArg> {
-        let vec = T::make_args(c);
-        println!("vec = {:?}", vec);
-        vec
+        T::make_args(c)
+    }
+
+    fn make_choices(c: &C) -> Vec<CommandChoice<&'static str>> {
+        T::make_choices(c)
+    }
+
+    fn vararg_number() -> VarargState {
+        VarargState::Variable
+    }
+}
+
+impl<T, C> CommandData<C> for BTreeSet<T>
+    where
+        T: CommandData<C, VecArg=DataOption, Options=ValueOption> + Ord,
+        C: SlashCommandRaw,
+{
+    type Options = Vec<ValueOption>;
+
+    fn from_options(options: Self::Options) -> Result<Self, CommandParseError> {
+        options.into_iter().map(T::from_options).collect()
+    }
+
+    type VecArg = DataOption;
+
+    fn make_args(c: &C) -> Vec<Self::VecArg> {
+        T::make_args(c)
     }
 
     fn make_choices(c: &C) -> Vec<CommandChoice<&'static str>> {

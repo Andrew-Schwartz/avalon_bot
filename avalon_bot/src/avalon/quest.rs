@@ -6,7 +6,7 @@ use itertools::Itertools;
 use tokio::sync::Mutex;
 
 use command_data_derive::CommandData;
-use discorsd::{async_trait, BotState, UserMarkupExt};
+use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::{AvalonError, BotError};
 use discorsd::http::channel::{create_message, embed};
@@ -15,6 +15,7 @@ use discorsd::http::guild::CommandPermsExt;
 use discorsd::http::user::UserExt;
 use discorsd::model::ids::{Id, UserId};
 use discorsd::model::message::ChannelMessageId;
+use discorsd::model::user::UserMarkupExt;
 
 use crate::avalon::AvalonPlayer;
 use crate::avalon::game::AvalonState;

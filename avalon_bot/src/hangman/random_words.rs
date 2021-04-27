@@ -9,7 +9,6 @@ use serde::Deserialize;
 use discorsd::model::channel::TextChannel;
 use discorsd::model::guild::Guild;
 use discorsd::model::ids::{GuildId, Id, MessageId};
-use discorsd::serde_utils::NiceResponseJson;
 
 #[derive(Debug)]
 pub struct GuildHist {
@@ -82,7 +81,7 @@ impl Wordnik {
         async fn word_(client: &Client) -> Option<String> {
             let word: Word = client.get(&*URL)
                 .send().await.ok()?
-                .nice_json().await.ok()?;
+                .json().await.ok()?;
             Some(word.word)
         }
         loop {

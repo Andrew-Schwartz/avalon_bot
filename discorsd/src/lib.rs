@@ -1,3 +1,6 @@
+// todo
+//! Woah!!! Discord library!
+
 #![warn(clippy::pedantic, clippy::nursery)]
 // @formatter:off
 #![allow(
@@ -25,22 +28,21 @@
 #[macro_use]
 extern crate bitflags;
 
+/// Re-exported for use with [`Bot`](bot::Bot), [`SlashCommand`](commands::SlashCommand), etc.
 pub use async_trait::async_trait;
 
 pub use bot::*;
 pub use cache::IdMap;
-pub use markup_extensions::*;
 
 #[macro_use]
 mod macros;
 mod cache;
+mod serde_utils;
+mod utils;
 
-pub mod http;
-pub mod shard;
-pub mod serde_utils;
 pub mod bot;
-pub mod utils;
-pub mod markup_extensions;
-pub mod errors;
-pub mod model;
 pub mod commands;
+pub mod errors;
+pub mod http;
+pub mod model;
+pub mod shard;

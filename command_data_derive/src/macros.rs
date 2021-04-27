@@ -26,7 +26,7 @@ macro_rules! handle_attribute {
                         )
                     ),+
                 ];
-                // todo search for similar options? (ordinals -> va_ordinals)
+                // todo search for similar options? (ie ordinals -> va_ordinals)
                 let options_finding_error = |n_span, ident: &str, default| {
                     OPTIONS.iter()
                         .filter_map(|(opts, patt)|
@@ -144,7 +144,7 @@ macro_rules! handle_attribute {
                 ),
                 #[proc_macro]
                 #[allow(non_snake_case)]
-                pub fn [<$ty Documentation>](_: proc_macro::TokenStream) -> proc_macro::TokenStream {
+                pub fn [<Documentation_For_ $ty>](_: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     (quote::quote! {
                         compile_error!("this macro is just for documentation, don't use it you dum dum :)")
                     }).into()

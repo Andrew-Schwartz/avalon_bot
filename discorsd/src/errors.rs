@@ -1,3 +1,5 @@
+//! Error handling for `discorsd`, mainly though the [`BotError`](BotError) enum.
+
 use std::fmt::{self, Debug, Display};
 use std::ops::Range;
 
@@ -189,8 +191,9 @@ pub struct OptionType {
     pub desired: CommandOptionTypeParsed,
 }
 
-/// like [ApplicationCommandOptionType](ApplicationCommandOptionType), but more specifically for
-/// single option types and with more options (that have been further parsed, such as unsigned ints)
+/// like [`ApplicationCommandOptionType`](crate::commands::ApplicationCommandOptionType), but more
+/// specifically for single option types and with more options (that have been further parsed, such
+/// as unsigned ints or message id).
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum CommandOptionTypeParsed {
     String,

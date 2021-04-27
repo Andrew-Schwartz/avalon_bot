@@ -37,12 +37,12 @@ pub fn enum_impl(ty: &Ident, data: DataEnum) -> TokenStream2 {
 
             fn from_options(
                 Self::Options { name, lower: value }: Self::Options,
-            ) -> Result<Self, ::discorsd::errors::CommandParseError> {
+            ) -> ::std::result::Result<Self, ::discorsd::errors::CommandParseError> {
                 use ::discorsd::errors::*;
                 let value = value.string()?;
                 match value.as_str() {
                     #branches
-                    _ => Err(CommandParseError::UnknownOption(UnknownOption {
+                    _ => ::std::result::Result::Err(CommandParseError::UnknownOption(UnknownOption {
                         name: value, options: &#variants_array
                     }))
                 }
@@ -137,7 +137,7 @@ impl Enum {
         let branches = self.0.iter().map(|v| {
             let str = v.name();
             let ident = &v.ident;
-            quote_spanned! { v.ident.span() => #str => Ok(Self::#ident) }
+            quote_spanned! { v.ident.span() => #str => ::std::result::Result::Ok(Self::#ident) }
         });
         quote! {
             #(#branches,)*

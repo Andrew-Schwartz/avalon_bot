@@ -2,12 +2,13 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use command_data_derive::CommandData;
-use discorsd::{async_trait, BotState, UserMarkupExt};
+use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::embed;
 use discorsd::model::ids::UserId;
 use discorsd::model::message::Color;
+use discorsd::model::user::UserMarkupExt;
 
 use crate::avalon::characters::Character::Merlin;
 use crate::avalon::characters::Loyalty::Evil;

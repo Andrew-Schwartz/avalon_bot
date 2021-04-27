@@ -83,12 +83,12 @@ impl SlashCommand for RolesCommand {
 pub enum RoleData {
     #[command(desc = "Choose roles to add", enable_if = "add_roles")]
     Add(
-        #[command(va_ordinals, va_count = "add_count", required = 1, retain = "add_choice")]
+        #[command(va_ordinals, va_count = "add_count", va_req = 1, retain = "add_choice")]
         HashSet<Character>
     ),
     #[command(desc = "Choose roles to remove", enable_if = "remove_roles")]
     Remove(
-        #[command(va_ordinals, va_count = "remove_count", required = 1, retain = "remove_choice")]
+        #[command(va_ordinals, va_count = "remove_count", va_req = 1, retain = "remove_choice")]
         HashSet<Character>
     ),
     #[command(desc = "Clear all roles", enable_if = "remove_roles")]

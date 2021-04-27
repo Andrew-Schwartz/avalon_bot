@@ -6,7 +6,7 @@ use quote::{quote, quote_spanned};
 use syn::{Attribute, DataEnum, Fields, Ident, LitStr, Path, Type};
 use syn::spanned::Spanned;
 
-use crate::struct_data::{Field, Struct};
+use crate::struct_data::{description_len_check, Field, Struct};
 use crate::utils::command_data_impl;
 
 pub fn enum_impl(ty: &Ident, data: DataEnum, attrs: &[Attribute]) -> TokenStream2 {
@@ -42,8 +42,7 @@ impl Variant {
     }
 
     fn description(&self, name: &str) -> String {
-        self.desc.as_ref()
-            .map_or_else(|| name.to_string(), LitStr::value)
+        description_len_check(&self.desc).unwrap_or_else(|| name.to_string())
     }
 }
 
@@ -82,9 +81,9 @@ impl Enum {
     //noinspection RsSelfConvention
     fn from_options_branches(&self, ty: &Ident, command_ty: &TokenStream2) -> TokenStream2 {
         let branches = self.variants.iter().map(|v| {
-            let patt = v.name();
-            // todo filter out the attributes this used
+            // todo filter out the attributes this used (might not be a thing)
             let fields = Struct::from_fields(v.fields.clone(), &[]);
+            let patt = v.name();
             match syn::parse_str(&format!("{}::{}", ty, v.ident)) {
                 Ok(path) => {
                     let try_from_body = fields.impl_from_options(ty, &path, command_ty);
@@ -104,7 +103,7 @@ impl Enum {
 
     fn make_args_vec(&self, command_type: &TokenStream2) -> TokenStream2 {
         let chains = self.variants.iter().map(|v| {
-            // todo filter out the attributes this used
+            // todo filter out the attributes this used (might not be a thing)
             let strukt = Struct::from_fields(v.fields.clone(), &[]);
             let name = v.name();
             let desc = v.description(&name);
@@ -264,7 +263,7 @@ impl Enum {
                 }
             };
             quote_spanned! { v.ident.span() =>
-                #name => Ok(Self::#variant)
+                #name => ::std::result::Result::Ok(Self::#variant)
             }
         });
         let variants_array = self.variants_array();
@@ -284,7 +283,7 @@ impl Enum {
                 ) -> ::std::result::Result<Self, ::discorsd::errors::CommandParseError> {
                     match name.as_str() {
                         #(#match_branches,)*
-                        _ => Err(::discorsd::errors::CommandParseError::UnknownOption(
+                        _ => ::std::result::Result::Err(::discorsd::errors::CommandParseError::UnknownOption(
                             ::discorsd::errors::UnknownOption { name, options: &#variants_array }
                         ))
                     }
@@ -342,7 +341,7 @@ impl Enum {
                     use ::discorsd::errors::*;
                     match name.as_str() {
                         #from_option_branches
-                        _ => Err(CommandParseError::UnknownOption(UnknownOption {
+                        _ => ::std::result::Result::Err(CommandParseError::UnknownOption(UnknownOption {
                             name,
                             options: &#variants_array,
                         }))

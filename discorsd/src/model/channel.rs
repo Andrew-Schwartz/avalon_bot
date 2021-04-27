@@ -408,6 +408,7 @@ impl From<StoreChannel> for Channel {
 
 #[derive(Serialize_repr, Deserialize_repr, Debug, TryFromPrimitive, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum ChannelType {
     /// a text channel within a server
     GuildText = 0,
@@ -426,6 +427,14 @@ pub enum ChannelType {
     /// [sell their game on Discord](https://discord.com/developers/docs/game-and-server-management/special-channels)
     GuildStore = 6,
 }
+
+pub trait ChannelMarkupExt: Id<Id=ChannelId> {
+    fn mention(&self) -> String {
+        format!("<#{}>", self.id())
+    }
+}
+
+impl<I: Id<Id=ChannelId>> ChannelMarkupExt for I {}
 
 /// See [permissions](https://discord.com/developers/docs/topics/permissions#permissions)
 /// for more information about the `allow` and `deny` fields.

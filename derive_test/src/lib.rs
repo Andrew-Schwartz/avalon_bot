@@ -43,150 +43,6 @@ mod tests {
         assert_eq!(correct, modeled);
     }
 
-    const CORRECT1: &'static str = r#"{
-    "name": "permissions",
-    "description": "Get or edit permissions for a user or a role",
-    "options": []
-}"#;
-
-    #[test]
-    fn part1() {
-        make_slash_command!(());
-        assert_same_json_value(CORRECT1, Perms);
-        let command = <() as discorsd::commands::CommandData<Perms>>::make_args(&Perms);
-        println!("command = {:?}", command);
-    }
-
-    const CORRECT2: &'static str = r#"{
-    "name": "permissions",
-    "description": "Get or edit permissions for a user or a role",
-    "options": [
-        {
-            "name": "user",
-            "description": "Get or edit permissions for a user",
-            "type": 2
-        },
-        {
-            "name": "role",
-            "description": "Get or edit permissions for a role",
-            "type": 2
-        }
-    ]
-}"#;
-
-    // #[test]
-    // fn part2_derive() {
-    //     make_slash_command!(Data);
-    //     // #[derive(CommandData)]
-    //     // #[command(rename_all = "lowercase")]
-    //     enum Data {
-    //         // #[command(desc = "Get or edit permissions for a user")]
-    //         User,
-    //         // #[command(desc = "Get or edit permissions for a role")]
-    //         Role,
-    //     }
-    //     // impl TryFrom
-    //     impl CommandArgs<Perms> for Data {
-    //         fn args(command: &Perms) -> TopLevelOption {
-    //             TopLevelOption::Groups(vec![
-    //                 SubCommandGroup {
-    //                     name: "user",
-    //                     description: "Get or edit permissions for a user",
-    //                     sub_commands: vec![]
-    //                 },
-    //                 // role
-    //             ])
-    //         }
-    //     }
-    //     assert_same_json_value(CORRECT2, Perms.command());
-    // }
-
-    const CORRECT3: &'static str = r#"{
-    "name": "permissions",
-    "description": "Get or edit permissions for a user or a role",
-    "options": [
-        {
-            "name": "user",
-            "description": "Get or edit permissions for a user",
-            "type": 2,
-            "options": [
-                {
-                    "name": "get",
-                    "description": "Get permissions for a user",
-                    "type": 1
-                },
-                {
-                    "name": "edit",
-                    "description": "Edit permissions for a user",
-                    "type": 1
-                }
-            ]
-        },
-        {
-            "name": "role",
-            "description": "Get or edit permissions for a role",
-            "type": 2,
-            "options": [
-                {
-                    "name": "get",
-                    "description": "Get permissions for a role",
-                    "type": 1
-                },
-                {
-                    "name": "edit",
-                    "description": "Edit permissions for a role",
-                    "type": 1
-                }
-            ]
-        }
-    ]
-}"#;
-
-    // #[test]
-    // fn part3() {
-    //     make_slash_command!(Data);
-    //     // #[derive(CommandData)]
-    //     enum Data {
-    //         // #[command(desc = "Get or edit permissions for a user")]
-    //         User(GetEditUser),
-    //         // #[command(desc = "Get or edit permissions for a role")]
-    //         Role(GetEditRole),
-    //     }
-    //     // #[derive(CommandData)]
-    //     enum GetEditUser {
-    //         // #[command(desc = "Get permissions for a user")]
-    //         Get,
-    //         // #[command(desc = "Edit permissions for a user")]
-    //         Edit,
-    //     }
-    //     // #[derive(CommandData)]
-    //     enum GetEditRole {
-    //         // #[command(desc = "Get permissions for a role")]
-    //         Get,
-    //         // #[command(desc = "Edit permissions for a role")]
-    //         Edit,
-    //     }
-    //     impl CommandArgs<Perms> for Data {
-    //         fn args(command: &Perms) -> TopLevelOption {
-    //             TopLevelOption::Groups(vec![
-    //                 SubCommandGroup {
-    //                     name: "user",
-    //                     description: "Get or edit permissions for a user",
-    //                     sub_commands: vec![
-    //                         SubCommand {
-    //                             name: "get",
-    //                             description: "Get permissions for a user",
-    //                             options: vec![]
-    //                         },
-    //                         // edit
-    //                     ]
-    //                 },
-    //                 // role
-    //             ])
-    //         }
-    //     }
-    // }
-
     const CORRECT4: &'static str = r#"{
     "name": "permissions",
     "description": "Get or edit permissions for a user or a role",
@@ -317,14 +173,14 @@ mod tests {
         }
         #[derive(CommandData)]
         struct GetRole {
-            #[command(desc = "The role to get", required)]
+            #[command(desc = "The role to get")]
             pub role: discorsd::model::ids::RoleId,
             #[command(desc = "The channel permissions to get. If omitted, the guild permissions will be returned")]
             pub channel: Option<discorsd::model::ids::ChannelId>,
         }
         #[derive(CommandData)]
         struct EditRole {
-            #[command(desc = "The role to edit", required)]
+            #[command(desc = "The role to edit")]
             pub role: discorsd::model::ids::RoleId,
             #[command(desc = "The channel permissions to edit. If omitted, the guild permissions will be edited")]
             pub channel: Option<discorsd::model::ids::ChannelId>,
@@ -332,4 +188,143 @@ mod tests {
         let command = <Data as discorsd::commands::CommandData<Perms>>::make_args(&Perms);
         println!("command = {:#?}", command);
     }
+
+    // todo handle generics?
+//     const CORRECT4GENERIC: &'static str = r#"{
+//     "name": "permissions",
+//     "description": "Get or edit permissions for a user or a role",
+//     "options": [
+//         {
+//             "name": "user",
+//             "description": "Get or edit permissions for a user",
+//             "type": 2,
+//             "options": [
+//                 {
+//                     "name": "get",
+//                     "description": "Get permissions for a user",
+//                     "type": 1,
+//                     "options": [
+//                         {
+//                             "name": "user",
+//                             "description": "The id to get",
+//                             "type": 6,
+//                             "required": true
+//                         },
+//                         {
+//                             "name": "channel",
+//                             "description": "The channel permissions to get. If omitted, the guild permissions will be returned",
+//                             "type": 7
+//                         }
+//                     ]
+//                 },
+//                 {
+//                     "name": "edit",
+//                     "description": "Edit permissions for a user",
+//                     "type": 1,
+//                     "options": [
+//                         {
+//                             "name": "user",
+//                             "description": "The id to edit",
+//                             "type": 6,
+//                             "required": true
+//                         },
+//                         {
+//                             "name": "channel",
+//                             "description": "The channel permissions to edit. If omitted, the guild permissions will be edited",
+//                             "type": 7
+//                         }
+//                     ]
+//                 }
+//             ]
+//         },
+//         {
+//             "name": "role",
+//             "description": "Get or edit permissions for a role",
+//             "type": 2,
+//             "options": [
+//                 {
+//                     "name": "get",
+//                     "description": "Get permissions for a role",
+//                     "type": 1,
+//                     "options": [
+//                         {
+//                             "name": "role",
+//                             "description": "The id to get",
+//                             "type": 8,
+//                             "required": true
+//                         },
+//                         {
+//                             "name": "channel",
+//                             "description": "The channel permissions to get. If omitted, the guild permissions will be returned",
+//                             "type": 7
+//                         }
+//                     ]
+//                 },
+//                 {
+//                     "name": "edit",
+//                     "description": "Edit permissions for a role",
+//                     "type": 1,
+//                     "options": [
+//                         {
+//                             "name": "role",
+//                             "description": "The id to edit",
+//                             "type": 8,
+//                             "required": true
+//                         },
+//                         {
+//                             "name": "channel",
+//                             "description": "The channel permissions to edit. If omitted, the guild permissions will be edited",
+//                             "type": 7
+//                         }
+//                     ]
+//                 }
+//             ]
+//         }
+//     ]
+// }"#;
+//
+//     #[test]
+//     fn part4_generic() {
+//         use discorsd::model::ids::{Id, RoleId, UserId};
+//
+//         assert_same_json_value(CORRECT4, Perms);
+//         make_slash_command!(Data);
+//         #[derive(CommandData)]
+//         enum Data {
+//             #[command(desc = "Get or edit permissions for a user")]
+//             User(GetEditUser),
+//             #[command(desc = "Get or edit permissions for a role")]
+//             Role(GetEditRole),
+//         }
+//         #[derive(CommandData)]
+//         enum GetEditUser {
+//             #[command(desc = "Get permissions for a user")]
+//             Get(Get<UserId>),
+//             #[command(desc = "Edit permissions for a user")]
+//             Edit(Edit<UserId>),
+//         }
+//         #[derive(CommandData)]
+//         enum GetEditRole {
+//             #[command(desc = "Get permissions for a role")]
+//             Get(Get<RoleId>),
+//             #[command(desc = "Edit permissions for a role")]
+//             Edit(Edit<RoleId>),
+//         }
+//         #[derive(CommandData)]
+//         struct Get<I: Id> {
+//             #[command(desc = "The id to get")]
+//             pub role: I,
+//             #[command(desc = "The channel permissions to get. If omitted, the guild permissions will be returned")]
+//             pub channel: Option<discorsd::model::ids::ChannelId>,
+//         }
+//         #[derive(CommandData)]
+//         struct Edit<I: Id> {
+//             #[command(desc = "The role to edit")]
+//             pub role: I,
+//             #[command(desc = "The channel permissions to edit. If omitted, the guild permissions will be edited")]
+//             pub channel: Option<discorsd::model::ids::ChannelId>,
+//         }
+//         let command = <Data as discorsd::commands::CommandData<Perms>>::make_args(&Perms);
+//         println!("command = {:#?}", command);
+//     }
 }

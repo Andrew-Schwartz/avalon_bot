@@ -1,6 +1,7 @@
 use std::iter::FromIterator;
 
 use proc_macro2::{Span, TokenStream as TokenStream2};
+use proc_macro_error::emit_error;
 use quote::{quote, quote_spanned};
 use syn::{Attribute, Fields, Ident, Index, LitStr, Path, Type};
 use syn::spanned::Spanned;
@@ -101,8 +102,6 @@ pub struct UnnamedField {
 
 #[derive(Debug, Default)]
 pub struct Vararg {
-    // /// the root of the vararg parameter, for example `player` for player1, player2, player3, ...
-    // pub root: Option<LitStr>,
     /// how to name the vararg options
     pub names: VarargNames,
     /// `fn<C: SlashCommand>(command: &C) -> usize` to pick how many vararg options to display
@@ -334,7 +333,7 @@ impl Struct {
                 let mut options = options.drain(0..).peekable();
                 let mut idx = 0;
 
-                while let Some(option) = options.next() {
+                while let ::std::option::Option::Some(option) = options.next() {
                     // this first ^ option is always a single option or the first of a vararg
                     let matches_vararg = VARARGS[idx];
                     if matches_vararg(&option.name, 1) {
@@ -344,7 +343,7 @@ impl Struct {
                         loop {
                             let next_is_vararg = matches!(
                                 options.peek(),
-                                Some(next) if {
+                                ::std::option::Option::Some(next) if {
                                     vararg_idx += 1;
                                     matches_vararg(&next.name, vararg_idx)
                                 }
@@ -393,12 +392,12 @@ impl Struct {
             let ty = &f.ty;
             if f.vararg.is_some() {
                 quote_spanned! { ty.span() =>
-                    #i => return Err(CommandParseError::UnexpectedVararg(option.name, idx))
+                    #i => return ::std::result::Result::Err(CommandParseError::UnexpectedVararg(option.name, idx))
                 }
             } else {
                 quote_spanned! { ty.span() =>
                     #i => if option.name == FIELDS[#i] {
-                        builder.#builder_ident = Some(
+                        builder.#builder_ident = ::std::option::Option::Some(
                             <#ty as ::discorsd::commands::CommandData<#command_ty>>::from_options(option)?
                         );
                         break
@@ -410,7 +409,7 @@ impl Struct {
         quote! {
             match idx {
                 #(#branches,)*
-                #num_fields => return Err(CommandParseError::BadOrder(option.name, idx, 0..#num_fields)),
+                #num_fields => return ::std::result::Result::Err(CommandParseError::BadOrder(option.name, idx, 0..#num_fields)),
                 _ => {}
             }
         }
@@ -424,7 +423,7 @@ impl Struct {
         let fields = self.fields.iter().map(|f| {
             let ident = &f.name.builder_ident();
             let ty = &f.ty;
-            quote_spanned! { f.name.span() => #ident: Option<#ty> }
+            quote_spanned! { f.name.span() => #ident: ::std::option::Option<#ty> }
         });
         let builder = self.fields.iter().map(|f| {
             let builder_ident = &f.name.builder_ident();
@@ -455,9 +454,9 @@ impl Struct {
             }
 
             impl #name {
-                fn build(self) -> Result<#return_type, ::discorsd::errors::CommandParseError> {
+                fn build(self) -> ::std::result::Result<#return_type, ::discorsd::errors::CommandParseError> {
                     #[allow(clippy::used_underscore_binding)]
-                    Ok(#return_ctor {
+                    ::std::result::Result::Ok(#return_ctor {
                         #(#builder),*
                     })
                 }
@@ -475,12 +474,12 @@ impl Struct {
                 quote_spanned! { ty.span() =>
                     #i => {
                         let varargs = <#ty as ::discorsd::commands::CommandData<#command_ty>>::from_options(varargs)?;
-                        builder.#builder_ident = Some(varargs);
+                        builder.#builder_ident = ::std::option::Option::Some(varargs);
                     }
                 }
             } else {
                 quote_spanned! { ty.span() =>
-                    #i => return Err(CommandParseError::UnexpectedSingleOption(FIELDS[idx].to_owned(), idx))
+                    #i => return ::std::result::Result::Err(CommandParseError::UnexpectedSingleOption(FIELDS[idx].to_owned(), idx))
                 }
             }
         });
@@ -489,7 +488,7 @@ impl Struct {
             match idx {
                 #(#branches,)*
                 // todo specific vararg error type
-                _ => return Err(CommandParseError::BadOrder(
+                _ => return ::std::result::Result::Err(CommandParseError::BadOrder(
                     FIELDS[idx].to_owned(), idx, 0..#num_fields
                 ))
             }
@@ -514,8 +513,7 @@ impl Struct {
                 f.vararg_option(vararg, command_type)
             } else {
                 let name = f.arg_name();
-                let desc = f.desc.as_ref()
-                    .map_or_else(|| f.arg_name(), LitStr::value);
+                let desc = description_len_check(&f.desc).unwrap_or_else(|| name.clone());
                 let single_option = f.single_option(Some((name, desc)), None);
                 quote_spanned! { single_option.span() =>
                     ::std::iter::once(#single_option)
@@ -527,6 +525,26 @@ impl Struct {
             }
         }).unwrap_or_else(|| quote! { ::std::iter::empty() });
         quote_spanned! { chain.span() => #chain.collect() }
+    }
+}
+
+pub fn description_len_check(desc: &Option<LitStr>) -> Option<String> {
+    if let Some(lit_desc) = desc {
+        let desc = lit_desc.value();
+        let len = desc.len();
+        if len > 100 {
+            emit_error!(
+                lit_desc,
+                "Command option descriptions can be at most 100 characters, this is {} characters",
+                len,
+            );
+        }
+        if len < 1 {
+            emit_error!(lit_desc, "Command option descriptions can't be empty");
+        }
+        Some(desc)
+    } else {
+        None
     }
 }
 

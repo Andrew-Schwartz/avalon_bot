@@ -45,17 +45,11 @@ pub trait TypeExt {
 impl TypeExt for Type {
     fn generic_type_by<F: FnOnce(&Ident) -> bool>(&self, pred: F) -> Option<&Type> {
         if let Type::Path(path) = self {
-            if let Some(seg) = path.path.segments.first() {
-                if pred(&seg.ident) {
-                    if let PathArguments::AngleBracketed(args) = &seg.arguments {
-                        if let ::std::prelude::v1::Some(GenericArgument::Type(ty)) = args.args.first() {
-                            Some(ty)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
+            let seg = path.path.segments.first()?;
+            if !pred(&seg.ident) { return None; }
+            if let PathArguments::AngleBracketed(args) = &seg.arguments {
+                if let Some(GenericArgument::Type(ty)) = args.args.first() {
+                    Some(ty)
                 } else {
                     None
                 }

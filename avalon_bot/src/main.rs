@@ -48,7 +48,7 @@ use discorsd::model::interaction::Interaction;
 use discorsd::model::message::Message;
 use discorsd::model::permissions::{Permissions, Role};
 use discorsd::shard::dispatch::ReactionUpdate;
-use discorsd::shard::model::{Activity, ActivityType, Identify, StatusType, UpdateStatus};
+use discorsd::shard::model::{Activity, ActivityType, Identify, UpdateStatus};
 
 use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
@@ -157,17 +157,15 @@ type Result<T> = std::result::Result<T, BotError>;
 
 #[async_trait]
 impl discorsd::Bot for Bot {
-    fn token(&self) -> &str {
-        self.config.token.as_str()
+    fn token(&self) -> String {
+        self.config.token.clone()
     }
 
     fn identify(&self) -> Identify {
-        Identify::new(self.token().into()).presence(UpdateStatus {
-            since: None,
-            activities: Some(vec![Activity::for_bot("Avalon - try /addme", ActivityType::Game)]),
-            status: StatusType::Online,
-            afk: false,
-        })
+        Identify::new(self.token())
+            .presence(UpdateStatus::with_activity(
+                Activity::for_bot("Avalon - try /addme", ActivityType::Game)
+            ))
     }
 
     fn global_commands() -> &'static [&'static dyn SlashCommandRaw<Bot=Self>] {
@@ -337,6 +335,7 @@ impl discorsd::Bot for Bot {
     }
 
     async fn error(&self, error: BotError, state: Arc<BotState<Self>>) {
+        // todo can probably deal with the error for real
         error!("{}", error.display_error(&state).await);
     }
 }

@@ -22,7 +22,7 @@ use crate::model::user::User;
 
 /// Channel related http requests
 impl DiscordClient {
-    /// Get a channel by ID. Returns a [channel](Channel) object.
+    /// Get a channel by ID. Returns a [`Channel`](Channel) object.
     ///
     /// # Errors
     ///
@@ -41,11 +41,13 @@ impl DiscordClient {
     // }
 
     /// Returns a specific message in the channel. If operating on a guild channel, this endpoint
-    /// requires the `READ_MESSAGE_HISTORY` permission to be present on the current user.
+    /// requires the
+    /// [`READ_MESSAGE_HISTORY`](crate::model::permissions::Permissions::READ_MESSAGE_HISTORY)
+    /// permission to be present on the current user.
     ///
     /// # Errors
     ///
-    /// If the http request fails, or fails to deserialize the response into a `Message`
+    /// If the http request fails, or fails to deserialize the response into a `Message`.
     pub async fn get_message(&self, channel: ChannelId, message: MessageId) -> ClientResult<Message> {
         self.get(GetMessage(channel, message)).await
     }
@@ -54,16 +56,16 @@ impl DiscordClient {
     ///
     /// # Errors
     ///
-    /// If the http request fails, or fails to deserialize the response into a `Message`
+    /// If the http request fails, or fails to deserialize the response into a `Message`.
     pub async fn create_message(&self, channel: ChannelId, message: CreateMessage) -> ClientResult<Message> {
         self.send_message_with_files(PostMessage(channel), message).await
     }
 
-    /// Edits the specified message according to [edit](edit)
+    /// Edits the specified message according to `edit`.
     ///
     /// # Errors
     ///
-    /// If the http request fails, or fails to deserialize the response into a `Message`
+    /// If the http request fails, or fails to deserialize the response into a `Message`.
     pub async fn edit_message(&self, channel: ChannelId, message: MessageId, edit: EditMessage) -> ClientResult<Message> {
         // not an error to send other flags
         // let flags = flags & MessageFlags::SUPPRESS_EMBEDS;

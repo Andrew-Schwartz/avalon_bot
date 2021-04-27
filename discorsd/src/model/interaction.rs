@@ -10,9 +10,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::ser::SerializeSeq;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
+use crate::cache::IdMap;
 use crate::errors::{CommandOptionTypeParsed, OptionType};
 use crate::http::channel::{embed, RichEmbed};
-use crate::IdMap;
 use crate::model::channel::ChannelType;
 use crate::model::guild::GuildMember;
 use crate::model::ids::*;
@@ -888,6 +888,7 @@ pub struct ApplicationCommandOption {
 // honestly this would probably be best as a generic I think?
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum ApplicationCommandOptionType {
     SubCommand = 1,
     SubCommandGroup = 2,
@@ -1170,6 +1171,7 @@ impl InteractionSource {
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum InteractionType {
     Ping = 1,
     ApplicationCommand = 2,
@@ -1497,7 +1499,7 @@ pub struct MessageInteraction {
     pub user: User,
 }
 
-/// Not all message fields are currently supported.
+/// Not all message fields are currently supported by Discord.
 #[derive(Serialize, Debug, Clone, Default)]
 pub struct InteractionMessage {
     /// is the response TTS
@@ -1555,9 +1557,11 @@ impl InteractionMessage {
         }
     }
 
-    /// add an embed to the [IntegrationMessage](IntegrationMessage)
+    /// Add an embed to this [InteractionMessage](InteractionMessage).
     ///
-    /// panics if this message already has 10 or more embeds
+    /// # Panics
+    ///
+    /// If this message already has 10 or more embeds. See also [`try_embed`](Self::try_embed).
     pub fn embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) {
         if self.embeds.len() >= 10 {
             panic!("can't send more than 10 embeds");
@@ -1566,9 +1570,11 @@ impl InteractionMessage {
         }
     }
 
-    /// add an embed to the [IntegrationMessage](IntegrationMessage)
+    /// Add an embed to the [InteractionMessage](InteractionMessage)
     ///
-    /// panics if this message already has 10 or more embeds
+    /// # Panics
+    ///
+    /// If this message already has 10 or more embeds.
     pub fn embed_with<F: FnOnce(&mut RichEmbed)>(&mut self, embed: RichEmbed, builder: F) {
         if self.embeds.len() >= 10 {
             panic!("can't send more than 10 embeds");
@@ -1577,11 +1583,12 @@ impl InteractionMessage {
         }
     }
 
-    /// add an embed to the [IntegrationMessage](IntegrationMessage)
+    /// Add an embed to the [InteractionMessage](InteractionMessage).
     ///
     /// # Errors
     ///
-    /// Returns `Err(builder)` if this message already has 10 or more embeds
+    /// Returns `Err(builder)` if this message already has 10 or more embeds. See also
+    /// [embed](Self::embed).
     pub fn try_embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) -> Result<(), F> {
         if self.embeds.len() >= 10 {
             Err(builder)

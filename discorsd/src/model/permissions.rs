@@ -170,6 +170,15 @@ pub struct Role {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub tags: Option<RoleTags>,
 }
+id_impl!(Role => RoleId);
+
+pub trait RoleMarkupExt: Id<Id=RoleId> {
+	fn mention(&self) -> String {
+		format!("<@&{}>", self.id())
+	}
+}
+
+impl<I: Id<Id=RoleId>> RoleMarkupExt for I {}
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct RoleTags {
@@ -182,5 +191,3 @@ pub struct RoleTags {
 	/// whether this is the guild's premium subscriber role
 	premium_subscriber: Option<()>,
 }
-
-id_impl!(Role => RoleId);

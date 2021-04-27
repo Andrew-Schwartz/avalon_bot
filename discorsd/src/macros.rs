@@ -1,4 +1,4 @@
-/// like format but for cdn urls
+/// Like format but for cdn urls.
 macro_rules! cdn {
     ($fmt:literal, $($args:tt)+) => {
         format!(concat!("https://cdn.discordapp.com/", $fmt), $($args)+)
@@ -19,9 +19,19 @@ macro_rules! api {
 }
 pub const API_VERSION: u8 = api!(VERSION);
 
-/// derive `Serialize`, `Deserialize` for bitflags
+/// Derive `Serialize`, `Deserialize` for bitflags, (de)serializing as if this were an integer.
+/// ```rust
+/// bitflags! {
+///     struct Flags: u8 {
+///         const A = 1;
+///         const B = 2;
+///         const C = 4;
+///     }
+/// }
+/// serde_bitflag!(Flags: u8);
+/// ```
 macro_rules! serde_bitflag {
-    ($bitflag:ty, $repr:ty) => {
+    ($bitflag:ty: $repr:ty) => {
         impl serde::ser::Serialize for $bitflag {
             fn serialize<S: serde::ser::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
                 self.bits.serialize(s)

@@ -35,7 +35,9 @@ pub struct Message {
     pub author: User,
     /// member properties for this message's author
     ///
-    /// The member object exists in [MESSAGE_CREATE] and [MESSAGE_UPDATE] events from text-based
+    /// The member object exists in
+    /// [MessageCreate](crate::shard::dispatch::MessageCreate) and
+    /// [MessageUpdate](crate::shard::dispatch::MessageUpdate) events from text-based
     /// guild channels. This allows bots to obtain real-time member data without requiring bots to
     /// store member state in memory.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,7 +57,8 @@ pub struct Message {
     /// array of user objects, with an additional partial member field
     ///
     /// The user objects in the mentions array will only have the partial [member](Message::member)
-    /// field present in [MESSAGE_CREATE] and [MESSAGE_UPDATE] events from text-based guild channels.
+    /// field present in [MessageCreate](crate::shard::dispatch::MessageCreate) and
+    /// [MessageUpdate](crate::shard::dispatch::MessageUpdate) events from text-based guild channels.
     pub mentions: Vec<User>,
     /// roles specifically mentioned in this message
     pub mention_roles: Vec<RoleId>,
@@ -156,6 +159,7 @@ impl From<&Message> for ChannelMessageId {
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Clone)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum MessageType {
     Default = 0,
     RecipientAdd = 1,
@@ -188,6 +192,7 @@ pub struct MessageActivity {
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Clone)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum MessageActivityType {
     Join = 1,
     Spectate = 2,
@@ -254,7 +259,7 @@ bitflags! {
 		const UNKNOWN = 1 << 7;
     }
 }
-serde_bitflag!(MessageFlags, u8);
+serde_bitflag!(MessageFlags: u8);
 impl Default for MessageFlags {
     fn default() -> Self {
         Self::empty()
@@ -281,12 +286,11 @@ pub struct Sticker {
     /// type of sticker format
     pub format_type: StickerFormatType,
 }
-// as_ref_id!(Sticker => StickerId);
-// as_ref_id!(Sticker => StickerPackId);
+id_impl!(Sticker => StickerId);
 
-#[allow(clippy::upper_case_acronyms)]
 #[derive(Deserialize_repr, Serialize_repr, Debug, Clone)]
 #[repr(u8)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum StickerFormatType {
     PNG = 1,
     APNG = 2,

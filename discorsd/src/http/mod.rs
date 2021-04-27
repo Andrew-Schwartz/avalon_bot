@@ -1,5 +1,10 @@
+//! Functionality for making http requests to Discord's API.
+
+use std::ffi::OsStr;
 use std::fmt::{self, Display};
 use std::future::Future;
+use std::io;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -333,7 +338,7 @@ impl DiscordClient {
     }
 }
 
-impl AsRef<DiscordClient> for DiscordClient {
+impl AsRef<Self> for DiscordClient {
     fn as_ref(&self) -> &Self {
         self
     }
@@ -348,5 +353,47 @@ impl<B: Send + Sync> AsRef<DiscordClient> for BotState<B> {
 impl<B: Send + Sync> AsRef<DiscordClient> for Arc<BotState<B>> {
     fn as_ref(&self) -> &DiscordClient {
         &self.client
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ImageHashError {
+    #[error("Unsupported error type. Only `png`, `jpeg`, and `gif` are supported by Discord.")]
+    FileType,
+    #[error("IO error {0}")]
+    Io(io::Error),
+}
+
+// todo fix this, `base64::encode` is way too long
+//  actually I was trying to put this where `icon_url` should be, have to test on some POST/PATCH or
+//  some method
+/// Encode an image in base 64 and format it so that it can be uploaded to Discord, ie in the form
+/// `data:image/jpeg;base64,BASE64_ENCODED_JPEG_IMAGE_DATA`.
+///
+/// # Errors
+///
+/// Errors if the the file at `path` isn't one of the supported image types (which are png, jpg, and
+/// gif), or if [`std::fs::read`](std::fs::read) fails
+pub fn hash_image<P: AsRef<Path>>(path: P) -> Result<String, ImageHashError> {
+    use ImageHashError::*;
+
+    let path = path.as_ref();
+    let image = path.extension()
+        .and_then(OsStr::to_str)
+        .and_then(|ext| match ext {
+            "jpg" | "jpeg" => Some("jpeg"),
+            "png" => Some("png"),
+            "gif" => Some("gif"),
+            _ => None,
+        });
+    if let Some(image) = image {
+        match std::fs::read(path) {
+            Ok(file) => {
+                Ok(format!("data:image/{};base64,{}", image, base64::encode(&file)))
+            }
+            Err(e) => Err(Io(e)),
+        }
+    } else {
+        Err(FileType)
     }
 }

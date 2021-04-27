@@ -2,13 +2,14 @@ use std::collections::{HashMap, HashSet};
 
 use tokio::sync::RwLockWriteGuard;
 
-use discorsd::{BotState, GuildCommands, UserMarkupExt};
+use discorsd::{BotState, GuildCommands};
 use discorsd::commands::*;
 use discorsd::http::channel::{ChannelExt, create_message, embed};
 use discorsd::http::ClientResult;
 use discorsd::http::guild::CommandPermsExt;
 use discorsd::model::ids::*;
 use discorsd::model::message::{ChannelMessageId, Color};
+use discorsd::model::user::UserMarkupExt;
 
 use crate::avalon::board::Board;
 use crate::avalon::vote::VoteStatus;

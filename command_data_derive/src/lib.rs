@@ -1,3 +1,221 @@
+//! Derive macros which allow for the easy creation of Discord Slash Commands. Simply create a
+//! struct or enum that contains the data you want the user of the command to fill out, derive
+//! `CommandData`, and annotate the fields or variants as needed to customize the command.
+//!
+//! # Simple Example
+//! Starting simply, we can imagine a command that would pick a number between upper and lower
+//! limits.
+//! ```rust
+//! # /*
+//! #[derive(CommandData)]
+//! # */
+//! struct RandomNumberData {
+//!     # /*
+//!     #[command(desc = "The lower limit of the random number range")]
+//!     # */
+//!     lower: i64,
+//!     # /*
+//!     #[command(desc = "The upper limit of the random number range")]
+//!     # */
+//!     upper: i64,
+//! }
+//! ```
+//! This will create a command that like such (the command's name & description is set elsewhere):
+//! todo upload images to github and link to them
+//!
+//! # Discord's `/permissions` Command
+//! For a more complex example, we will create the example `/permissions` the Discord docs use to
+//! show off the structure of a Slash Command
+//! [here](https://discord.com/developers/docs/interactions/slash-commands#example-walkthrough)
+//! using this macro. This `/permission` command has two subgroups, one that deals with user
+//! permissions, the other deals with role permissions. Each of these groups has two subcommands,
+//! one to get permissions, one to edit permissions. Each of these subcommands takes a user/role id
+//! and an optional channel id argument. The json shown in Discord's docs is quite complex, but the
+//! same command can be created with the following Rust code:
+//! ```rust
+//! # struct UserId; struct ChannelId; struct RoleId;
+//! # /*
+//! #[derive(CommandData)]
+//! # */
+//! enum PermissionsData {
+//! #     /*
+//!     #[command(desc = "Get or edit permissions for a user")]
+//!     # */
+//!     User(GetEditUser),
+//!     # /*
+//!     #[command(desc = "Get or edit permissions for a role")]
+//!     # */
+//!     Role(GetEditRole),
+//!}
+//! # /*
+//! #[derive(CommandData)]
+//! # */
+//! enum GetEditUser {
+//!     # /*
+//!     #[command(desc = "Get permissions for a user")]
+//!     # */
+//!     Get {
+//!         # /*
+//!         #[command(desc = "The user to get")]
+//!         # */
+//!         user: UserId,
+//!         # /*
+//!         #[command(desc = "The channel permissions to get. If omitted, the guild permissions will be returned")]
+//!         # */
+//!         channel: Option<ChannelId>,
+//!     },
+//!     # /*
+//!     #[command(desc = "Edit permissions for a user")]
+//!     # */
+//!     Edit {
+//!         # /*
+//!         #[command(desc = "The user to edit")]
+//!         # */
+//!         user: UserId,
+//!         # /*
+//!         #[command(desc = "The channel permissions to edit. If omitted, the guild permissions will be edited")]
+//!         # */
+//!         channel: Option<ChannelId>,
+//!     },
+//! }
+//! # /*
+//! #[derive(CommandData)]
+//! # */
+//! enum GetEditRole {
+//!     # /*
+//!     #[command(desc = "Get permissions for a role")]
+//!     # */
+//!     Get(GetRole),
+//!     # /*
+//!     #[command(desc = "Edit permissions for a role")]
+//!     # */
+//!     Edit(EditRole),
+//! }
+//! # /*
+//! #[derive(CommandData)]
+//! # */
+//! struct GetRole {
+//!     # /*
+//!     #[command(desc = "The role to get")]
+//!     # */
+//!     role: RoleId,
+//!     # /*
+//!     #[command(desc = "The channel permissions to get. If omitted, the guild permissions will be returned")]
+//!     # */
+//!     channel: Option<ChannelId>,
+//! }
+//! # /*
+//! #[derive(CommandData)]
+//! # */
+//! struct EditRole {
+//!     # /*
+//!     #[command(desc = "The role to edit")]
+//!     # */
+//!     role: RoleId,
+//!     # /*
+//!     #[command(desc = "The channel permissions to edit. If omitted, the guild permissions will be edited")]
+//!     # */
+//!     channel: Option<ChannelId>,
+//! }
+//! ```
+//! The impl of `CommandData` for `PermissionsData` in the above example, produces *exactly* the
+//! same json when serialized as in Discord's documentation, while also provinding type-safe
+//! facilites to deserialize received Slash Command invocations into the `PermissionsData` enum.
+//!
+//! Note that the `GetEditUser` enum, which contains inline struct definitions of the `Get` and
+//! `Edit` data, is equivalent to the `GetEditRole` enum (with the exception of `UserId` ->
+//! `RoleId`), which simply wraps each of it's separate data structs in newtype variants. What this
+//! means, is that if you want to create a Slash Command that is just one static command, the data
+//! should be in a `struct`. If you want to create a Slash Command that consists of multiple
+//! subcommands, the main data should be in an `enum` which either declares the command data structs
+//! inline or which wraps data structs in a one element tuple (these styles can't be mixed within
+//! one enum), or unit variants. Finally, to create a Slash Command that consists of subgroups, the
+//! main data should be an `enum` with single element tuple variants that each wrap an enum that
+//! fits the above requirements to be subcommand data.
+//!
+//! In addition, you can see that, by making a field's type `Option<T>`, that option will not be
+//! required in the use of the Slash Command.
+//!
+//! # Vararg Commands
+//! An additional feature the `CommandData` derive macro supports is taking a variable amount of
+//! parameters (varargs) as options in your command. Various collection types from the standard
+//! library can be used for vararg parameters. These include `Vec<T>`, `HashSet<T>`, `BTreeSet<T>`,
+//! and `[T; N]`, where `T` itself implements `CommandData` as a single option as well as any other
+//! traits needed to use a collection of that type (`Hash`, `Eq`, etc). For the array case, `N` is
+//! any `usize` up to 25, the maximum number of options a Discord command. For an array, there will
+//! always be `N` repeated options; for the other types, the number of required and total options
+//! (ie, including optional options) can be configured to dynamically update at runtime.
+//!
+//! todo make sure multiple varargs can be used in a row, even if both have optional args
+//!
+//! Varargs can be configured in various ways as documented in
+//! [`Documentation_For_Field`](Documentation_For_Field!).
+//!
+//! For example, we'll make a command that will ban or unban users, always requiring one user to
+//! (un)ban and allowing up to 10 total users to be (un)banned.
+//! ```rust
+//! # struct UserId;
+//! # /*
+//! #[derive(CommandData)]
+//! # */
+//! enum BanUnbanData {
+//!     # /*
+//!     #[command(desc = "Ban user(s)")]
+//!     # */
+//!     Ban(
+//!         # /*
+//!         #[command(vararg = "user", va_req = 1, va_count = 10)]
+//!         # */
+//!         Vec<UserId>,
+//!     ),
+//!     # /*
+//!     #[command(desc = "Unban user(s)")]
+//!     # */
+//!     Unban(
+//!         # /*
+//!         #[command(vararg = "user", va_req = 1, va_count = 10)]
+//!         # */
+//!         Vec<UserId>,
+//!     ),
+//! }
+//! ```
+//!
+//! # Choices
+//! One nice feature of Discord's Slash Commands is the ability to set all of the possible choices
+//! usable for a command option. For example, we could have a command to get some information about
+//! the device running our bot, such as the CPU usage, memory usage, and component temperatures.
+//! Because this crate emphasizes the importance of type safety, the ability to use an data-less
+//! enum to generate these choices is supported with the `CommandDataChoices` derive.
+//!
+//! ```rust
+//! # /*
+//! #[derive(CommandDataChoices)]
+//! # */
+//! enum Information {
+//!     # /*
+//!     #[command(default, choice = "All Information")]
+//!     # */
+//!     All,
+//!     Cpu,
+//!     Memory,
+//!     Temperature,
+//! }
+//! # /*
+//! #[derive(CommandData)]
+//! # */
+//! struct InfoData {
+//!     # /*
+//!     #[command(desc = "The type of data to get", default)]
+//!     # */
+//!     data: Information,
+//! }
+//! ```
+//!
+//! A command using the above `InfoData` will consist of a single optional parameter called `data`,
+//! which will default to `Information::All` if not entered by the user.
+//! See [`Documentation_For_ChoicesVariant`](Documentation_For_ChoicesVariant!) for more information on
+//! attributes which can be applied to the choices.
+
 #![warn(clippy::pedantic, clippy::nursery)]
 // @formatter:off
 #![allow(
@@ -22,7 +240,7 @@ use syn::{Data, DeriveInput, parse_macro_input};
 use syn::{Lit, Meta, MetaList, MetaNameValue, NestedMeta};
 
 use enum_choices::Variant as ChoicesVariant;
-use enum_data::{Enum as DataEnum, Variant as DataVariant};
+use enum_data::{Enum, Variant};
 use struct_data::*;
 
 use crate::utils::TypeExt;
@@ -34,9 +252,12 @@ mod struct_data;
 mod enum_data;
 mod enum_choices;
 
-// TODO: fix all uses of Result (& option?) to be absolute
-
-/// See Documentation macros
+/// See crate level documentation for general info, and the
+/// [Documentation_For_Field](Documentation_For_Field!),
+/// [Documentation_For_Struct](Documentation_For_Struct!),
+/// [Documentation_For_Variant](Documentation_For_Variant!),
+/// and [Documentation_For_Enum](Documentation_For_Enum!) macros for details on all
+/// `#[command(...)]` attributes.
 #[proc_macro_derive(CommandData, attributes(command))]
 #[proc_macro_error]
 pub fn derive_data(input: TokenStream) -> TokenStream {
@@ -53,7 +274,9 @@ pub fn derive_data(input: TokenStream) -> TokenStream {
     tokens.into()
 }
 
-/// See Documentation macros
+/// See crate level documentation for general info, and the
+/// [Documentation_For_ChoicesVariant](Documentation_For_ChoicesVariant!) macro for details on all
+/// `#[command(...)]` attributes.
 #[proc_macro_derive(CommandDataChoices, attributes(command))]
 #[proc_macro_error]
 pub fn derive_option(input: TokenStream) -> TokenStream {
@@ -116,7 +339,7 @@ fn dummy_impl(ty: &Ident) {
 }
 
 // handle_attributes! invoked here to generate documentation
-handle_attribute!(
+handle_attribute! {
     /// Attributes on a struct field, for example `desc` on `MyData.user`:
     /// ```
     /// # struct UserId;
@@ -136,9 +359,9 @@ handle_attribute!(
         /// Marks this field as optional in the Command in Discord, and if the user omits it, will use
         /// this field's type's `Default` implementation to create it.
         ["default" => self.default = Some(syn::parse_str("::std::default::Default::default").unwrap())]
-        // todo is this necessary? it's never used
-        /// Make this field required (note: fields are required by default, unless they are an `Option`).
-        ["required" => self.default = None]
+        // // todo is this necessary? it's never used
+        // /// Make this field required (note: fields are required by default, unless they are an `Option`).
+        // ["required" => self.default = None]
         /// Makes this field a `vararg`. Names the command options "One", "Two", "Three", etc.
         ["va_ordinals" => self.vararg.get_or_insert_with(Default::default).names = VarargNames::Ordinals],
 
@@ -187,19 +410,18 @@ handle_attribute!(
     " = {int}": Meta::NameValue(MetaNameValue { path, lit: Lit::Int(int), .. }), path =>
         /// The number of vararg options to show.
         ["va_count" => self.vararg.get_or_insert_with(Default::default).num = VarargNum::Count(int.base10_parse()?)]
-        // todo rename to va_req or something, and make one that takes a fn too
         /// The number of vararg options required. If `va_count` is greater than this, the excess
         /// options will be optional.
-        ["required" => self.vararg.get_or_insert_with(Default::default).required = if self.ty.array_type().is_some() {
+        ["va_req" => self.vararg.get_or_insert_with(Default::default).required = if self.ty.array_type().is_some() {
             // if its an array require all of them
             None
         } else {
             Some(int.base10_parse()?)
         }],
-);
+}
 
-handle_attribute!(
-    /// Attributes on a struct, for example `type` on `MyData`:
+handle_attribute! {
+    /// Attributes on a struct, for example `command` on `MyData`:
     /// ```
     /// # struct UserId;
     /// # trait SlashCommand { const IGNORE: &'static str; }
@@ -225,9 +447,9 @@ handle_attribute!(
         /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
         /// can make decisions at runtime by taking functions callable as `fn(&CommandType) -> SomeType`.
         ["command" => self.command_type = Some(str.parse()?)],
-);
+}
 
-handle_attribute!(
+handle_attribute! {
     /// Attributes on a Data enum variant, for example `desc` on `MyData::Add`:
     /// ```
     /// # struct UserId;
@@ -243,17 +465,18 @@ handle_attribute!(
     ///     Clear,
     /// }
     /// ```
-    self: DataVariant =>
+    self: Variant =>
     " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
         /// The description of this command option.
         ["desc" => self.desc = Some(str)]
         /// What to rename this field as in the Command.
         ["rename" => self.rename = Some(str)]
-        /// todo docs
+        /// The path to a function callable as `fn(&CommandType) -> bool` to determine whether to
+        /// enable this variant's option in Discord.
         ["enable_if" => self.enable_if = Some(str.parse()?)],
-);
+}
 
-handle_attribute!(
+handle_attribute! {
     /// Attributes on a Data enum variant, for example `desc` on `MyData::Add`:
     /// ```
     /// # struct UserId;
@@ -278,14 +501,14 @@ handle_attribute!(
     /// ```
     ///
     /// All variants will be shown as lowercase in Discord.
-    self: DataEnum =>
+    self: Enum =>
     " = {str}": Meta::NameValue(MetaNameValue { path, lit: Lit::Str(str), .. }), path =>
         /// Specify the type of the `SlashCommand` that this is data for. Useful for annotations that
         /// can make decisions at runtime by taking functions callable as `fn(CommandType) -> SomeType`.
         ["command" => self.command_type = Some(str.parse()?)],
-);
+}
 
-handle_attribute!(
+handle_attribute! {
     /// Attributes on a Choices enum variant, for example `default` on `MyData::OptionB`:
     /// ```
     /// # const IGNORE: &str = stringify!(
@@ -311,4 +534,4 @@ handle_attribute!(
         /// The string to show in Discord for this choice. Useful when you want to display a multiple
         /// word long choice.
         ["choice" => self.choice = Some(str)],
-);
+}

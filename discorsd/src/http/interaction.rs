@@ -411,12 +411,12 @@ impl WebhookMessage {
     }
 
     // todo error, don't panic
-    /// Add [n](n) embeds to this [WebhookMessage](WebhookMessage), by invoking a builder function
+    /// Add `n` embeds to this [`WebhookMessage`](WebhookMessage), by invoking a builder function
     /// that takes the embed number.
     ///
     /// # Panics
     ///
-    /// Panics if adding [n](n) embeds will result in this [WebhookMessage](WebhookMessage) having
+    /// Panics if adding `n` embeds will result in this [`WebhookMessage`](WebhookMessage) having
     /// more than 10 embeds.
     pub fn embeds<F: FnMut(usize, &mut RichEmbed)>(&mut self, n: usize, mut builder: F) {
         if self.embeds.len() + n > 10 {

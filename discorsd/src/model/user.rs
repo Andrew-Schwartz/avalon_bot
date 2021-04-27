@@ -91,7 +91,7 @@ impl User {
 
     /// The url where this user's avatar can be retrieved from Discord, if they have one. The
     /// desired format must be specified by `I`. If `I` is an animated format (currently only
-    /// [Gif](crate::http::Gif), the [avatar](User::avatar) must start with `a_` or `None` will be
+    /// [Gif](crate::model::Gif), the [avatar](User::avatar) must start with `a_` or `None` will be
     /// returned.
     ///
     /// The returned image size can be changed by appending a querystring of `?size=desired_size` to
@@ -109,6 +109,18 @@ impl User {
         }
     }
 }
+
+pub trait UserMarkupExt: Id<Id=UserId> {
+    fn ping(&self) -> String {
+        format!("<@{}>", self.id())
+    }
+
+    fn ping_nick(&self) -> String {
+        format!("<@!{}>", self.id())
+    }
+}
+
+impl<I: Id<Id=UserId>> UserMarkupExt for I {}
 
 bitflags! {
     pub struct UserFlags: u32 {
@@ -129,11 +141,12 @@ bitflags! {
     }
 }
 #[allow(clippy::use_self)]
-serde_bitflag!(UserFlags, u32);
+serde_bitflag!(UserFlags: u32);
 
 /// Premium types denote the level of premium a user has.
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum PremiumType {
     None = 0,
     NitroClassic = 1,
@@ -166,6 +179,7 @@ pub struct Connection {
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum ConnectionVisibility {
     /// invisible to everyone except the user themselves
     None = 0,

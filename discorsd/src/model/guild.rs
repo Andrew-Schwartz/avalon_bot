@@ -74,36 +74,36 @@ pub struct Guild {
     pub rules_channel_id: Option<ChannelId>,
     /// when this guild was joined at
     ///
-    /// only sent within the [DispatchPayload::GuildCreate](crate::shard::dispatch::DispatchPayload) event
+    /// only sent within the [GuildCreate](crate::shard::dispatch::GuildCreate) event
     pub joined_at: Option<DateTime<Local>>,
     /// true if this is considered a large guild
     ///
-    /// only sent within the [DispatchPayload::GuildCreate](crate::shard::dispatch::DispatchPayload) event
+    /// only sent within the [GuildCreate](crate::shard::dispatch::GuildCreate) event
     pub large: Option<bool>,
     /// true if this guild is unavailable due to an outage
     ///
-    /// only sent within the [DispatchPayload::GuildCreate](crate::shard::dispatch::DispatchPayload) event
+    /// only sent within the [GuildCreate](crate::shard::dispatch::GuildCreate) event
     pub unavailable: Option<bool>,
     /// total number of members in this guild
     ///
-    /// only sent within the [DispatchPayload::GuildCreate](crate::shard::dispatch::DispatchPayload) event
+    /// only sent within the [GuildCreate](crate::shard::dispatch::GuildCreate) event
     pub member_count: Option<u32>,
     /// states of members currently in voice channels; lacks the guild_id key
     ///
-    /// only sent within the [DispatchPayload::GuildCreate](crate::shard::dispatch::DispatchPayload) event
+    /// only sent within the [GuildCreate](crate::shard::dispatch::GuildCreate) event
     pub voice_states: IdMap<VoiceState>,
     /// users in the guild
     ///
-    /// only sent within the [DispatchPayload::GuildCreate](crate::shard::dispatch::DispatchPayload) event
+    /// only sent within the [GuildCreate](crate::shard::dispatch::GuildCreate) event
     pub members: IdMap<GuildMember>,
     /// channels in the guild
     ///
-    /// only sent within the [DispatchPayload::GuildCreate](crate::shard::dispatch::DispatchPayload) event
+    /// only sent within the [GuildCreate](crate::shard::dispatch::GuildCreate) event
     pub channels: IdMap<Channel>,
     /// presences of the members in the guild, will only include non-offline members if the size is
     /// greater than `large threshold` only sent within the `GUILD_CREATE` event
     ///
-    /// only sent within the [DispatchPayload::GuildCreate](crate::shard::dispatch::DispatchPayload) event
+    /// only sent within the [GuildCreate](crate::shard::dispatch::GuildCreate) event
     pub presences: IdMap<PresenceUpdate>,
     /// the maximum number of presences for the guild (the default value, currently 25000, is in effect when `null` is returned)
     pub max_presences: Option<u32>,
@@ -135,7 +135,7 @@ id_impl!(Guild => id: GuildId);
 impl Guild {
     /// The url where this guild's icon can be retrieved from Discord, if it has an icon. The
     /// desired format must be specified by `I`. If `I` is an animated format (currently only
-    /// [Gif](crate::http::Gif), the [icon](Guild::icon) must start with `a_` or `None` will be
+    /// [Gif](crate::model::Gif), the [icon](Guild::icon) must start with `a_` or `None` will be
     /// returned.
     ///
     /// The returned image size can be changed by appending a querystring of `?size=desired_size` to
@@ -156,7 +156,7 @@ impl Guild {
     /// The url where this guild's splash can be retrieved from Discord, if it has one
     /// ([`GuildFeature::Discoverable`](GuildFeature::Discoverable) must be one of the guild's
     /// [`features`](Guild::features)). The desired format must be specified by `I`, and can only be
-    /// a [`StillImage`](crate::http::StillImage) format.
+    /// a [`StillImage`](crate::model::StillImage) format.
     ///
     /// The returned image size can be changed by appending a querystring of `?size=desired_size` to
     /// the URL. Image size can be any power of two between 16 and 4096.
@@ -167,7 +167,7 @@ impl Guild {
 
     /// The url where this guild's discovery splash can be retrieved from Discord, if it has one.
     /// The desired format must be specified by `I`, and can only be a
-    /// [`StillImage`](crate::http::StillImage) format.
+    /// [`StillImage`](crate::model::StillImage) format.
     ///
     /// The returned image size can be changed by appending a querystring of `?size=desired_size` to
     /// the URL. Image size can be any power of two between 16 and 4096.
@@ -178,7 +178,7 @@ impl Guild {
 
     /// The url where this guild's banner can be retrieved from Discord, if it has one. The
     /// desired format must be specified by `I`, and can only be a
-    /// [`StillImage`](crate::http::StillImage) format.
+    /// [`StillImage`](crate::model::StillImage) format.
     ///
     /// The returned image size can be changed by appending a querystring of `?size=desired_size` to
     /// the URL. Image size can be any power of two between 16 and 4096.
@@ -190,6 +190,7 @@ impl Guild {
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum NotificationLevel {
     AllMessage = 0,
     OnlyMentions = 1,
@@ -197,6 +198,7 @@ pub enum NotificationLevel {
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum ExplicitFilterLevel {
     Disabled = 0,
     MembersWithoutRoles = 1,
@@ -205,6 +207,7 @@ pub enum ExplicitFilterLevel {
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum MfaLevel {
     None = 0,
     Elevated = 1,
@@ -212,6 +215,7 @@ pub enum MfaLevel {
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum VerificationLevel {
     /// unrestricted
     None = 0,
@@ -227,6 +231,7 @@ pub enum VerificationLevel {
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum PremiumTier {
     None = 0,
     Tier1 = 1,
@@ -243,7 +248,7 @@ bitflags! {
     }
 }
 #[allow(clippy::use_self)]
-serde_bitflag!(SystemChannelFlags, u8);
+serde_bitflag!(SystemChannelFlags: u8);
 
 #[derive(Deserialize, Serialize, Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum GuildFeature {
@@ -276,7 +281,7 @@ pub enum GuildFeature {
 }
 
 /// A partial guild object. Represents an Offline Guild, or a Guild whose information has not been
-/// provided through [`DispatchPayload::GuildCreate`](crate::shard::dispatch::DispatchPayload)
+/// provided through [`GuildCreate`](crate::shard::dispatch::GuildCreate)
 /// events during the Gateway connect.
 ///
 /// If the `unavailable` field is not set, the user was removed from the guild.
@@ -425,6 +430,7 @@ pub struct Integration {
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
+#[allow(clippy::use_self)]
 pub enum ExpireBehavior {
     RemoveRole = 0,
     Kick = 1,
