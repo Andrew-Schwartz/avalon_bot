@@ -21,7 +21,8 @@
 //! }
 //! ```
 //! This will create a command that like such (the command's name & description is set elsewhere):
-//! todo upload images to github and link to them
+//! ![random command](https://github.com/Andrew-Schwartz/avalon_bot/blob/master/images/docs/random_number.png?raw=true)
+//! ![random command arg](https://github.com/Andrew-Schwartz/avalon_bot/blob/master/images/docs/random_number2.png?raw=true)
 //!
 //! # Discord's `/permissions` Command
 //! For a more complex example, we will create the example `/permissions` the Discord docs use to
@@ -118,6 +119,9 @@
 //!     channel: Option<ChannelId>,
 //! }
 //! ```
+//! The output is the same as shown in Discord's documentation,
+//! ![permissions command](https://discord.com/assets/5002338abeaf8532983a1be594a10683.png)
+//!
 //! The impl of `CommandData` for `PermissionsData` in the above example, produces *exactly* the
 //! same json when serialized as in Discord's documentation, while also provinding type-safe
 //! facilites to deserialize received Slash Command invocations into the `PermissionsData` enum.
@@ -147,7 +151,7 @@
 //! (ie, including optional options) can be configured to dynamically update at runtime.
 //!
 //! For example, we'll make a command that will ban or unban users, always requiring one user to
-//! (un)ban and allowing up to 10 total users to be (un)banned.
+//! (un)ban and allowing up to 5 total users to be (un)banned.
 //! ```rust
 //! # struct UserId;
 //! # /*
@@ -159,7 +163,7 @@
 //!     # */
 //!     Ban(
 //!         # /*
-//!         #[command(vararg = "user", va_req = 1, va_count = 10)]
+//!         #[command(vararg = "user", va_req = 1, va_count = 5)]
 //!         # */
 //!         Vec<UserId>,
 //!     ),
@@ -168,12 +172,13 @@
 //!     # */
 //!     Unban(
 //!         # /*
-//!         #[command(vararg = "user", va_req = 1, va_count = 10)]
+//!         #[command(vararg = "user", va_req = 1, va_count = 5)]
 //!         # */
 //!         Vec<UserId>,
 //!     ),
 //! }
 //! ```
+//! ![ban unban command](https://github.com/Andrew-Schwartz/avalon_bot/blob/master/images/docs/ban_unban.png?raw=true)
 //!
 //! Multiple vararg options can be used in a row, as long as any optional arguments are at the end
 //! due some of Discord's Slash Command limits. For example,
@@ -243,6 +248,7 @@
 //!     data: Information,
 //! }
 //! ```
+//! ![info command](https://github.com/Andrew-Schwartz/avalon_bot/blob/master/images/docs/info.png?raw=true)
 //!
 //! A command using the above `InfoData` will consist of a single optional parameter called `data`,
 //! which will default to `Information::All` if not entered by the user.

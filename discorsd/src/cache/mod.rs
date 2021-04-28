@@ -333,8 +333,7 @@ impl<'de, I> Visitor<'de> for IdMapVisitor<I>
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
         let mut this = IdMap::new(HashMap::with_capacity(map.size_hint().unwrap_or(0)));
 
-        while let Some((id, v)) = map.next_entry::<I::Id, _>()? {
-            println!("id = {:?}", id);
+        while let Some((_, v)) = map.next_entry::<I::Id, _>()? {
             this.insert(v);
         }
 
