@@ -395,7 +395,7 @@ pub struct UpdateStatus {
 }
 
 impl UpdateStatus {
-    fn none() -> Self {
+    const fn none() -> Self {
         Self {
             since: None,
             activities: None,

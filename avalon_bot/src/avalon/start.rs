@@ -150,7 +150,7 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Defe
             command
         })
         .collect_vec();
-    state.client.bulk_overwrite_guild_commands(state.application_id().await, guild, disabled_commands).await?;
+    state.client.bulk_overwrite_guild_commands(state.application_id(), guild, disabled_commands).await?;
 
     game.start_round(&*state, guild, commands).await?;
     Ok(())

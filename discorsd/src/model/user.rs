@@ -84,8 +84,10 @@ impl Id for User {
 impl User {
     /// The url where this user's default avatar can be retrieved from Discord. The image will
     /// always be a png and is one of the five default avatars.
+    #[allow(clippy::missing_panics_doc)]
     pub fn default_avatar_url(&self) -> String {
-        let disc: u16 = self.discriminator.parse().unwrap();
+        let disc: u16 = self.discriminator.parse()
+            .expect("a user's discriminator should be a 4 digit number");
         cdn!("embed/avatars/{}.png", disc % 5)
     }
 

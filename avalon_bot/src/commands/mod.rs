@@ -12,6 +12,7 @@ pub mod start;
 pub mod system_info;
 pub mod ll;
 pub mod unpin;
+pub mod test;
 
 pub fn commands() -> Vec<Box<dyn SlashCommandRaw<Bot=Bot>>> {
     vec![

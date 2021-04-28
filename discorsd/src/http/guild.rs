@@ -96,7 +96,7 @@ impl CreateRole {
         Self { name: Some(name.into()), ..Self::default() }
     }
 
-    pub fn color(mut self, color: Color) -> Self {
+    pub const fn color(mut self, color: Color) -> Self {
         self.color = Some(color);
         self
     }
@@ -213,7 +213,7 @@ impl<C: Id<Id=CommandId> + Send + Sync> CommandPermsExt for C {
         let state = state.as_ref();
         let id = self.id();
         state.client.edit_application_command_permissions(
-            state.application_id().await,
+            state.application_id(),
             guild,
             id,
             permissions,
@@ -232,7 +232,7 @@ impl<C: Id<Id=CommandId> + Send + Sync> CommandPermsExt for C {
     {
         let state = state.as_ref();
         state.client.edit_guild_command(
-            state.application_id().await,
+            state.application_id(),
             guild,
             self.id(),
             None,
@@ -270,7 +270,7 @@ impl<G: Id<Id=GuildId> + Send + Sync> GuildCommandPermsExt for G {
         let state = state.as_ref();
         let id = self.id();
         state.client.batch_edit_application_command_permissions(
-            state.application_id().await,
+            state.application_id(),
             id,
             permissions,
         ).await

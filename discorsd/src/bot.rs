@@ -85,7 +85,7 @@ impl<B: Send + Sync> BotState<B> {
     /// # Panics
     ///
     /// If somehow used before [`Ready`](crate::shard::dispatch::Ready) is received.
-    pub async fn application_id(&self) -> ApplicationId {
+    pub fn application_id(&self) -> ApplicationId {
         self.cache.application
             .get()
             .expect("")

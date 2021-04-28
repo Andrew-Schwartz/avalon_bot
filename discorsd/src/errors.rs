@@ -105,6 +105,7 @@ pub struct CommandParseErrorInfo {
 }
 
 impl CommandParseErrorInfo {
+    #[allow(clippy::missing_panics_doc)]
     pub async fn display_error<B: Send + Sync>(&self, state: &BotState<B>) -> String {
         let source = match &self.source {
             InteractionSource::Guild(GuildSource { id, member }) => if let Some(guild) = state.cache.guild(id).await {

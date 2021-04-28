@@ -57,6 +57,7 @@ use crate::commands::ll::LowLevelCommand;
 use crate::commands::ping::PingCommand;
 use crate::commands::rules::RulesCommand;
 use crate::commands::system_info::SysInfoCommand;
+use crate::commands::test::Test;
 use crate::commands::unpin::UnpinCommand;
 use crate::commands::uptime::UptimeCommand;
 use crate::hangman::Hangman;
@@ -153,7 +154,7 @@ async fn main() -> shard::ShardResult<()> {
     Bot::new(config).run().await
 }
 
-type Result<T> = std::result::Result<T, BotError>;
+type Result<T, E = BotError> = std::result::Result<T, E>;
 
 #[async_trait]
 impl discorsd::Bot for Bot {
@@ -267,7 +268,7 @@ impl discorsd::Bot for Bot {
                 }
                 println!("\nEXISTING COMMANDS\n------------------------------");
                 let commands = state.client.get_guild_commands(
-                    state.application_id().await,
+                    state.application_id(),
                     message.guild_id.unwrap(),
                 ).await?;
                 for command in commands {
@@ -377,12 +378,19 @@ impl Bot {
             if guild.id == self.config.guild {
                 // `/ll` only in testing server
                 let command = state.client.create_guild_command(
-                    state.application_id().await,
+                    state.application_id(),
                     guild.id,
                     LowLevelCommand.command(),
                 ).await?;
                 commands.insert(command.id, Box::new(LowLevelCommand));
                 command.id.allow_users(&state, guild.id, &[self.config.owner]).await?;
+
+                let command = state.client.create_guild_command(
+                    state.application_id(),
+                    guild.id,
+                    Test.command(),
+                ).await?;
+                commands.insert(command.id, Box::new(Test));
             }
         }
         Ok(())
@@ -397,7 +405,7 @@ impl Bot {
         reaction_commands.retain(|rc| !AvalonGame::is_reaction_command(rc.as_ref(), guild));
         drop(reaction_commands);
 
-        let app = state.application_id().await;
+        let app = state.application_id();
         let guild_commands = Self::guild_commands();
         let guild_commands: GuildCommands<_> = state.client.bulk_overwrite_guild_commands(
             app, guild,

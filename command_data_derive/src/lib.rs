@@ -146,11 +146,6 @@
 //! always be `N` repeated options; for the other types, the number of required and total options
 //! (ie, including optional options) can be configured to dynamically update at runtime.
 //!
-//! todo make sure multiple varargs can be used in a row, even if both have optional args
-//!
-//! Varargs can be configured in various ways as documented in
-//! [`Documentation_For_Field`](Documentation_For_Field!).
-//!
 //! For example, we'll make a command that will ban or unban users, always requiring one user to
 //! (un)ban and allowing up to 10 total users to be (un)banned.
 //! ```rust
@@ -179,6 +174,44 @@
 //!     ),
 //! }
 //! ```
+//!
+//! Multiple vararg options can be used in a row, as long as any optional arguments are at the end
+//! due some of Discord's Slash Command limits. For example,
+//! ```rust
+//! # /*
+//! #[derive(CommandData)]
+//! # */
+//! pub struct TestData(
+//! # /*
+//!     #[command(vararg = "num")]
+//! # */
+//!     [i64; 3],
+//! # /*
+//!     #[command(vararg = "number", va_count = 3, va_req = 1)]
+//! # */
+//!     Vec<i64>,
+//! );
+//! ```
+//! works, but
+//! ```rust
+//! # /*
+//! #[derive(CommandData)]
+//! # */
+//! pub struct TestData(
+//! # /*
+//!     #[command(vararg = "number", va_count = 3, va_req = 1)]
+//! # */
+//!     Vec<i64>,
+//! # /*
+//!     #[command(vararg = "num")]
+//! # */
+//!     [i64; 3],
+//! );
+//! ```
+//! doesn't.
+//!
+//! Varargs can be configured in various ways as documented in
+//! [`Documentation_For_Field`](Documentation_For_Field!).
 //!
 //! # Choices
 //! One nice feature of Discord's Slash Commands is the ability to set all of the possible choices

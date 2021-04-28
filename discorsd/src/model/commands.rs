@@ -160,7 +160,7 @@ impl InteractionUse<Used> {
     {
         let state = state.as_ref();
         state.client.edit_interaction_response(
-            state.application_id().await,
+            state.application_id(),
             &self.token,
             message.into(),
         ).await?;
@@ -174,7 +174,7 @@ impl InteractionUse<Used> {
     {
         let state = state.as_ref();
         state.client.delete_interaction_response(
-            state.application_id().await,
+            state.application_id(),
             &self.token,
         ).await
     }
@@ -186,7 +186,7 @@ impl InteractionUse<Used> {
     {
         let state = state.as_ref();
         state.client.create_followup_message(
-            state.application_id().await,
+            state.application_id(),
             &self.token,
             message.into(),
         ).await
@@ -202,7 +202,7 @@ impl InteractionUse<Deferred> {
     {
         let state = state.as_ref();
         state.client.create_followup_message(
-            state.application_id().await,
+            state.application_id(),
             &self.token,
             message.into(),
         ).await
@@ -215,7 +215,7 @@ impl InteractionUse<Deferred> {
     {
         let state = state.as_ref();
         state.client.edit_interaction_response(
-            state.application_id().await,
+            state.application_id(),
             &self.token,
             message.into(),
         ).await?;
@@ -228,7 +228,7 @@ impl InteractionUse<Deferred> {
     {
         let state = state.as_ref();
         state.client.delete_interaction_response(
-            state.application_id().await,
+            state.application_id(),
             &self.token,
         ).await?;
         Ok(self.into())
@@ -623,17 +623,16 @@ impl VarargState {
     }
 }
 
-// the big boi himself
+/// the big boi himself
 pub trait CommandData<Command: SlashCommandRaw>: Sized {
-    // function to go from InteractionData -> Self
     type Options: OptionsLadder + Send;
-    // has to return the name on a Err because it's moved
+    /// function to go from (the options in a) InteractionData -> Self
     fn from_options(options: Self::Options) -> Result<Self, CommandParseError>;
 
-    // functionality to got from Self -> Command for sending to Discord
     type VecArg: VecArgLadder;
     // todo: VecArg *maybe* should have the Vec<> on it, so that this can just return one?
     //  do I ever actually return vec![one] or just do I always panic?
+    /// functionality to got from Self -> Command for sending to Discord
     fn make_args(command: &Command) -> Vec<Self::VecArg>;
     #[allow(unused_variables)]
     fn make_choices(command: &Command) -> Vec<CommandChoice<&'static str>> {

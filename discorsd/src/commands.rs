@@ -246,7 +246,7 @@ pub trait SlashCommandExt: SlashCommandRaw {
         let Command { description, options, default_permission, .. } = self.command();
         let state = state.as_ref();
         state.client.edit_guild_command(
-            state.application_id().await,
+            state.application_id(),
             guild,
             command,
             None,
