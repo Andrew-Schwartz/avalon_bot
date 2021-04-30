@@ -1,3 +1,5 @@
+//! A TON of stuff.
+
 use std::borrow::Cow;
 use std::collections::HashSet;
 

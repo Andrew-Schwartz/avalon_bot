@@ -55,6 +55,8 @@ pub enum Route {
 
     // users
     GetUser(UserId),
+    ModifyCurrentUser,
+    GetCurrentUserGuilds,
     CreateDm,
 
     // guilds
@@ -106,11 +108,13 @@ impl Route {
             GetGuildApplicationCommandPermissions(a, g) => api!("/applications/{}/guilds/{}/commands/permissions", a, g),
             GetApplicationCommandPermissions(a, g, c) => api!("/applications/{}/guilds/{}/commands/{}/permissions", a, g, c),
             EditApplicationCommandPermissions(a, g, c) => api!("/applications/{}/guilds/{}/commands/{}/permissions", a, g, c),
-
             BatchEditApplicationCommandPermissions(a, g) => api!("/applications/{}/guilds/{}/commands/permissions", a, g),
-            GetUser(u) => api!("/users/{}", u),
 
+            GetUser(u) => api!("/users/{}", u),
+            ModifyCurrentUser => api!("/users/@me"),
+            GetCurrentUserGuilds => api!("/users/@me/guilds"),
             CreateDm => api!("/users/@me/channels"),
+
             GetGuildMember(g, u) => api!("/guilds/{}/members/{}", g, u),
             AddGuildMemberRole(g, u, r) => api!("/guild/{}/members/{}/roles/{}", g, u, r),
             RemoveGuildMemberRole(g, u, r) => api!("/guild/{}/members/{}/roles/{}", g, u, r),
@@ -234,6 +238,8 @@ impl Route {
                 guild(g).await,
             ),
             &GetUser(u) => format!("GetUser({})", user(u).await),
+            ModifyCurrentUser => format!("ModifyCurrentUser"),
+            GetCurrentUserGuilds => format!("GetCurrentUserGuilds"),
             CreateDm => format!("CreateDm"),
             &GetGuildMember(g, u) => format!("GetGuildMember({}, {})", g, u),
             &AddGuildMemberRole(g, u, r) => format!(

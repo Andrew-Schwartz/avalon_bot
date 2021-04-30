@@ -1,6 +1,12 @@
+use std::collections::HashMap;
+
+use itertools::{Either, Itertools};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Error;
 
+use crate::cache::Cache;
+use crate::model::channel::{Channel, OverwriteType};
+use crate::model::guild::GuildMember;
 use crate::model::ids::*;
 pub use crate::model::ids::RoleId;
 use crate::model::message::Color;
@@ -126,21 +132,92 @@ bitflags! {
     }
 }
 
-// can't just use `serde_bitflag` because the bitflags are received as strings
+impl Permissions {
+    pub async fn get(cache: &Cache, member: &GuildMember, channel: &Channel) -> Self {
+        let guild = channel.guild_id().unwrap();
+        let everyone = cache.everyone_role(&guild).await;
+
+        let base_permissions = Self::base_permissions(
+            cache, &member, channel.guild_id().unwrap(), &everyone,
+        ).await;
+        base_permissions.overwrites(member, channel, &everyone).await
+    }
+
+    pub async fn get_own(cache: &Cache, channel: &Channel) -> Self {
+        let guild = channel.guild_id().unwrap();
+        let member = cache.member(guild, cache.own_user().await).await.unwrap();
+        Self::get(cache, &member, channel).await
+    }
+
+    async fn base_permissions(cache: &Cache, member: &GuildMember, guild: GuildId, everyone: &Role) -> Self {
+        let guild = cache.guild(guild).await.unwrap();
+        if guild.owner { return Self::all(); }
+
+        let permissions = member.roles.iter()
+            .flat_map(|role| guild.roles.get(role))
+            .fold(everyone.permissions, |perms, role_perms| perms | role_perms.permissions);
+        if permissions.contains(Self::ADMINISTRATOR) {
+            Self::all()
+        } else {
+            permissions
+        }
+    }
+
+    async fn overwrites(self, member: &GuildMember, channel: &Channel, everyone: &Role) -> Self {
+        // ADMINISTRATOR overrides any potential permission overwrites, so there is nothing to do here.
+        if self.contains(Self::ADMINISTRATOR) { return Self::all(); }
+
+        let mut perms = self;
+
+        if let Some(overwrites) = channel.overwrites() {
+            let (role_overwrites, member_overwrites): (HashMap<_, _>, HashMap<_, _>) = overwrites.iter()
+                .partition_map(|overwrite| match overwrite.id {
+                    OverwriteType::Role(role) => Either::Left((role, (overwrite.allow, overwrite.deny))),
+                    OverwriteType::Member(user) => Either::Right((user, (overwrite.allow, overwrite.deny))),
+                });
+
+            // Find `@everyone` role overwrite and apply it.
+            if let Some(&(allow, deny)) = role_overwrites.get(&everyone.id) {
+                perms &= !deny;
+                perms |= allow;
+            }
+
+            // Apply role specific overwrites.
+            let (allow, deny) = member.roles.iter()
+                .flat_map(|id| role_overwrites.get(id))
+                .fold(
+                    (Self::empty(), Self::empty()),
+                    |(allow, deny), &(overwrite_allow, overwrite_deny)| (allow | overwrite_allow, deny | overwrite_deny),
+                );
+            perms &= !deny;
+            perms |= allow;
+
+            // Apply member specific overwrite.
+            if let Some(&(allow, deny)) = member_overwrites.get(&member.id()) {
+                perms &= !deny;
+                perms |= allow;
+            }
+        }
+
+        perms
+    }
+}
+
+// can't just use `serde_bitflag!` because the bitflags are received as strings
 impl<'de> Deserialize<'de> for Permissions {
-	fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-		let bits = String::deserialize(d)?
-			.parse()
-			.map_err(|e| D::Error::custom(format!("Unable to parse bits as u64: {}", e)))?;
-		Self::from_bits(bits)
-			.ok_or_else(|| D::Error::custom(format!("Unexpected `Permissions` bitflag value {}", bits)))
-	}
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let bits = <&'de str>::deserialize(d)?
+            .parse()
+            .map_err(|e| D::Error::custom(format!("Unable to parse bits as u64: {}", e)))?;
+        Self::from_bits(bits)
+            .ok_or_else(|| D::Error::custom(format!("Unexpected `Permissions` bitflag value {}", bits)))
+    }
 }
 
 impl Serialize for Permissions {
-	fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-		self.bits.serialize(s)
-	}
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.bits.serialize(s)
+    }
 }
 
 /// Roles represent a set of permissions attached to a group of users. Roles have unique names,
@@ -151,43 +228,43 @@ impl Serialize for Permissions {
 /// list.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Role {
-	/// role id
-	pub id: RoleId,
-	/// role name
-	pub name: String,
-	/// integer representation of hexadecimal color code
-	pub color: Color,
-	/// if this role is pinned in the user listing
-	pub hoist: bool,
-	/// position of this role
-	pub position: u32,
-	/// permission bit set
-	pub permissions: Permissions,
-	/// whether this role is managed by an integration
-	pub managed: bool,
-	/// whether this role is mentionable
-	pub mentionable: bool,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub tags: Option<RoleTags>,
+    /// role id
+    pub id: RoleId,
+    /// role name
+    pub name: String,
+    /// integer representation of hexadecimal color code
+    pub color: Color,
+    /// if this role is pinned in the user listing
+    pub hoist: bool,
+    /// position of this role
+    pub position: u32,
+    /// permission bit set
+    pub permissions: Permissions,
+    /// whether this role is managed by an integration
+    pub managed: bool,
+    /// whether this role is mentionable
+    pub mentionable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<RoleTags>,
 }
 id_impl!(Role => RoleId);
 
 pub trait RoleMarkupExt: Id<Id=RoleId> {
-	fn mention(&self) -> String {
-		format!("<@&{}>", self.id())
-	}
+    fn mention(&self) -> String {
+        format!("<@&{}>", self.id())
+    }
 }
 
 impl<I: Id<Id=RoleId>> RoleMarkupExt for I {}
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct RoleTags {
-	/// the id of the bot this role belongs to
-	bot_id: Option<ApplicationId>,
-	/// the id of the integration this role belongs to
-	integration_id: Option<InteractionId>,
-	// todo docs say the type of this is `null`... idk how to handle that lol. probably have to make
-	//  custom visitor based deserializer
-	/// whether this is the guild's premium subscriber role
-	premium_subscriber: Option<()>,
+    /// the id of the bot this role belongs to
+    bot_id: Option<ApplicationId>,
+    /// the id of the integration this role belongs to
+    integration_id: Option<InteractionId>,
+    // todo docs say the type of this is `null`... idk how to handle that lol. probably have to make
+    //  custom visitor based deserializer
+    /// whether this is the guild's premium subscriber role
+    premium_subscriber: Option<()>,
 }

@@ -76,6 +76,8 @@ pub enum BucketKey {
     EditApplicationCommandPermissions(GuildId),
     BatchEditApplicationCommandPermissions,
     GetUser,
+    ModifyCurrentUser,
+    GetCurrentUserGuilds,
     CreateDm,
     GetGuildMember(GuildId),
     AddGuildMemberRole(GuildId),
@@ -123,6 +125,8 @@ impl From<&Route> for BucketKey {
             Route::EditApplicationCommandPermissions(_, g, _) => Self::EditApplicationCommandPermissions(*g),
             Route::BatchEditApplicationCommandPermissions(_, _) => Self::BatchEditApplicationCommandPermissions,
             Route::GetUser(_) => Self::GetUser,
+            Route::ModifyCurrentUser => Self::ModifyCurrentUser,
+            Route::GetCurrentUserGuilds => Self::GetCurrentUserGuilds,
             Route::CreateDm => Self::CreateDm,
             Route::GetGuildMember(g, _) => Self::GetGuildMember(*g),
             Route::AddGuildMemberRole(g, _, _) => Self::AddGuildMemberRole(*g),
@@ -158,6 +162,5 @@ impl RateLimiter {
             let secs = reset_after.to_str().unwrap().parse().unwrap();
             rate_limit.reset = Some(Instant::now() + Duration::from_secs_f64(secs));
         }
-        // println!("{:?} ==> {}", key, rate_limit);
     }
 }

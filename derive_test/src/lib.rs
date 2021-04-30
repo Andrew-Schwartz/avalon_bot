@@ -37,7 +37,7 @@ mod tests {
 
         let correct: Value = serde_json::from_str(correct).unwrap();
         let modeled = serde_json::to_string_pretty(&modeled.command()).unwrap();
-        println!("modeled = {}", modeled);
+        // println!("modeled = {}", modeled);
         let modeled: Value = serde_json::from_str(&modeled).unwrap();
 
         assert_eq!(correct, modeled);
@@ -185,8 +185,8 @@ mod tests {
             #[command(desc = "The channel permissions to edit. If omitted, the guild permissions will be edited")]
             pub channel: Option<discorsd::model::ids::ChannelId>,
         }
-        let command = <Data as discorsd::commands::CommandData<Perms>>::make_args(&Perms);
-        println!("command = {:#?}", command);
+        // let command = <Data as discorsd::commands::CommandData<Perms>>::make_args(&Perms);
+        // println!("command = {:#?}", command);
     }
 
     // todo handle generics?

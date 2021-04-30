@@ -1,3 +1,9 @@
+//! Discord API requests involving channels.
+//!
+//! Use these [impl DiscordClient](../struct.DiscordClient.html#impl) methods for the low level api
+//! for channel related requests, and the [MessageChannelExt] extension trait for higher level api
+//! access to some of the requests.
+
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
@@ -5,19 +11,21 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
+use reqwest::{IntoUrl, Url};
 use reqwest::multipart::{Form, Part};
-use reqwest::Url;
 use serde::Serialize;
 
+use crate::BotState;
 use crate::http::{ClientError, DiscordClient};
 use crate::http::ClientResult;
 use crate::http::interaction::WebhookMessage;
 use crate::http::routes::Route::*;
 use crate::http::routes::Route;
-use crate::model::channel::Channel;
+use crate::model::channel::{Channel, DmChannel, GroupDmChannel, NewsChannel, TextChannel};
 use crate::model::emoji::Emoji;
 use crate::model::ids::*;
 use crate::model::message::*;
+use crate::model::permissions::Permissions;
 use crate::model::user::User;
 
 /// Channel related http requests
@@ -62,6 +70,9 @@ impl DiscordClient {
     }
 
     /// Edits the specified message according to `edit`.
+    ///
+    /// Only [MessageFlags::SUPPRESS_EMBEDS] can be set/unset, but trying to send other flags is not
+    /// an error.
     ///
     /// # Errors
     ///
@@ -189,16 +200,84 @@ impl DiscordClient {
     }
 }
 
+/// A set of methods on channels that make interacting with messages in that channel easier. Most
+/// importantly, the [send](MessageChannelExt::send) method allows for easily sending messages to
+/// channels.
+///
+/// All of the methods this trait provides take a `Client: AsRef<DiscordClient>` parameter in order
+/// to make the actual request. See the module level documentation on [bot](../../bot/index.html)
+/// for the specific types that implement `AsRef<DiscordClient>`.
 #[async_trait]
-pub trait ChannelExt: Id<Id=ChannelId> {
-    // todo: take cache too and make sure we have permissions to post messages (esp for interactions)
-    async fn send<Client, Msg>(&self, client: Client, message: Msg) -> ClientResult<Message>
-        where Client: AsRef<DiscordClient> + Sync + Send,
-              Msg: Into<CreateMessage> + Sync + Send,
+pub trait MessageChannelExt: Id<Id=ChannelId> {
+    /// Send a message to this channel, checking that the bot has all the necessary permissions:
+    /// [SEND_MESSAGES](Permissions::SEND_MESSAGES),
+    /// [SEND_TTS_MESSAGES](Permissions::SEND_TTS_MESSAGES) if it is a tts message, and
+    /// [READ_MESSAGE_HISTORY](Permissions::READ_MESSAGE_HISTORY) if it is a reply. Otherwise,
+    /// behaves the same as [MessageChannelExt::send].
+    ///
+    /// See the documentation for [CreateMessage] to see all of the types that can be used for the
+    /// `message` parameter.
+    ///
+    /// ```rust
+    /// # use discorsd::model::message::Message;
+    /// # use discorsd::BotState;
+    /// # use std::sync::Arc;
+    /// # use discorsd::model::ids::ChannelId;
+    /// # use discorsd::http::channel::MessageChannelExt;
+    /// async fn respond_to_message<B: Send + Sync>(message: Message, state: Arc<BotState<B>>) {
+    ///     let channel: ChannelId = message.channel;
+    ///     channel.send(
+    ///         // also would work: `&state`, `&state.client`
+    ///         state,
+    ///         // also would work: a `String`, a `RichEmbed`, or an entire `CreateMessage`
+    ///         "Hello world!",
+    ///     ).await
+    ///      .unwrap();
+    /// }
+    /// ```
+    ///
+    /// Returns the [Message] object sent in Discord.
+    ///
+    /// # Errors
+    ///
+    /// Returns [ClientError::Perms] if the bot is missing any of the necessary permissions, or
+    /// an other variant if the request fails for another reason.
+    async fn send<State, Msg, B>(&self, state: State, message: Msg) -> ClientResult<Message>
+        where State: AsRef<BotState<B>> + Send + Sync,
+              B: Send + Sync + 'static,
+              Msg: Into<CreateMessage> + Send + Sync,
+    {
+        let state = state.as_ref();
+        let message = message.into();
+        let channel = state.cache.channel(self.id()).await.unwrap();
+        let perms = Permissions::get_own(&state.cache, &channel).await;
+        let check_perms = |perm: Permissions|
+            (perms.contains(perm))
+                .then(|| ())
+                .ok_or(ClientError::Perms(perm));
+        check_perms(Permissions::SEND_MESSAGES)?;
+        if message.tts {
+            check_perms(Permissions::SEND_TTS_MESSAGES)?
+        }
+        if message.message_reference.is_some() {
+            check_perms(Permissions::READ_MESSAGE_HISTORY)?
+        }
+
+        state.client.create_message(self.id(), message).await
+    }
+
+    /// Try to send a message to this channel, regardless of whether this bot has the necessary
+    /// permissions.
+    ///
+    /// See [Self::send] for documentation.
+    async fn send_unchecked<Client, Msg>(&self, client: Client, message: Msg) -> ClientResult<Message>
+        where Client: AsRef<DiscordClient> + Send + Sync,
+              Msg: Into<CreateMessage> + Send + Sync,
     {
         client.as_ref().create_message(self.id(), message.into()).await
     }
 
+    /// Get all pinned messages in this channel.
     async fn get_pinned_messages<Client>(&self, client: Client) -> ClientResult<Vec<Message>>
         where Client: AsRef<DiscordClient> + Sync + Send,
     {
@@ -206,8 +285,12 @@ pub trait ChannelExt: Id<Id=ChannelId> {
         client.get_pinned_messages(self.id()).await
     }
 }
-
-impl<C: Id<Id=ChannelId>> ChannelExt for C {}
+macro_rules! impl_message_channel_ext {
+    ($($types:ty),* $(,)?) => { $(
+        impl MessageChannelExt for $types {}
+    )* };
+}
+impl_message_channel_ext!(ChannelId, Channel, TextChannel, DmChannel, GroupDmChannel, NewsChannel);
 
 impl ChannelMessageId {
     /// Edit this message
@@ -232,7 +315,6 @@ impl ChannelMessageId {
         let client = client.as_ref();
         client.delete_message(self.channel, self.message).await
     }
-
 
     /// React to this message
     ///
@@ -322,34 +404,19 @@ impl Message {
     }
 }
 
-// todo update this description
 /// An attachment (often an image) on a message.
-/// Instances of this struct come from its `impl`s of `From<P>, From<(String,P)> where P: AsRef<Path>`
+/// Instances of this struct come from its `impl`s of `From<P>, From<(String, P)> where P: AsRef<Path>`
 /// (for sending files, with an optionally specified name) and `From<(String, Vec<u8>)>` for sending
 /// arbitrary byte streams by name. There also exists `From<(String, AttachmentSource)>` if for some
-/// reason you have an [AttachmentSource](AttachmentSource) already.
+/// reason you have an [AttachmentSource] already.
 ///
-/// [name](MessageAttachment::name) will have **any** whitespace removed, since Discord cannot handle
-/// file names with spaces.
+/// The name will have **any** whitespace removed, since Discord cannot handle file names with
+/// spaces.
 #[derive(Clone, Debug)]
 pub struct MessageAttachment {
     name: String,
     source: AttachmentSource,
 }
-
-// pub trait IntoUrl: reqwest::IntoUrl {
-//     fn into_url(self) -> reqwest::Result<Url> {
-//         reqwest::IntoUrl::into_url(self)
-//     }
-// }
-
-// todo: this don't work
-// impl MessageAttachment {
-//     pub fn url<U: IntoUrl>(url: U) -> ClientResult<Self> {
-//         let url = url.into_url()?;
-//         Ok(Self { name: url.as_str().into(), source: AttachmentSource::Url(url) })
-//     }
-// }
 
 impl PartialEq for MessageAttachment {
     fn eq(&self, other: &Self) -> bool {
@@ -366,10 +433,14 @@ impl Hash for MessageAttachment {
 }
 
 // todo consider making Bytes an Rc/Arc?
+/// Represents a file that can be used as an attachment in a [CreateMessage].
 #[derive(Clone, Debug)]
 pub enum AttachmentSource {
+    /// Upload the file at this location.
     Path(PathBuf),
+    /// Upload a file with these contents.
     Bytes(Vec<u8>),
+    /// Attach the file at this url.
     Url(Url),
 }
 
@@ -439,6 +510,13 @@ impl<S: ToString> From<(S, Url)> for MessageAttachment {
     }
 }
 
+impl MessageAttachment {
+    /// Get an attachment that will attach a file at some `url` to a message.
+    pub fn from_url<S: ToString, U: IntoUrl>(name: S, url: U) -> reqwest::Result<Self> {
+        Ok(Self::from((name, url.into_url()?)))
+    }
+}
+
 impl<S: ToString> From<(S, AttachmentSource)> for MessageAttachment {
     fn from((name, source): (S, AttachmentSource)) -> Self {
         let mut name = name.to_string();
@@ -447,7 +525,21 @@ impl<S: ToString> From<(S, AttachmentSource)> for MessageAttachment {
     }
 }
 
-/// what is sent to Discord to create a message with [`DiscordClient::create_message`]
+/// Sent to Discord to create a message with [`DiscordClient::create_message`]. The easist way to
+/// send a method is using the [MessageChannelExt::send] method, which takes accepts any type that
+/// implements `Into<CreateMessage>`, as described below.
+///
+/// This can be created most easily `From`:
+/// * any type that impls `Into<Cow<'static, str>>` (most notably
+/// `&'static str` and `String`), using that string as the [content](CreateMessage::content),
+/// * [RichEmbed], which is an embed builder type, using that as the [embed](CreateMessage::embed),
+/// * [MessageAttachment], using that attachment as the single attachment in
+/// [files](CreateMessage::files),
+/// * [Message], using that message's content, its first embed, if it is tts, etc,
+/// * and of course [CreateMessage] itself.
+///
+/// This type also uses the builder pattern for field by field configuration and construction, if
+/// desired. This starts with either [create_message] or [CreateMessage::build].
 #[derive(Serialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct CreateMessage {
     /// the message contents (up to 2000 characters)
@@ -484,193 +576,310 @@ impl From<RichEmbed> for CreateMessage {
     }
 }
 
-// todo figure this out so it doesn't conflict with ToString
-// impl<A: Into<MessageAttachment>> From<A> for CreateMessage {
-//     fn from(att: A) -> Self {
-//         let mut msg = Self::default();
-//         msg.files.insert(att.into());
-//         msg
-//     }
-// }
+impl From<MessageAttachment> for CreateMessage {
+    fn from(att: MessageAttachment) -> Self {
+        let mut msg = Self::default();
+        msg.files.insert(att);
+        msg
+    }
+}
 
+impl From<Message> for CreateMessage {
+    fn from(mut message: Message) -> Self {
+        Self {
+            content: message.content.into(),
+            nonce: None,
+            tts: message.tts,
+            // todo verify that this works
+            files: message.attachments.into_iter()
+                .map(|a| MessageAttachment::from_url(a.filename, &a.url).unwrap())
+                .collect(),
+            embed: message.embeds.pop().map(|embed| embed.into()),
+            // todo
+            allowed_mentions: None,
+            message_reference: message.message_reference,
+        }
+    }
+}
+
+/// Easily build a message to create in some channel with [MessageChannelExt::send] and similar
+/// methods. Most useful for creating messages with both content and an embed, since
+/// [CreateMessage]'s `From` impls provide simpler ways to get a [CreateMessage] for just one of
+/// them.
+///
+/// ```rust
+/// # use discorsd::http::channel::create_message;
+/// create_message(|m| {
+///     m.content("Message Content");
+///     m.embed(|e| {
+///         e.title("Embed Title Too!")
+///     })
+/// });
+/// ```
 pub fn create_message<F: FnOnce(&mut CreateMessage)>(builder: F) -> CreateMessage {
     CreateMessage::build(builder)
 }
 
 impl CreateMessage {
+    /// Easily build a message to create in some channel with [MessageChannelExt::send] and similar
+    /// methods. Most useful for creating messages with both content and an embed, since
+    /// `CreateMessage`'s `From` impls provide simpler ways to get a `CreateMessage` for just one of
+    /// them.
+    ///
+    /// ```rust
+    /// # use discorsd::http::channel::CreateMessage;
+    /// CreateMessage::build(|m| {
+    ///     m.content("Message Content");
+    ///     m.embed(|e| {
+    ///         e.title("Embed Title Too!")
+    ///     })
+    /// });
+    /// ```
     pub fn build<F: FnOnce(&mut Self)>(builder: F) -> Self {
         Self::build_with(Self::default(), builder)
     }
 
+    /// Build a `CreateMessage` by modifying an already existing `CreateMessage`.
     pub fn build_with<F: FnOnce(&mut Self)>(mut message: Self, builder: F) -> Self {
         builder(&mut message);
         message
     }
 
+    /// Set this message's [content](Self::content).
     pub fn content<S: Into<Cow<'static, str>>>(&mut self, content: S) {
         self.content = content.into();
     }
 
-    pub fn embed_with<F: FnOnce(&mut RichEmbed)>(&mut self, embed: RichEmbed, builder: F) {
-        self.embed = Some(RichEmbed::build(embed, builder));
-    }
-
+    /// Build a [RichEmbed] and attach it to this message.
     pub fn embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) {
         let embed = self.embed.take().unwrap_or_default();
         self.embed_with(embed, builder);
     }
 
-    // pub fn image<P: AsRef<Path>>(&mut self, image: P) {
-    //     let path = image.as_ref();
-    //     let mut name = path.file_name()
-    //         .expect("uploaded files must have a name")
-    //         .to_string_lossy()
-    //         .to_string();
-    //     name.retain(|c| !c.is_whitespace());
-    //     self.files.insert(name, MessageAttachment::Path(path.to_path_buf()));
-    // }
+    /// Build a [RichEmbed] by modifying an already existing `RichEmbed` and attach it to this
+    /// message.
+    pub fn embed_with<F: FnOnce(&mut RichEmbed)>(&mut self, embed: RichEmbed, builder: F) {
+        self.embed = Some(RichEmbed::build(embed, builder));
+    }
 
+    /// Attach an image to this message. See [MessageAttachment] for details about what types impl
+    /// `Into<MessageAttachment>`.
     pub fn image<A: Into<MessageAttachment>>(&mut self, attachment: A) {
         self.files.insert(attachment.into());
     }
 
+    // todo also set whether it pings the message sender or not
+    /// Send this message a a reply to another message.
     pub fn reply(&mut self, message: MessageId) {
         self.message_reference = Some(MessageReference::reply(message));
     }
 }
 
-// todo maybe ~~some~~ ALL of these can be Cows?
-/// Builder for Embeds
+/// A builder for an embed in a message.
 #[derive(Serialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct RichEmbed {
     /// title of embed
     #[serde(skip_serializing_if = "Option::is_none")]
-    title: Option<Cow<'static, str>>,
+    pub title: Option<Cow<'static, str>>,
     /// description of embed
     #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<Cow<'static, str>>,
+    pub description: Option<Cow<'static, str>>,
     /// url of embed
     #[serde(skip_serializing_if = "Option::is_none")]
-    url: Option<Cow<'static, str>>,
+    pub url: Option<Cow<'static, str>>,
     /// timestamp of embed content
     #[serde(skip_serializing_if = "Option::is_none")]
-    timestamp: Option<DateTime<Utc>>,
+    pub timestamp: Option<DateTime<Utc>>,
     /// color code of the embed
     #[serde(skip_serializing_if = "Option::is_none")]
-    color: Option<Color>,
+    pub color: Option<Color>,
     /// footer information
     #[serde(skip_serializing_if = "Option::is_none")]
-    footer: Option<EmbedFooter>,
+    pub footer: Option<EmbedFooter>,
     /// image information
     #[serde(skip_serializing_if = "Option::is_none")]
-    image: Option<EmbedImage>,
+    pub image: Option<EmbedImage>,
     /// thumbnail information
     #[serde(skip_serializing_if = "Option::is_none")]
-    thumbnail: Option<EmbedThumbnail>,
+    pub thumbnail: Option<EmbedThumbnail>,
+    /// video information
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video: Option<EmbedVideo>,
+    /// provider information
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<EmbedProvider>,
     /// author information
     #[serde(skip_serializing_if = "Option::is_none")]
-    author: Option<EmbedAuthor>,
+    pub author: Option<EmbedAuthor>,
     /// fields information
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    fields: Vec<EmbedField>,
+    pub fields: Vec<EmbedField>,
     /// files, passed off to message_create.
     #[serde(skip_serializing)]
     pub(crate) files: HashSet<MessageAttachment>,
 }
 
+impl From<Embed> for RichEmbed {
+    fn from(embed: Embed) -> Self {
+        Self {
+            title: embed.title.map(Cow::from),
+            description: embed.description.map(Cow::from),
+            url: embed.url.map(Cow::from),
+            timestamp: embed.timestamp,
+            color: embed.color,
+            footer: embed.footer,
+            image: embed.image,
+            thumbnail: embed.thumbnail,
+            video: embed.video,
+            provider: embed.provider,
+            author: embed.author,
+            fields: embed.fields,
+            files: HashSet::new(),
+        }
+    }
+}
+
+/// Easily build an embed to be sent in a message.
+///
+/// ```rust
+/// # use discorsd::http::ClientResult;
+/// # use std::sync::Arc;
+/// # use discorsd::model::message::{Message, Color};
+/// # use discorsd::BotState;
+/// # use discorsd::http::channel::{MessageChannelExt, embed};
+/// async fn respond_to_message<B: Send + Sync>(message: Message, state: Arc<BotState<B>>) -> ClientResult<Message> {
+///     message.channel.send(state, embed(|e| {
+///         e.title("My Embed Title");
+///         e.color(Color::RED);
+///         e.timestamp_now();
+///         // etc...
+///     })).await
+/// }
+/// ```
 pub fn embed<F: FnOnce(&mut RichEmbed)>(f: F) -> RichEmbed {
     RichEmbed::build_new(f)
 }
 
+/// Similar to [embed], but works by modifying an existing embed rather than creating an entire new
+/// [RichEmbed]. [Embed]s already sent to Discord implement `Into<RichEmbed>`.
+///
+/// ```rust
+/// # use discorsd::http::ClientResult;
+/// # use std::sync::Arc;
+/// # use discorsd::model::message::{Message, Color};
+/// # use discorsd::BotState;
+/// # use discorsd::http::channel::{MessageChannelExt, embed, embed_with};
+/// # use std::borrow::{Cow, Borrow};
+/// async fn respond_to_message<B: Send + Sync>(mut message: Message, state: Arc<BotState<B>>) -> ClientResult<Message> {
+///     let embed = message.embeds.pop().unwrap_or_else(Default::default);
+///     message.channel.send(state, embed_with(embed.into(), |e| {
+///         e.title("A new embed, with an old description");
+///         let old_description = e.description.as_ref()
+///             .map(Cow::borrow)
+///             .unwrap_or("{empty}")
+///             .to_owned();
+///         e.description(format!("The old description was: {}", old_description));
+///         e.color(Color::RED);
+///         e.timestamp_now();
+///         // etc...
+///     })).await
+/// }
+/// ```
 pub fn embed_with<F: FnOnce(&mut RichEmbed)>(embed: RichEmbed, f: F) -> RichEmbed {
-    RichEmbed::build(embed, f)
+    embed.build(f)
 }
 
 impl RichEmbed {
+    /// Easily build an embed to be sent in a message.
+    ///
+    /// ```rust
+    /// # use discorsd::model::message::Color;
+    /// # use discorsd::http::channel::embed;
+    /// embed(|e| {
+    ///     e.title("My Embed Title");
+    ///     e.color(Color::RED);
+    ///     e.timestamp_now();
+    ///     // etc...
+    /// });
+    /// ```
     pub fn build_new<F: FnOnce(&mut Self)>(builder: F) -> Self {
         Self::build(Self::default(), builder)
     }
 
+    /// Build a `CreateMessage` by modifying an already existing `CreateMessage`.
     pub fn build<F: FnOnce(&mut Self)>(mut self, builder: F) -> Self {
         builder(&mut self);
         self
     }
 
+    // todo images of each of these? maybe just one image of all of them set
+    /// Set this embed's [title](Self::title).
     pub fn title<S: Into<Cow<'static, str>>>(&mut self, title: S) {
         self.title = Some(title.into());
     }
 
+    /// Set this embed's [description](Self::description).
     pub fn description<S: Into<Cow<'static, str>>>(&mut self, description: S) {
         self.description = Some(description.into());
     }
 
+    /// Set this embed's [url](Self::url), which makes the embed's [title](Self::title) a hyperlink
+    /// if it is set, or makes this url the title if not.
     pub fn url<S: Into<Cow<'static, str>>>(&mut self, url: S) {
         self.url = Some(url.into());
     }
 
+    /// Sets this embed's [timestamp](Self::timestamp).
+    ///
+    /// To set the timestamp to the current time, use [timestamp_now](Self::timestamp_now).
     pub fn timestamp<Tz: TimeZone>(&mut self, timestamp: &DateTime<Tz>) {
         self.timestamp = Some(timestamp.with_timezone(&Utc));
     }
 
+    /// Sets this embed's [timestamp](Self::timestamp) to the current time.
+    ///
+    /// To set the timestamp to an arbitrary time, use [timestamp](Self::timestamp).
     pub fn timestamp_now(&mut self) {
         self.timestamp = Some(chrono::Utc::now());
     }
 
+    /// Sets this embed's [color](Self::color).
     pub fn color(&mut self, color: Color) {
         self.color = Some(color);
     }
 
+    /// Adds a footer to this embed with the specified text.
+    ///
+    /// To add a footer with an image, use [footer](Self::footer).
     pub fn footer_text<S: ToString>(&mut self, footer: S) {
         self.footer = Some(EmbedFooter::new(footer));
     }
 
+    // todo example because of `A`
+    /// Adds a footer to this embed with the specified text and image.
+    ///
+    /// To add a footer just text, use [footer_text](Self::footer_text).
     pub fn footer<S: ToString, A: Into<MessageAttachment>>(&mut self, text: S, icon: A) {
         let attachment = icon.into();
         self.footer = Some(EmbedFooter::with_icon(text, format!("attachment://{}", attachment.name)));
         self.files.insert(attachment);
     }
 
-    // pub fn footer<S: ToString, P: AsRef<Path>>(&mut self, text: S, icon_url: P) {
-    //     let path = icon_url.as_ref();
-    //     let name = path.file_name()
-    //         .expect("uploaded files must have a name")
-    //         .to_string_lossy();
-    //     self.footer = Some(EmbedFooter::with_icon(text, format!("attachment://{}", name)));
-    //     self.files.insert(name.to_string(), path.to_path_buf());
-    // }
-
+    /// Attach an image to this embed.
     pub fn image<A: Into<MessageAttachment>>(&mut self, image: A) {
         let attachment = image.into();
         self.image = Some(EmbedImage::new(format!("attachment://{}", attachment.name)));
         self.files.insert(attachment);
     }
 
-    // pub fn image_bad<P: AsRef<Path>>(&mut self, image: P) {
-    //     let path = image.as_ref();
-    //     let mut name = path.file_name()
-    //         .expect("uploaded files must have a name")
-    //         .to_string_lossy()
-    //         .to_string();
-    //     name.retain(|c| !c.is_whitespace());
-    //     self.image = Some(EmbedImage::new(format!("attachment://{}", name)));
-    //     self.files.insert(name, path.to_path_buf());
-    // }
-
+    /// Attach a thumbnail to this embed.
     pub fn thumbnail<A: Into<MessageAttachment>>(&mut self, image: A) {
         let attachment = image.into();
         self.thumbnail = Some(EmbedThumbnail::new(format!("attachment://{}", attachment.name)));
         self.files.insert(attachment);
     }
 
-    // pub fn thumbnail<P: AsRef<Path>>(&mut self, image: P) {
-    //     let path = image.as_ref();
-    //     let name = path.file_name()
-    //         .expect("uploaded files must have a name")
-    //         .to_string_lossy();
-    //     self.thumbnail = Some(EmbedThumbnail::new(format!("attachment://{}", name)));
-    //     self.files.insert(name.to_string(), path.to_path_buf());
-    // }
-
+    /// Set the embed's [author](Self::author) based on a [User]'s name and icon url.
     pub fn authored_by(&mut self, user: &User) {
         self.author = Some(user.into());
         // self.files.insert(path.to_string_lossy().to_string(), path.to_path_buf());
@@ -690,26 +899,78 @@ impl RichEmbed {
     //     // });
     // }
 
+    /// Adds a new field to this embed with the specified name and value.
+    ///
+    /// To add an inline field, use [add_inline_field](Self::add_inline_field).
+    ///
+    /// # Panics
+    ///
+    /// Panics if either `name` or `value` are empty. To add a blank field, use
+    /// [add_blank_field](Self::add_blank_field).
     pub fn add_field<S: ToString, V: ToString>(&mut self, name: S, value: V) {
         self.field(EmbedField::new(name, value))
     }
 
+    /// Adds a new inline field to this embed with the specified name and value. Inline fields will
+    /// be placed side-by-side in the embed.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either `name` or `value` are empty. To add a blank inline field, use
+    /// [add_blank_inline_field](Self::add_blank_inline_field).
     pub fn add_inline_field<S: ToString, V: ToString>(&mut self, name: S, value: V) {
         self.field(EmbedField::new_inline(name, value))
     }
 
+    /// Adds a blank field ([EmbedField::blank]) to this embed. Useful for spacing embed fields.
     pub fn add_blank_field(&mut self) {
         self.field(EmbedField::blank())
     }
 
+    /// Adds a blank inline field ([EmbedField::blank_inline]) to this embed. Useful for spacing
+    /// embed fields.
     pub fn add_blank_inline_field(&mut self) {
         self.field(EmbedField::blank_inline())
     }
 
+    /// Adds a field to this embed. `Into<EmbedField>` is implemented on `(N, V)` and `(N, V, bool)`,
+    /// where `N: ToString, V: ToString`. `N` is the name for the field, `V` is the value, and if
+    /// a bool is present, it determines if the field is inline (the 2 element tuple is not inline).
+    ///
+    /// The [add_field](Self::add_field) method may be easier to use in most situations.
+    ///
+    /// All of the three below calls to `field` below add the same field to `e`.
+    /// ```rust
+    /// # use discorsd::http::channel::embed;
+    /// # use discorsd::model::message::EmbedField;
+    /// embed(|e| {
+    ///     e.field(EmbedField::new("name", "value"));
+    ///     e.field(("name", "value"));
+    ///     e.field(("name", "value", false));
+    /// });
+    /// ```
     pub fn field<F: Into<EmbedField>>(&mut self, field: F) {
         self.fields.push(field.into());
     }
 
+    // todo when the array `into_iter` is fixed switch to that.
+    // todo when const-panicking or something exists, all of the types that impl Into<Field> will
+    //  be const constructable, so this can take a &'static dyn Into<Field>
+    /// Adds multiple fields to this embed. See [field](Self::field) for more information on adding
+    /// fields.
+    ///
+    /// ```rust
+    /// # use discorsd::http::channel::embed;
+    /// # use discorsd::model::message::EmbedField;
+    /// embed(|e| {
+    ///     e.fields([
+    ///         ("name 1", "value 1", false),
+    ///         ("inline 1", "inline value 1", true),
+    ///         EmbedField::blank_inline_tuple(),
+    ///         ("inline 2", "inline value 2", true),
+    ///     ].iter().copied())
+    /// });
+    /// ```
     pub fn fields<F, I>(&mut self, fields: I)
         where F: Into<EmbedField>,
               I: IntoIterator<Item=F> {
@@ -717,28 +978,10 @@ impl RichEmbed {
     }
 }
 
-impl Embed {
-    pub fn build<F: FnOnce(&mut RichEmbed)>(self, builder: F) -> RichEmbed {
-        let Self { title, description, url, timestamp, color, footer, image, thumbnail, author, fields, .. } = self;
-        let mut rich = RichEmbed {
-            title: title.map(|t| t.into()),
-            description: description.map(|d| d.into()),
-            url: url.map(|u| u.into()),
-            timestamp,
-            color,
-            footer,
-            image,
-            thumbnail,
-            author,
-            fields,
-            files: Default::default(),
-        };
-        builder(&mut rich);
-        rich
-    }
-}
-
-/// params with nested `Option`s are serialized as follows:
+/// Sent to Discord to create a message with [`DiscordClient::edit_message`]. To create an
+/// `EditMessage`, use one of [EditMessage::build], `From<RichEmbed>`, or `From<Message>`.
+///
+/// Params with nested `Option`s are serialized as follows:
 ///
 /// `None` => field is not changed
 ///
@@ -747,12 +990,17 @@ impl Embed {
 /// `Some(Some(foo))` => field is edited to be `foo`
 #[derive(Serialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct EditMessage {
+    /// The new contents of the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<Option<Cow<'static, str>>>,
+    /// The new embed for the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embed: Option<Option<RichEmbed>>,
+    /// Only [SUPPRESS_EMBEDS](MessageFlags::SUPPRESS_EMBEDS) can be set/unset, but trying to send
+    /// other flags is not an error.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flags: Option<MessageFlags>,
+    /// New allowed mentions
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allowed_mentions: Option<AllowedMentions>,
 }
@@ -771,31 +1019,68 @@ impl From<RichEmbed> for EditMessage {
     }
 }
 
+impl From<Message> for EditMessage {
+    fn from(mut message: Message) -> Self {
+        Self {
+            content: Some(Some(message.content.into())),
+            embed: Some(message.embeds.pop().map(RichEmbed::from)),
+            flags: message.flags,
+            // todo
+            allowed_mentions: None,
+        }
+    }
+}
+
 impl EditMessage {
+    /// Build an [EditMessage] for use [Message::edit] and other similar methods.
+    ///
+    /// ```rust
+    /// # use discorsd::http::ClientResult;
+    /// # use std::sync::Arc;
+    /// # use discorsd::model::message::{Message, Color};
+    /// # use discorsd::BotState;
+    /// # use discorsd::http::channel::{MessageChannelExt, embed, EditMessage};
+    /// async fn respond_to_message<B: Send + Sync>(mut message: Message, state: Arc<BotState<B>>) -> ClientResult<()> {
+    ///     message.edit(state, EditMessage::build(|m| {
+    ///          m.clear_content();
+    ///          m.embed(|e| {
+    ///              e.title("Now there's an embed!")
+    ///          })
+    ///      })).await
+    /// }
+    /// ```
     pub fn build<F: FnOnce(&mut Self)>(f: F) -> Self {
         Self::build_with(Self::default(), f)
     }
 
+    /// Similar to [build](Self::build), but modifies an already existing [EditMessage] rather than
+    /// creating a new one.
     pub fn build_with<F: FnOnce(&mut Self)>(mut edit: Self, f: F) -> Self {
         f(&mut edit);
         edit
     }
 
+    /// Edit the content of this message.
     pub fn content<S: Into<Cow<'static, str>>>(&mut self, content: S) {
         self.content = Some(Some(content.into()));
     }
 
+    /// Clear the content of this message.
     pub fn clear_content(&mut self) {
         self.content = Some(None);
     }
 
-    pub fn embed<F: FnOnce(&mut RichEmbed)>(&mut self, f: F) {
+    /// Edit the embed of this message. The `&mut RichEmbed` your `builder` function operates on is
+    /// the current [embed](Self::embed) of this [EditMessage], for instance if this [EditMessage]
+    /// was created with the impl `From<Message>` or `From<RichEmbed>`.
+    pub fn embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) {
         let embed = self.embed.as_mut()
             .and_then(Option::take)
             .unwrap_or_default();
-        self.embed = Some(Some(RichEmbed::build(embed, f)));
+        self.embed = Some(Some(RichEmbed::build(embed, builder)));
     }
 
+    /// Clear the embed of this message.
     pub fn clear_embed(&mut self) {
         self.embed = Some(None);
     }

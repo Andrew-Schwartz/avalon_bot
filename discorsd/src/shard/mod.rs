@@ -26,7 +26,7 @@ use crate::cache::Update;
 use crate::commands::SlashCommandRaw;
 use crate::http::ClientError;
 use crate::macros::API_VERSION;
-use crate::model::ids::CommandId;
+use crate::model::ids::{CommandId, Id};
 use crate::serde_utils::nice_from_str;
 use crate::shard::model::Heartbeat;
 
@@ -373,53 +373,72 @@ impl<B: Bot + 'static> Shard<B> {
                 let _result = self.state.global_command_names.set(command_names);
             }
         }
-        let bot = Arc::clone(&self.state);
+        let state = Arc::clone(&self.state);
         // todo panic if this panicked? (make a field in self for handlers, try_join them?)
         let _handle = tokio::spawn(async move {
             let result = match event {
-                Ready(_ready) => bot.bot.ready(Arc::clone(&bot)).await,
-                Resumed(_resumed) => bot.bot.resumed(Arc::clone(&bot)).await,
-                GuildCreate(guild) => bot.bot.guild_create(
-                    guild.guild, Arc::clone(&bot),
+                Ready(_ready) => state.bot.ready(Arc::clone(&state)).await,
+                Resumed(_resumed) => state.bot.resumed(Arc::clone(&state)).await,
+                GuildCreate(guild) => {
+                    // need to initialize some extra stuff that isn't sent in the gateway
+                    // tokio::spawn({
+                    //     let state = Arc::clone(&state);
+                    //     let channels = guild.guild.channels.clone();
+                    //     let name = guild.guild.name.clone();
+                    //     let id = guild.guild.id;
+                    //     async move {
+                    for channel in &guild.guild.channels {
+                        match state.client.get_channel(channel.id()).await {
+                            Ok(channel) => dispatch::ChannelCreate { channel }.update(&state.cache).await,
+                            Err(error) => error!(
+                                "Error getting channel after GuildCreate({}): {}",
+                                guild.guild.name.as_ref().unwrap_or(&guild.guild.id.to_string()),
+                                error.display_error(&state).await,
+                            ),
+                        }
+                    }
+                    // }
+                    // });
+                    state.bot.guild_create(guild.guild, Arc::clone(&state)).await
+                }
+                MessageCreate(message) => state.bot.message_create(
+                    message.message, Arc::clone(&state),
                 ).await,
-                MessageCreate(message) => bot.bot.message_create(
-                    message.message, Arc::clone(&bot),
-                ).await,
-                MessageUpdate(update) => bot.bot.message_update(
-                    bot.cache.message(update.id).await.unwrap(),
-                    Arc::clone(&bot),
+                MessageUpdate(update) => state.bot.message_update(
+                    state.cache.message(update.id).await.unwrap(),
+                    Arc::clone(&state),
                     update,
                 ).await,
-                InteractionCreate(interaction) => bot.bot.interaction(
-                    interaction.interaction, Arc::clone(&bot),
+                InteractionCreate(interaction) => state.bot.interaction(
+                    interaction.interaction, Arc::clone(&state),
                 ).await,
-                MessageReactionAdd(add) => bot.bot.reaction(
+                MessageReactionAdd(add) => state.bot.reaction(
                     add.into(),
-                    Arc::clone(&bot),
+                    Arc::clone(&state),
                 ).await,
-                MessageReactionRemove(remove) => bot.bot.reaction(
+                MessageReactionRemove(remove) => state.bot.reaction(
                     remove.into(),
-                    Arc::clone(&bot),
+                    Arc::clone(&state),
                 ).await,
-                IntegrationUpdate(integration) => bot.bot.integration_update(
+                IntegrationUpdate(integration) => state.bot.integration_update(
                     integration.guild_id,
                     integration.integration,
-                    Arc::clone(&bot),
+                    Arc::clone(&state),
                 ).await,
-                GuildRoleCreate(create) => bot.bot.role_create(
+                GuildRoleCreate(create) => state.bot.role_create(
                     create.guild_id,
                     create.role,
-                    Arc::clone(&bot),
+                    Arc::clone(&state),
                 ).await,
-                GuildRoleUpdate(update) => bot.bot.role_update(
+                GuildRoleUpdate(update) => state.bot.role_update(
                     update.guild_id,
                     update.role,
-                    Arc::clone(&bot),
+                    Arc::clone(&state),
                 ).await,
                 _ => Ok(())
             };
             if let Err(error) = result {
-                bot.bot.error(error, Arc::clone(&bot)).await;
+                state.bot.error(error, Arc::clone(&state)).await;
             }
         });
 

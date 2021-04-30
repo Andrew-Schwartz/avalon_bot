@@ -38,7 +38,7 @@ use discorsd::{Bot as _, BotExt, BotState, GuildCommands, IdMap, shard};
 use discorsd::async_trait;
 use discorsd::commands::*;
 use discorsd::errors::BotError;
-use discorsd::http::channel::{ChannelExt, create_message, CreateMessage, embed};
+use discorsd::http::channel::{embed, MessageChannelExt};
 use discorsd::http::ClientResult;
 use discorsd::http::guild::{CommandPermsExt, GuildCommandPermsExt};
 use discorsd::model::channel::Channel;
@@ -187,23 +187,19 @@ impl discorsd::Bot for Bot {
             *self.log_in.write().await = Some(now);
         }
 
-        state.client.create_message(state.bot.config.channel, CreateMessage::build(|m| {
-            m.embed(|e| {
-                e.title("Avalon Bot is logged on!");
-                e.timestamp_now();
-                e.url("https://github.com/Andrew-Schwartz/AvalonBot")
-            });
+        state.bot.config.channel.send_unchecked(&state, embed(|e| {
+            e.title("Avalon Bot is logged on!");
+            e.timestamp_now();
+            e.url("https://github.com/Andrew-Schwartz/AvalonBot")
         })).await?;
 
         Ok(())
     }
 
     async fn resumed(&self, state: Arc<BotState<Self>>) -> Result<()> {
-        state.client.create_message(state.bot.config.channel, create_message(|m| {
-            m.embed(|e| {
-                e.title("Avalon Bot has resumed");
-                e.timestamp_now();
-            });
+        state.bot.config.channel.send(&state, embed(|e| {
+            e.title("Avalon Bot has resumed");
+            e.timestamp_now();
         })).await?;
         Ok(())
     }

@@ -21,6 +21,7 @@ use crate::shard::dispatch::PartialApplication;
 
 #[derive(Default, Debug)]
 pub struct Cache {
+    // not a OnceCell because the User can be updated
     pub(crate) user: RwLock<Option<User>>,
     pub(crate) application: OnceCell<PartialApplication>,
 
@@ -45,9 +46,15 @@ pub struct Cache {
 }
 
 impl Cache {
+    /// Gets the bot's [ApplicationId].
+    ///
+    /// # Panics
+    ///
+    /// If somehow used before [`Ready`](crate::shard::dispatch::Ready) is received.
     pub fn application_id(&self) -> ApplicationId {
-        // self.application.read().await.unwrap().id
-        self.application.get().unwrap().id
+        self.application.get()
+            .expect("should not get `bot.application_id` before `Ready` fires")
+            .id
     }
 
     /// Gets the current user.
@@ -56,7 +63,9 @@ impl Cache {
     ///
     /// If somehow used before [`Ready`](crate::shard::dispatch::Ready) is received.
     pub async fn own_user(&self) -> User {
-        self.user.read().await.clone().expect("should not get `bot.user` before `Ready` fires")
+        self.user.read().await
+            .clone()
+            .expect("should not get `bot.user` before `Ready` fires")
     }
 
     pub async fn user<U: Id<Id=UserId> + Send>(&self, id: U) -> Option<User> {
@@ -89,6 +98,14 @@ impl Cache {
         self.channels.read().await.get(id).cloned()
     }
 
+    pub async fn dm_channel<U: Id<Id=UserId> + Send>(&self, id: U) -> Option<DmChannel> {
+        let (by_user, by_channel) = &*self.dms.read().await;
+        let id = id.id();
+        by_user.get(&id)
+            .and_then(|c| by_channel.get(c))
+            .cloned()
+    }
+
     pub async fn guild<G: Id<Id=GuildId> + Send>(&self, id: G) -> Option<Guild> {
         self.guilds.read().await.get(id).cloned()
     }
@@ -116,7 +133,8 @@ impl Cache {
             .collect()
     }
 
-    pub async fn try_everyone_role<G>(&self, guild: G) -> Option<Role>
+    /// Assumes that the guild exists
+    pub async fn everyone_role<G>(&self, guild: G) -> Role
         where
             G: Id<Id=GuildId> + Send,
     {
@@ -126,16 +144,8 @@ impl Cache {
                 .find(|r| r.name == "@everyone")
                 .expect("all guilds have `@everyone` role"))
             .cloned()
+            .expect("the guild exists")
     }
-
-    // /// Assumes that the guild exists
-    // pub async fn everyone_role<G>(&self, guild: G) -> Role
-    //     where
-    //         G: Id<Id=GuildId> + Send,
-    // {
-    //     self.try_everyone_role(guild).await
-    //         .expect("the guild exists")
-    // }
 
     pub async fn command<C: Id<Id=CommandId> + Send>(&self, id: C) -> Option<ApplicationCommand> {
         self.commands.read().await.get(id).cloned()

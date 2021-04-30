@@ -29,6 +29,7 @@ pub struct Guild {
     pub splash: Option<String>,
     /// discovery splash hash; only present for guilds with the "DISCOVERABLE" feature
     pub discovery_splash: Option<String>,
+    // TODO auto fetch these, and handle not overwriting them in the update
     /// true if the user is the owner of the guild
     /// todo link when impl'd
     /// only sent when using the `GET Current User Guilds` endpoint and are relative to the requested user
@@ -280,6 +281,16 @@ pub enum GuildFeature {
     WelcomeScreenEnabled,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct PartialGuild {
+    id: GuildId,
+    name: String,
+    icon: Option<String>,
+    owner: bool,
+    permissions: Permissions,
+    features: HashSet<GuildFeature>,
+}
+
 /// A partial guild object. Represents an Offline Guild, or a Guild whose information has not been
 /// provided through [`GuildCreate`](crate::shard::dispatch::GuildCreate)
 /// events during the Gateway connect.
@@ -304,7 +315,7 @@ impl Id for UnavailableGuild {
 pub struct GuildPreview {
     pub id: GuildId,
 }
-// as_ref_id!(GuildPreview => GuildId);
+id_impl!(GuildPreview => GuildId);
 
 #[derive(Deserialize, Serialize, Debug, Eq, PartialEq, Copy, Clone)]
 pub struct GuildWidget {
@@ -426,7 +437,7 @@ pub struct Integration {
     /// not provided for discord bot integrations
     pub application: Option<IntegrationApplication>,
 }
-// as_ref_id!(Integration => IntegrationId);
+id_impl!(Integration => IntegrationId);
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
@@ -459,7 +470,7 @@ pub struct IntegrationApplication {
     /// the bot associated with this application
     pub bot: Option<User>,
 }
-// as_ref_id!(IntegrationApplication => IntegrationId);
+id_impl!(IntegrationApplication => IntegrationId);
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Ban {

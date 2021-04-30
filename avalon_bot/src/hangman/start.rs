@@ -3,7 +3,7 @@ use std::sync::Arc;
 use discorsd::BotState;
 use discorsd::commands::*;
 use discorsd::errors::BotError;
-use discorsd::http::channel::ChannelExt;
+use discorsd::http::channel::MessageChannelExt;
 
 use crate::Bot;
 use crate::hangman::guess::GuessCommand;
@@ -18,7 +18,7 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Defe
     let ghw_guard = state.bot.guild_hist_words.write().await;
     let game = hangman.start(interaction.channel, ghw_guard).await;
 
-    let message = game.channel.send(&state.client, game.embed()).await?;
+    let message = game.channel.send(&state, game.embed()).await?;
     message.react(&state, '❓').await?;
     let message_id = message.id;
     game.message = Some(message);

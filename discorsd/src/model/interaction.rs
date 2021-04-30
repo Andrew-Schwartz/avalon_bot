@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
@@ -496,7 +497,7 @@ mod tests {
 
         let correct: Value = serde_json::from_str(correct.as_ref()).unwrap();
         let modeled = serde_json::to_string_pretty(&modeled).unwrap();
-        println!("modeled = {}", modeled);
+        // println!("modeled = {}", modeled);
         let modeled: Value = serde_json::from_str(&modeled).unwrap();
 
         assert_eq!(correct, modeled);
@@ -1177,7 +1178,8 @@ pub enum InteractionType {
     ApplicationCommand = 2,
 }
 
-#[derive(/*Deserialize,*/ Serialize, Debug, Clone, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, Eq, PartialEq)]
+#[serde(try_from = "ApplicationCommandInteractionData")]
 pub struct InteractionData {
     pub id: CommandId,
     pub name: String,
@@ -1209,8 +1211,10 @@ pub enum InteractionDataOption {
     Values(Vec<ValueOption>),
 }
 
-impl<'de> Deserialize<'de> for InteractionData {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+impl TryFrom<ApplicationCommandInteractionData> for InteractionData {
+    type Error = crate::serde_utils::Error;
+
+    fn try_from(value: ApplicationCommandInteractionData) -> Result<Self, Self::Error> {
         use ApplicationCommandInteractionData as ACID;
         use ApplicationCommandInteractionDataOption as ACIDO;
         use ApplicationCommandInteractionDataValue as ACIDV;
@@ -1236,7 +1240,7 @@ impl<'de> Deserialize<'de> for InteractionData {
             options,
             // mostly exists for webhook bots, so we don't process it
             resolved: _
-        } = ACID::deserialize(d)?;
+        } = value;
         let options = if options.is_empty() {
             InteractionDataOption::Values(Vec::new())
         } else if options.len() > 1 {
@@ -1287,13 +1291,30 @@ impl<'de> Deserialize<'de> for InteractionData {
     }
 }
 
+/// Test that the more structured [InteractionData] is correctly generated from the more raw
+/// [ApplicationCommandInteractionData] directly deserialized from json from Discord.
 #[cfg(test)]
 mod new_data_tests {
+    use std::convert::TryInto;
+
+    use ApplicationCommandInteractionData as ACID;
+    use ApplicationCommandInteractionDataOption as ACIDO;
+    use ApplicationCommandInteractionDataValue as ACIDV;
+
     use super::*;
 
     #[test]
     fn rules() {
-        let rules = InteractionData {
+        let rules_raw = ACID {
+            id: CommandId(1234),
+            name: "data".to_string(),
+            options: vec![
+                ACIDO { name: "game".to_string(), value: ACIDV::Value { value: OptionValue::String("Avalon".to_string()) } },
+                ACIDO { name: "where".to_string(), value: ACIDV::Value { value: OptionValue::String("Here".to_string()) } },
+            ],
+            resolved: None,
+        };
+        let rules_new = InteractionData {
             id: CommandId(1234),
             name: "data".to_string(),
             options: InteractionDataOption::Values(vec![
@@ -1301,12 +1322,31 @@ mod new_data_tests {
                 ValueOption { name: "where".to_string(), lower: OptionValue::String("Here".to_string()) },
             ]),
         };
-        println!("rules = {:#?}", rules);
+        assert_eq!(rules_new, rules_raw.try_into().unwrap());
     }
 
     #[test]
     fn perms() {
-        let perms = InteractionData {
+        let perms_raw = ACID {
+            id: CommandId(1234),
+            name: "perms".to_string(),
+            options: vec![ACIDO {
+                name: "user".to_string(),
+                value: ACIDV::Options {
+                    options: vec![ACIDO {
+                        name: "edit".to_string(),
+                        value: ACIDV::Options {
+                            options: vec![
+                                ACIDO { name: "user".to_string(), value: ACIDV::Value { value: OptionValue::String("5678".to_string()) } },
+                                ACIDO { name: "channel".to_string(), value: ACIDV::Value { value: OptionValue::String("0987".to_string()) } },
+                            ]
+                        },
+                    }]
+                },
+            }],
+            resolved: None,
+        };
+        let perms_new = InteractionData {
             id: CommandId(1234),
             name: "perms".to_string(),
             options: InteractionDataOption::Group(GroupOption {
@@ -1320,12 +1360,28 @@ mod new_data_tests {
                 },
             }),
         };
-        println!("perms = {:#?}", perms);
+        assert_eq!(perms_new, perms_raw.try_into().unwrap())
     }
 
     #[test]
     fn roles_add() {
-        let roles_add = InteractionData {
+        let roles_add_raw = ACID {
+            id: CommandId(1234),
+            name: "roles".to_string(),
+            options: vec![ACIDO {
+                name: "add".to_string(),
+                value: ACIDV::Options {
+                    options: vec![
+                        ACIDO { name: "role1".to_string(), value: ACIDV::Value { value: OptionValue::String("Assassin".to_string()) } },
+                        ACIDO { name: "role2".to_string(), value: ACIDV::Value { value: OptionValue::String("Merlin".to_string()) } },
+                        ACIDO { name: "role3".to_string(), value: ACIDV::Value { value: OptionValue::String("Mordred".to_string()) } },
+                        ACIDO { name: "role4".to_string(), value: ACIDV::Value { value: OptionValue::String("Percival".to_string()) } },
+                    ]
+                },
+            }],
+            resolved: None,
+        };
+        let roles_add_new = InteractionData {
             id: CommandId(1234),
             name: "roles".to_string(),
             options: InteractionDataOption::Command(CommandOption {
@@ -1338,12 +1394,18 @@ mod new_data_tests {
                 ],
             }),
         };
-        println!("roles_add = {:#?}", roles_add);
+        assert_eq!(roles_add_new, roles_add_raw.try_into().unwrap());
     }
 
     #[test]
     fn roles_clear() {
-        let roles_clear = InteractionData {
+        let roles_clear_raw = ACID {
+            id: CommandId(1234),
+            name: "roles".to_string(),
+            options: vec![ACIDO { name: "".to_string(), value: ACIDV::Options { options: vec![] } }],
+            resolved: None,
+        };
+        let roles_clear_new = InteractionData {
             id: CommandId(1234),
             name: "roles".to_string(),
             options: InteractionDataOption::Command(CommandOption {
@@ -1351,7 +1413,7 @@ mod new_data_tests {
                 lower: vec![],
             }),
         };
-        println!("roles_clear = {:#?}", roles_clear);
+        assert_eq!(roles_clear_new, roles_clear_raw.try_into().unwrap());
     }
 }
 

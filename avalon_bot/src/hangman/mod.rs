@@ -7,7 +7,7 @@ use tokio::sync::RwLockWriteGuard;
 
 use discorsd::{BotState, GuildCommands, http, IdMap};
 use discorsd::commands::*;
-use discorsd::http::channel::{ChannelExt, embed, RichEmbed};
+use discorsd::http::channel::{embed, MessageChannelExt, RichEmbed};
 use discorsd::http::ClientResult;
 use discorsd::model::ids::{ChannelId, GuildId, UserId};
 use discorsd::model::message::Message;

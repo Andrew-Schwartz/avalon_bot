@@ -214,7 +214,7 @@ pub struct MessageApplication {
     /// name of the application
     pub name: String,
 }
-// as_ref_id!(MessageApplication => ApplicationId);
+id_impl!(MessageApplication => ApplicationId);
 
 #[derive(Deserialize, Serialize, Debug, Clone, Eq, PartialEq)]
 pub struct MessageReference {
@@ -533,6 +533,7 @@ impl EmbedFooter {
     }
 }
 
+// todo should these be `Cow`s?
 #[derive(Deserialize, Serialize, Debug, Clone, Eq, PartialEq)]
 pub struct EmbedField {
     /// name of the field
@@ -544,13 +545,15 @@ pub struct EmbedField {
     pub inline: bool,
 }
 
+// todo these can all be const fn's once const-panicking or something exists
+//  also would need name, value to be `Cow`s
 #[allow(clippy::needless_pass_by_value)]
 impl EmbedField {
     fn checked<S: ToString, V: ToString>(name: S, value: V, inline: bool) -> Self {
         let name = name.to_string();
-        assert!(!name.is_empty(), "field names cannot be empty, values = {:?}", value.to_string());
         let value = value.to_string();
-        assert!(!value.is_empty(), "field values cannot be empty, name = {}", name);
+        assert!(!name.is_empty(), "field names cannot be empty (value = {:?})", value);
+        assert!(!value.is_empty(), "field values cannot be empty (name = {})", name);
         Self { name, value, inline }
     }
 
@@ -570,6 +573,18 @@ impl EmbedField {
         Self::new_inline("\u{200B}", "\u{200B}")
     }
 
+    pub fn blank_tuple_default() -> (&'static str, &'static str) {
+        ("\u{200B}", "\u{200B}")
+    }
+
+    pub fn blank_tuple() -> (&'static str, &'static str, bool) {
+        ("\u{200B}", "\u{200B}", false)
+    }
+
+    pub fn blank_inline_tuple() -> (&'static str, &'static str, bool) {
+        ("\u{200B}", "\u{200B}", true)
+    }
+
     pub fn name<S: ToString>(mut self, name: S) -> Self {
         self.name = name.to_string();
         self
@@ -586,14 +601,14 @@ impl EmbedField {
     }
 }
 
-impl<S: ToString, V: ToString> From<(S, V)> for EmbedField {
-    fn from((name, value): (S, V)) -> Self {
+impl<N: ToString, V: ToString> From<(N, V)> for EmbedField {
+    fn from((name, value): (N, V)) -> Self {
         Self::new(name, value)
     }
 }
 
-impl<S: ToString, V: ToString> From<(S, V, bool)> for EmbedField {
-    fn from((name, value, inline): (S, V, bool)) -> Self {
+impl<N: ToString, V: ToString> From<(N, V, bool)> for EmbedField {
+    fn from((name, value, inline): (N, V, bool)) -> Self {
         Self::new(name, value).inline(inline)
     }
 }
@@ -615,7 +630,7 @@ pub struct Attachment {
     /// width of file (if image)
     pub width: Option<u32>,
 }
-// as_ref_id!(Attachment => AttachmentId);
+id_impl!(Attachment => AttachmentId);
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ChannelMention {
@@ -629,7 +644,7 @@ pub struct ChannelMention {
     /// the name of the channel
     pub name: String,
 }
-// as_ref_id!(ChannelMention => ChannelId);
+id_impl!(ChannelMention => ChannelId);
 
 /// The allowed mention field allows for more granular control over mentions without various hacks
 /// to the message content. This will always validate against message content to avoid phantom pings

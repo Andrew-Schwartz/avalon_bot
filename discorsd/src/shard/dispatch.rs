@@ -5,7 +5,6 @@ use std::convert::{TryFrom, TryInto};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
-use log::info;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::{Cache, IdMap, Update};
@@ -218,13 +217,13 @@ impl Update for Resumed {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(transparent)]
 pub struct ChannelCreate {
-    channel: Channel,
+    pub(crate) channel: Channel,
 }
 
 #[async_trait]
 impl Update for ChannelCreate {
     async fn update(&self, cache: &Cache) {
-        info!("create = {:?}", &self);
+        // info!("create = {:?}", &self);
         let channel = &self.channel;
         if let Some(guild) = channel.guild_id() {
             cache.guilds.write().await
@@ -267,6 +266,7 @@ pub struct ChannelUpdate {
 #[async_trait]
 impl Update for ChannelUpdate {
     async fn update(&self, cache: &Cache) {
+        println!("self = {:?}", self);
         let channel = &self.channel;
         if let Some(guild) = channel.guild_id() {
             cache.guilds.write().await
@@ -396,13 +396,11 @@ impl Update for ChannelPinsUpdate {
 
 /// This event can be sent in three different scenarios:
 /// 1. When a user is initially connecting, to lazily load and backfill information for all
-/// unavailable guilds sent in the [Ready](Ready) event. Guilds that are unavailable due to an outage will
-/// send a [GuildDelete](GuildDelete) event.
-/// 2. When a [Guild]('Guild') becomes available again to the client.
+/// unavailable guilds sent in the [Ready] event. Guilds that are unavailable due to an outage will
+/// send a [GuildDelete] event.
+/// 2. When a [Guild] becomes available again to the client.
 /// 3. When the current user joins a new Guild.
-/// The inner payload is a [Guild]('Guild'), with all the extra fields specified.
-///
-/// ['Guild']: Guild
+/// The inner payload is a [Guild], with all the extra fields specified.
 #[derive(Deserialize, Debug, Clone)]
 #[serde(transparent)]
 pub struct GuildCreate {

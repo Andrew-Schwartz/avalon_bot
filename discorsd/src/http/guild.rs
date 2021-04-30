@@ -1,3 +1,5 @@
+//! Discord API requests involving guilds.
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 

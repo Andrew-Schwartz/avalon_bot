@@ -4,7 +4,7 @@ use tokio::sync::RwLockWriteGuard;
 
 use discorsd::{BotState, GuildCommands};
 use discorsd::commands::*;
-use discorsd::http::channel::{ChannelExt, create_message, embed};
+use discorsd::http::channel::{create_message, embed, MessageChannelExt};
 use discorsd::http::ClientResult;
 use discorsd::http::guild::CommandPermsExt;
 use discorsd::model::ids::*;
@@ -118,7 +118,7 @@ impl Avalon {
                 game.players.iter().find(|p| p.role == Assassin),
                 game.players.iter().any(|p| p.role == Merlin),
             ) {
-                game.channel.send(&state.client, create_message(|m| {
+                game.channel.send(&state, create_message(|m| {
                     m.content(assassin.ping_nick());
                     m.embed(|e| {
                         e.title("The good guys have succeeded three quests, but the Assassin can still try to kill Merlin");
@@ -153,7 +153,7 @@ impl Avalon {
                 e.title("The bad guys win!");
             })).await;
         } else if let (Some(lotl), 2..=4) = (game.lotl(), game.round) {
-            game.channel.send(&state.client, create_message(|m| {
+            game.channel.send(&state, create_message(|m| {
                 m.content(lotl.ping_nick());
                 m.embed(|e| {
                     e.title(format!(
@@ -197,7 +197,7 @@ impl AvalonGame {
         quest.edit_command(&state, guild, quest_id).await?;
         quest_id.allow_users(&state, guild, &[self.leader().id()]).await?;
 
-        self.channel.send(&state.client, create_message(|m| {
+        self.channel.send(&state, create_message(|m| {
             m.content(self.leader().ping_nick());
             m.embed(|e| {
                 e.color(Color::GOLD);

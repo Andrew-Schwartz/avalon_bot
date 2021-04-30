@@ -183,7 +183,7 @@ impl<B: Send + Sync> BotState<B> {
     pub async fn get_command_mut<'c, C: SlashCommand<Bot=B>>(
         &self,
         guild: GuildId,
-        // not ideal that it has to take this instead of the guild.
+        // not ideal that it has to take this instead of just the guild.
         commands: &'c mut RwLockWriteGuard<'_, GuildCommands<B>>,
     ) -> (CommandId, &'c mut C) {
         let id = self.command_id::<C>(guild).await;
@@ -270,7 +270,9 @@ pub trait Bot: Send + Sync + Sized {
 
     async fn message_update(&self, message: Message, state: Arc<BotState<Self>>, updates: MessageUpdate) -> Result<(), BotError> { Ok(()) }
 
-    async fn interaction(&self, interaction: Interaction, state: Arc<BotState<Self>>) -> Result<(), BotError> { Ok(()) }
+    async fn interaction(&self, interaction: Interaction, state: Arc<BotState<Self>>) -> Result<(), BotError> {
+        Self::slash_command(interaction, state).await
+    }
 
     async fn reaction(&self, reaction: ReactionUpdate, state: Arc<BotState<Self>>) -> Result<(), BotError> { Ok(()) }
 

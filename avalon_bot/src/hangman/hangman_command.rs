@@ -5,7 +5,7 @@ use command_data_derive::*;
 use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::BotError;
-use discorsd::http::channel::{ChannelExt, embed};
+use discorsd::http::channel::{embed, MessageChannelExt};
 use discorsd::model::message::Color;
 
 use crate::{Bot, hangman};

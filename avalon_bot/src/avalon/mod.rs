@@ -8,7 +8,7 @@ use tokio::sync::RwLockWriteGuard;
 use discorsd::BotState;
 use discorsd::commands::SlashCommandRaw;
 use discorsd::GuildCommands;
-use discorsd::http::channel::{ChannelExt, embed_with, RichEmbed};
+use discorsd::http::channel::{embed_with, MessageChannelExt, RichEmbed};
 use discorsd::http::ClientResult;
 use discorsd::model::guild::GuildMember;
 use discorsd::model::ids::*;
@@ -170,7 +170,7 @@ impl Avalon {
         embed: RichEmbed,
     ) -> ClientResult<()> {
         let game = self.game_ref();
-        game.channel.send(&state.client, embed_with(embed, |e| {
+        game.channel.send(&state, embed_with(embed, |e| {
             e.fields(
                 game.players.iter()
                     .map(|p| (

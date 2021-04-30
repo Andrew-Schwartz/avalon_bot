@@ -8,7 +8,7 @@ use command_data_derive::CommandData;
 use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::BotError;
-use discorsd::http::channel::ChannelExt;
+use discorsd::http::channel::MessageChannelExt;
 use discorsd::model::ids::MessageId;
 
 use crate::Bot;

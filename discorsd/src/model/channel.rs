@@ -19,7 +19,8 @@ use crate::serde_utils::nice_from_str;
 struct RawChannel<'a>(#[serde(borrow)] &'a RawValue);
 
 impl<'a> RawChannel<'a> {
-    // I'm so surprised this has worked perfectly so far lmao
+    // I'm so surprised this has worked perfectly so far lmao (from 2/12/2021, method from (1/1/2021)
+    // Had to make it handle spaces after `:` (4/28/2021)
     fn channel_type(&self) -> Result<u32, Option<char>> {
         // we want to be one level in the object
         let mut nesting = 0;
@@ -44,10 +45,12 @@ impl<'a> RawChannel<'a> {
                 'e' if nesting == 1 && progress == 4 => progress += 1,
                 '"' if nesting == 1 && progress == 5 => progress += 1,
                 ':' if nesting == 1 && progress == 6 => progress += 1,
+                ' ' if nesting == 1 && progress == 7 => {}
+                c if nesting == 1 && progress == 7 && c.is_numeric() => {}
                 _ => progress = 0,
             }
-            progress == 7
-        }).and_then(|idx| str.chars().nth(idx + 1)); // idx is where ':' is
+            progress == 7 && c.is_numeric()
+        }).and_then(|idx| str.chars().nth(idx));
         char.map_or(
             Err(None),
             |char| char.to_digit(10).ok_or(Some(char))
@@ -153,6 +156,17 @@ impl Channel {
         match self {
             Self::Text(text) => Some(text),
             _ => None,
+        }
+    }
+
+    pub const fn overwrites(&self) -> Option<&Vec<Overwrite>> {
+        match self {
+            Self::Text(t) => Some(&t.permission_overwrites),
+            Self::Voice(v) => Some(&v.permission_overwrites),
+            Self::Category(c) => Some(&c.permission_overwrites),
+            Self::News(n) => Some(&n.permission_overwrites),
+            Self::Store(s) => Some(&s.permission_overwrites),
+            Self::Dm(_) | Self::GroupDm(_) => None,
         }
     }
 }
@@ -322,8 +336,8 @@ pub struct CategoryChannel {
     pub guild_id: Option<GuildId>,
     /// sorting position of the channel
     pub position: u32,
-    // /// explicit permission overwrites for members and roles
-    // pub permission_overwrites: Vec<Overwrite>,
+    /// explicit permission overwrites for members and roles
+    pub permission_overwrites: Vec<Overwrite>,
     /// the name of the channel (2-100 characters)
     pub name: String,
 }
