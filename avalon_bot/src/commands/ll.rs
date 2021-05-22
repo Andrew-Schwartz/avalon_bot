@@ -91,6 +91,7 @@ impl SlashCommand for LowLevelCommand {
                     }
                 }
                 Get::Guild { guild } => {
+                    // todo
                     let guild = guild.unwrap_or(this_guild);
                     if let Some(guild) = state.cache.guild(guild).await {
                         format(guild)

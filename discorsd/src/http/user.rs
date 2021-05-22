@@ -29,11 +29,11 @@ impl DiscordClient {
     /// # Errors
     ///
     /// If the http request fails, or fails to deserialize the response into a `User`.
-    pub async fn modify_current_user(
-        &self,
-        new_username: impl Into<Option<&str>>,
-        new_avatar: impl Into<Option<ImageData>>,
-    ) -> ClientResult<User> {
+    pub async fn modify_current_user<'u, U, A>(&self, new_username: U, new_avatar: A) -> ClientResult<User>
+        where
+            U: Into<Option<&'u str>> + Send,
+            A: Into<Option<ImageData>> + Send,
+    {
         #[derive(Serialize)]
         struct Shim<'a> {
             #[serde(skip_serializing_if = "Option::is_none")]
@@ -41,14 +41,13 @@ impl DiscordClient {
             #[serde(skip_serializing_if = "Option::is_none")]
             avatar: Option<String>,
         }
-        self.patch(ModifyCurrentUser, Shim {
-            username: new_username.into(),
-            avatar: new_avatar.into().map(ImageData::into_inner),
-        }).await
+        let username = new_username.into();
+        let avatar = new_avatar.into().map(ImageData::into_inner);
+        self.patch(ModifyCurrentUser, Shim { username, avatar }).await
     }
 
     /// Returns a list of partial guild objects the current user is a member of.
-    /// Requires the guilds OAuth2 scope.
+    /// Requires the guilds `OAuth2` scope.
     ///
     /// # Errors
     ///

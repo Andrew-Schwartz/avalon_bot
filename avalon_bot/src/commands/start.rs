@@ -52,8 +52,8 @@ fn req(command: &StartCommand) -> bool {
     command.games.len() > 1
 }
 
-fn retain(command: &StartCommand, choice: &CommandChoice<&'static str>) -> bool {
-    command.games.iter().any(|game| game == choice.value)
+fn retain(command: &StartCommand, choice: GameType) -> bool {
+    command.games.contains(&choice)
 }
 
 #[async_trait]

@@ -138,7 +138,7 @@ macro_rules! handle_attribute {
                     $(
                         "## `#[command(key", $group_name, ")]` options\n\n",
                         $(
-                            "- `", $str, "`", " - ", $($doc),+, "\n\n"
+                            "##### `", $str, "`", "\n", $(concat!($doc, "\n")),+, "\n\n"
                         ),+, "\n\n",
                     )+
                 ),

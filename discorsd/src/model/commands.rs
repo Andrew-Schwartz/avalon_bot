@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Debug;
 use std::hash::{BuildHasher, Hash};
@@ -297,10 +298,13 @@ macro_rules! option_primitives {
                 fn make_args(_: &C) -> Vec<Self::VecArg> {
                     unreachable!()
                 }
+
+                type Choice = Self;
             }
 
             impl OptionCtor for $ty {
                 type Data = $ctor_ty;
+                const ARG_NAME: &'static str = stringify!($method);
 
                 fn option_ctor(cdo: CommandDataOption<Self::Data>) -> DataOption {
                     DataOption::$ctor_fn(cdo)
@@ -340,10 +344,14 @@ macro_rules! option_integers {
                 fn make_args(_: &C) -> Vec<Self::VecArg> {
                     unreachable!()
                 }
+
+                type Choice = Self;
             }
 
             impl OptionCtor for $ty {
                 type Data = i64;
+                // todo specify positive integer?
+                const ARG_NAME: &'static str = "int";
 
                 fn option_ctor(cdo: CommandDataOption<Self::Data>) -> DataOption {
                     DataOption::Integer(cdo)
@@ -358,7 +366,7 @@ option_integers!(
 );
 
 macro_rules! option_ids {
-    ($($id:ty, $cotp:ident);+ $(;)?) => {
+    ($($id:ty, $cotp:ident, $name:literal);+ $(;)?) => {
         $(
             impl<C: SlashCommandRaw> CommandData<C> for $id {
                 type Options = ValueOption;
@@ -377,10 +385,13 @@ macro_rules! option_ids {
                 fn make_args(_: &C) -> Vec<Self::VecArg> {
                     unreachable!()
                 }
+
+                type Choice = Self;
             }
 
             impl OptionCtor for $id {
                 type Data = &'static str;
+                const ARG_NAME: &'static str = $name;
 
                 fn option_ctor(cdo: CommandDataOption<Self::Data>) -> DataOption {
                     DataOption::String(cdo)
@@ -390,18 +401,23 @@ macro_rules! option_ids {
     };
 }
 option_ids!(
-    MessageId, MessageId;
-    GuildId, GuildId;
+    MessageId, MessageId, "message";
+    GuildId, GuildId, "guild";
 );
 
 pub trait OptionCtor {
     type Data;
+
+    /// Get the name of this for generic types that implement [`CommandData`]
+    const ARG_NAME: &'static str;
 
     fn option_ctor(cdo: CommandDataOption<Self::Data>) -> DataOption;
 }
 
 impl<T: OptionCtor<Data=T>> OptionCtor for Option<T> {
     type Data = T;
+
+    const ARG_NAME: &'static str = T::ARG_NAME;
 
     fn option_ctor(cdo: CommandDataOption<Self::Data>) -> DataOption {
         T::option_ctor(cdo)
@@ -417,7 +433,9 @@ pub trait VecArgLadder: Sized {
     type Raise: VecArgLadder;
     type Lower: VecArgLadder;
     fn tlo_ctor() -> fn(Vec<Self>) -> TopLevelOption;
-    fn make(name: &'static str, desc: &'static str, lower_options: Vec<Self::Lower>) -> Self;
+    fn make<N, D>(name: N, desc: D, lower_options: Vec<Self::Lower>) -> Self
+        where N: Into<Cow<'static, str>>,
+              D: Into<Cow<'static, str>>;
 }
 
 impl VecArgLadder for Highest {
@@ -429,7 +447,9 @@ impl VecArgLadder for Highest {
         unreachable!("should never have a `Highest`")
     }
 
-    fn make(_: &'static str, _: &'static str, _: Vec<Self::Lower>) -> Self {
+    fn make<N, D>(_: N, _: D, _: Vec<Self::Lower>) -> Self
+        where N: Into<Cow<'static, str>>,
+              D: Into<Cow<'static, str>> {
         unreachable!("should never have a `Highest`")
     }
 }
@@ -442,8 +462,10 @@ impl VecArgLadder for SubCommandGroup {
         TopLevelOption::Groups
     }
 
-    fn make(name: &'static str, desc: &'static str, lower_options: Vec<Self::Lower>) -> Self {
-        Self { name, description: desc, sub_commands: lower_options }
+    fn make<N, D>(name: N, desc: D, lower_options: Vec<Self::Lower>) -> Self
+        where N: Into<Cow<'static, str>>,
+              D: Into<Cow<'static, str>> {
+        Self { name: name.into(), description: desc.into(), sub_commands: lower_options }
     }
 }
 
@@ -455,8 +477,10 @@ impl VecArgLadder for SubCommand {
         TopLevelOption::Commands
     }
 
-    fn make(name: &'static str, desc: &'static str, lower_options: Vec<Self::Lower>) -> Self {
-        Self { name, description: desc, options: lower_options }
+    fn make<N, D>(name: N, desc: D, lower_options: Vec<Self::Lower>) -> Self
+        where N: Into<Cow<'static, str>>,
+              D: Into<Cow<'static, str>> {
+        Self { name: name.into(), description: desc.into(), options: lower_options }
     }
 }
 
@@ -468,7 +492,9 @@ impl VecArgLadder for DataOption {
         TopLevelOption::Data
     }
 
-    fn make(_name: &'static str, _desc: &'static str, _: Vec<Self::Lower>) -> Self {
+    fn make<N, D>(_: N, _: D, _: Vec<Self::Lower>) -> Self
+        where N: Into<Cow<'static, str>>,
+              D: Into<Cow<'static, str>> {
         // Self::String(CommandDataOption::new(name, desc))
         unimplemented!("this should be covered by the proc-macro for structs?")
     }
@@ -483,7 +509,9 @@ impl VecArgLadder for Lowest {
         unreachable!("should never have a `Lowest`")
     }
 
-    fn make(_: &'static str, _: &'static str, _: Vec<Self::Lower>) -> Self {
+    fn make<N, D>(_: N, _: D, _: Vec<Self::Lower>) -> Self
+        where N: Into<Cow<'static, str>>,
+              D: Into<Cow<'static, str>> {
         unreachable!("should never have a `Lowest`")
     }
 }
@@ -499,7 +527,9 @@ impl VecArgLadder for () {
         ctor
     }
 
-    fn make(_: &'static str, _: &'static str, _: Vec<Self::Lower>) -> Self {
+    fn make<N, D>(_: N, _: D, _: Vec<Self::Lower>) -> Self
+        where N: Into<Cow<'static, str>>,
+              D: Into<Cow<'static, str>> {
         unimplemented!()
     }
 }
@@ -626,7 +656,7 @@ impl VarargState {
 /// the big boi himself
 pub trait CommandData<Command: SlashCommandRaw>: Sized {
     type Options: OptionsLadder + Send;
-    /// function to go from (the options in a) InteractionData -> Self
+    /// function to go from (the options in a) `InteractionData` -> Self
     fn from_options(options: Self::Options) -> Result<Self, CommandParseError>;
 
     type VecArg: VecArgLadder;
@@ -634,9 +664,12 @@ pub trait CommandData<Command: SlashCommandRaw>: Sized {
     //  do I ever actually return vec![one] or just do I always panic?
     /// functionality to got from Self -> Command for sending to Discord
     fn make_args(command: &Command) -> Vec<Self::VecArg>;
-    #[allow(unused_variables)]
-    fn make_choices(command: &Command) -> Vec<CommandChoice<&'static str>> {
+    type Choice;
+    fn make_choices() -> Vec<Self::Choice> {
         Vec::new()
+    }
+    fn into_command_choice(self) -> CommandChoice<&'static str> {
+        unreachable!("todo this whole shabang could be less ugly")
     }
     fn vararg_number() -> VarargState { VarargState::None }
 }
@@ -654,6 +687,8 @@ impl<Command: SlashCommandRaw> CommandData<Command> for () {
     fn make_args(_: &Command) -> Vec<Self::VecArg> {
         Vec::new()
     }
+
+    type Choice = ();
 }
 
 // impl for some containers
@@ -671,11 +706,13 @@ impl<C: SlashCommandRaw, T: CommandData<C>> CommandData<C> for Option<T> {
     fn make_args(command: &C) -> Vec<Self::VecArg> {
         T::make_args(command)
     }
+
+    type Choice = T::Choice;
 }
 
 impl<T, C, S> CommandData<C> for HashSet<T, S>
     where
-        T: CommandData<C, VecArg=DataOption, Options=ValueOption> + Eq + Hash,
+        T: CommandData<C, VecArg=DataOption, Options=ValueOption, Choice=T> + Eq + Hash,
         C: SlashCommandRaw,
         S: BuildHasher + Default,
 {
@@ -691,8 +728,9 @@ impl<T, C, S> CommandData<C> for HashSet<T, S>
         T::make_args(c)
     }
 
-    fn make_choices(c: &C) -> Vec<CommandChoice<&'static str>> {
-        T::make_choices(c)
+    type Choice = T;
+    fn make_choices() -> Vec<T> {
+        T::make_choices()
     }
 
     fn vararg_number() -> VarargState {
@@ -702,7 +740,7 @@ impl<T, C, S> CommandData<C> for HashSet<T, S>
 
 impl<T, C> CommandData<C> for BTreeSet<T>
     where
-        T: CommandData<C, VecArg=DataOption, Options=ValueOption> + Ord,
+        T: CommandData<C, VecArg=DataOption, Options=ValueOption, Choice=T> + Ord,
         C: SlashCommandRaw,
 {
     type Options = Vec<ValueOption>;
@@ -717,8 +755,9 @@ impl<T, C> CommandData<C> for BTreeSet<T>
         T::make_args(c)
     }
 
-    fn make_choices(c: &C) -> Vec<CommandChoice<&'static str>> {
-        T::make_choices(c)
+    type Choice = T;
+    fn make_choices() -> Vec<T> {
+        T::make_choices()
     }
 
     fn vararg_number() -> VarargState {
@@ -729,7 +768,7 @@ impl<T, C> CommandData<C> for BTreeSet<T>
 #[allow(clippy::use_self)]
 impl<T, C> CommandData<C> for Vec<T>
     where
-        T: CommandData<C, VecArg=DataOption, Options=ValueOption>,
+        T: CommandData<C, VecArg=DataOption, Options=ValueOption, Choice=T>,
         C: SlashCommandRaw,
 {
     type Options = Vec<ValueOption>;
@@ -744,8 +783,9 @@ impl<T, C> CommandData<C> for Vec<T>
         T::make_args(c)
     }
 
-    fn make_choices(command: &C) -> Vec<CommandChoice<&'static str>> {
-        T::make_choices(command)
+    type Choice = T;
+    fn make_choices() -> Vec<T> {
+        T::make_choices()
     }
 
     fn vararg_number() -> VarargState {
@@ -755,7 +795,7 @@ impl<T, C> CommandData<C> for Vec<T>
 
 impl<T, C, const N: usize> CommandData<C> for [T; N]
     where
-        T: CommandData<C, VecArg=DataOption, Options=ValueOption>,
+        T: CommandData<C, VecArg=DataOption, Options=ValueOption, Choice=T>,
         C: SlashCommandRaw,
 {
     type Options = Vec<ValueOption>;
@@ -773,8 +813,9 @@ impl<T, C, const N: usize> CommandData<C> for [T; N]
         T::make_args(command)
     }
 
-    fn make_choices(command: &C) -> Vec<CommandChoice<&'static str>> {
-        T::make_choices(command)
+    type Choice = T;
+    fn make_choices() -> Vec<T> {
+        T::make_choices()
     }
 
     fn vararg_number() -> VarargState {

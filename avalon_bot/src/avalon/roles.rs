@@ -99,18 +99,18 @@ fn add_count(command: &RolesCommand) -> usize {
     Character::COUNT - 2 - command.0.len()
 }
 
-fn add_choice(command: &RolesCommand, choice: &CommandChoice<&'static str>) -> bool {
-    choice.value != LoyalServant &&
-        choice.value != MinionOfMordred &&
-        !command.0.iter().any(|c| choice.value == c)
+fn add_choice(command: &RolesCommand, choice: Character) -> bool {
+    choice != LoyalServant &&
+        choice != MinionOfMordred &&
+        !command.0.iter().any(|&c| choice == c)
 }
 
 fn remove_count(command: &RolesCommand) -> usize {
     command.0.len()
 }
 
-fn remove_choice(command: &RolesCommand, choice: &CommandChoice<&'static str>) -> bool {
-    command.0.iter().any(|c| choice.value == c)
+fn remove_choice(command: &RolesCommand, choice: Character) -> bool {
+    command.0.iter().any(|&c| choice == c)
 }
 
 fn add_roles(command: &RolesCommand) -> bool {

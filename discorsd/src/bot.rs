@@ -71,6 +71,21 @@ impl<B: Send + Sync> AsRef<Self> for BotState<B> {
 }
 
 impl<B: Send + Sync> BotState<B> {
+    // todo
+    // #[cfg(test)]
+    pub fn testing_state(bot: B) -> Arc<Self> {
+        Arc::new(Self {
+            client: DiscordClient::single(String::new()),
+            cache: Default::default(),
+            bot,
+            commands: Default::default(),
+            command_names: Default::default(),
+            global_commands: Default::default(),
+            global_command_names: Default::default(),
+            reaction_commands: Default::default(),
+        })
+    }
+
     /// Gets the current [`User`](User).
     ///
     /// # Panics

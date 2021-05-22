@@ -13,14 +13,15 @@ pub fn enum_impl(ty: &Ident, data: DataEnum) -> TokenStream2 {
         .map(Variant::from)
         .collect();
     let choices = variants.choices();
+    let to_command_choice_branches = variants.to_command_choice_branches();
     let branches = variants.branches();
     let variants_array = variants.array();
     let default_impl = variants.default_impl(ty);
-    let eq_branches = variants.eq_branches();
 
     let tokens = quote! {
         impl ::discorsd::commands::OptionCtor for #ty {
             type Data = &'static str;
+            const ARG_NAME: &'static str = stringify!(#ty);
 
             fn option_ctor(
                 cdo: ::discorsd::commands::CommandDataOption<Self::Data>
@@ -49,38 +50,21 @@ pub fn enum_impl(ty: &Ident, data: DataEnum) -> TokenStream2 {
             type VecArg = ::discorsd::commands::DataOption;
 
             fn make_args(_: &C) -> Vec<Self::VecArg> { Vec::new() }
-            fn make_choices(_: &C) -> Vec<::discorsd::model::interaction::CommandChoice<&'static str>> {
+            // fn make_choices() -> Vec<::discorsd::model::interaction::CommandChoice<&'static str>> {
+            //     vec![#choices]
+            // }
+            type Choice = Self;
+            fn make_choices() -> Vec<Self> {
                 vec![#choices]
             }
-        }
-
-        #default_impl
-
-        impl<'a> PartialEq<&'a str> for #ty {
-            fn eq(&self, other: &&'a str) -> bool {
+            fn into_command_choice(self) -> ::discorsd::commands::CommandChoice<&'static str> {
                 match self {
-                    #eq_branches
+                    #to_command_choice_branches
                 }
             }
         }
 
-        impl<'a> PartialEq<#ty> for &'a str {
-            fn eq(&self, other: &#ty) -> bool {
-                other == self
-            }
-        }
-
-        impl PartialEq<str> for #ty {
-            fn eq(&self, other: &str) -> bool {
-                self == &other
-            }
-        }
-
-        impl PartialEq<#ty> for str {
-            fn eq(&self, other: &#ty) -> bool {
-                other == &self
-            }
-        }
+        #default_impl
     };
     tokens
 }
@@ -121,14 +105,20 @@ struct Enum(Vec<Variant>);
 impl Enum {
     fn choices(&self) -> TokenStream2 {
         let choices = self.0.iter().map(|v| {
-            let name = v.choice.as_ref().map_or_else(|| v.ident.to_string(), LitStr::value);
-            let span = v.ident.span();
-            let value = v.name();
-            quote_spanned! { span => ::discorsd::model::interaction::CommandChoice::new(#name, #value) }
+            let ident = &v.ident;
+            quote_spanned! { ident.span() => Self::#ident }
         });
-        quote! {
-            #(#choices),*
-        }
+        quote! { #(#choices),* }
+    }
+
+    fn to_command_choice_branches(&self) -> TokenStream2 {
+        let branches = self.0.iter().map(|v| {
+            let ident = &v.ident;
+            let name = v.choice.as_ref().map_or_else(|| v.ident.to_string(), LitStr::value);
+            let value = v.name();
+            quote! { Self::#ident => ::discorsd::model::interaction::CommandChoice::new(#name, #value) }
+        });
+        quote! { #(#branches),* }
     }
 
     fn branches(&self) -> TokenStream2 {
@@ -168,17 +158,6 @@ impl Enum {
                     format!("Only one variant can be marked default (`{}` all are)", variants),
                 )
             }
-        }
-    }
-
-    fn eq_branches(&self) -> TokenStream2 {
-        let branches = self.0.iter().map(|v| {
-            let ident = &v.ident;
-            let name = v.name();
-            quote_spanned! { v.ident.span() => Self::#ident => *other == #name }
-        });
-        quote! {
-            #(#branches,)*
         }
     }
 }

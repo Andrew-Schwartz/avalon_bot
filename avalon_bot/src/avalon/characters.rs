@@ -3,13 +3,13 @@ use std::fmt;
 use std::path::PathBuf;
 
 use once_cell::sync::Lazy;
-use strum::{EnumCount, EnumIter, EnumString};
+use strum::EnumCount;
 
 use Character::*;
 use command_data_derive::CommandDataChoices;
 use discorsd::model::message::Color;
 
-#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, EnumIter, EnumString, EnumCount, CommandDataChoices)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug, EnumCount, CommandDataChoices)]
 pub enum Character {
     LoyalServant,
     MinionOfMordred,

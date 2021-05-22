@@ -3,7 +3,6 @@ use std::convert::TryFrom;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::model::channel::ChannelType;
 use crate::model::emoji::Emoji;
@@ -157,27 +156,26 @@ impl From<&Message> for ChannelMessageId {
 //     }
 // }
 
-#[derive(Deserialize_repr, Serialize_repr, Debug, Clone)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum MessageType {
-    Default = 0,
-    RecipientAdd = 1,
-    RecipientRemove = 2,
-    Call = 3,
-    ChannelNameChange = 4,
-    ChannelIconChange = 5,
-    ChannelPinnedMessage = 6,
-    GuildMemberJoin = 7,
-    UserPremiumGuildSubscription = 8,
-    UserPremiumGuildSubscriptionTier1 = 9,
-    UserPremiumGuildSubscriptionTier2 = 10,
-    UserPremiumGuildSubscriptionTier3 = 11,
-    ChannelFollowAdd = 12,
-    GuildDiscoveryDisqualified = 14,
-    GuildDiscoveryRequalified = 15,
-    Reply = 19,
-    ApplicationCommand = 20,
+serde_repr! {
+    pub enum MessageType: u8 {
+        Default = 0,
+        RecipientAdd = 1,
+        RecipientRemove = 2,
+        Call = 3,
+        ChannelNameChange = 4,
+        ChannelIconChange = 5,
+        ChannelPinnedMessage = 6,
+        GuildMemberJoin = 7,
+        UserPremiumGuildSubscription = 8,
+        UserPremiumGuildSubscriptionTier1 = 9,
+        UserPremiumGuildSubscriptionTier2 = 10,
+        UserPremiumGuildSubscriptionTier3 = 11,
+        ChannelFollowAdd = 12,
+        GuildDiscoveryDisqualified = 14,
+        GuildDiscoveryRequalified = 15,
+        Reply = 19,
+        ApplicationCommand = 20,
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -190,14 +188,13 @@ pub struct MessageActivity {
     pub party_id: Option<String>,
 }
 
-#[derive(Deserialize_repr, Serialize_repr, Debug, Clone)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum MessageActivityType {
-    Join = 1,
-    Spectate = 2,
-    Listen = 3,
-    JoinRequest = 5,
+serde_repr! {
+    pub enum MessageActivityType: u8 {
+        Join = 1,
+        Spectate = 2,
+        Listen = 3,
+        JoinRequest = 5,
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -288,13 +285,13 @@ pub struct Sticker {
 }
 id_impl!(Sticker => StickerId);
 
-#[derive(Deserialize_repr, Serialize_repr, Debug, Clone)]
-#[repr(u8)]
-#[allow(clippy::upper_case_acronyms)]
-pub enum StickerFormatType {
-    PNG = 1,
-    APNG = 2,
-    LOTTIE = 3,
+serde_repr! {
+    #[allow(clippy::upper_case_acronyms)]
+    pub enum StickerFormatType: u8 {
+        PNG = 1,
+        APNG = 2,
+        LOTTIE = 3,
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

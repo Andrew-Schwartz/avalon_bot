@@ -84,7 +84,7 @@ impl ClientError {
     }
 }
 
-/// Display a [ClientError] with more context.
+/// Display a [`ClientError`] with more context.
 pub enum DisplayClientError<'a> {
     Request(&'a reqwest::Error),
     Http(String),
@@ -107,7 +107,7 @@ impl Display for DisplayClientError<'_> {
     }
 }
 
-/// Result where the error type is [ClientError].
+/// Result where the error type is [`ClientError`].
 pub type ClientResult<T> = Result<T, ClientError>;
 
 /// Handles performing requests to Discord's api, managing your Bot's token and Discord's rate
@@ -444,7 +444,7 @@ impl ImageData {
     ///
     /// Errors if the the file at `path` isn't one of the supported image types (which are png, jpg, and
     /// gif), or if [`std::fs::read`](std::fs::read) fails
-    pub async fn hash_image<P: AsRef<Path>>(path: P) -> Result<Self, ImageHashError> {
+    pub async fn hash_image<P: AsRef<Path> + Send>(path: P) -> Result<Self, ImageHashError> {
         let path = path.as_ref();
         let image = path.extension()
             .and_then(OsStr::to_str)

@@ -4,7 +4,6 @@ use std::fmt::{self, Display};
 use serde::{de, Deserialize, Serialize, Serializer};
 use serde::ser::{Error, SerializeMap};
 use serde_json::value::RawValue;
-use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::model::emoji::Emoji;
 use crate::model::ids::{ApplicationId, ChannelId, GuildId, UserId};
@@ -506,22 +505,22 @@ impl Activity {
     }
 }
 
-#[derive(Deserialize_repr, Serialize_repr, Debug, Clone)]
-#[repr(u8)]
-pub enum ActivityType {
-    /// Format: `Playing {name}`
-    Game = 0,
-    /// Format: `Streaming {details}`
-    ///
-    /// The streaming type currently only supports Twitch and YouTube. Only https://twitch.tv/ and
-    /// https://youtube.com/ urls will work.
-    Steaming = 1,
-    /// Format: `Listening to {name}`
-    Listening = 2,
-    /// Format: `{emoji} {name}`
-    Custom = 4,
-    /// Format: `Competing in {name}`
-    Competing = 5,
+serde_repr! {
+    pub enum ActivityType: u8 {
+        /// Format: `Playing {name}`
+        Game = 0,
+        /// Format: `Streaming {details}`
+        ///
+        /// The streaming type currently only supports Twitch and YouTube. Only https://twitch.tv/ and
+        /// https://youtube.com/ urls will work.
+        Steaming = 1,
+        /// Format: `Listening to {name}`
+        Listening = 2,
+        /// Format: `{emoji} {name}`
+        Custom = 4,
+        /// Format: `Competing in {name}`
+        Competing = 5,
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

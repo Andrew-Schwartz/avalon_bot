@@ -6,7 +6,6 @@ use serde::{de, Deserialize, Serialize, Serializer};
 use serde::de::Unexpected;
 use serde::ser::SerializeStruct;
 use serde_json::value::RawValue;
-use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::model::ids::*;
 pub use crate::model::ids::ChannelId;
@@ -420,26 +419,26 @@ impl From<StoreChannel> for Channel {
     }
 }
 
-#[derive(Serialize_repr, Deserialize_repr, Debug, TryFromPrimitive, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum ChannelType {
-    /// a text channel within a server
-    GuildText = 0,
-    /// a direct message between users
-    Dm = 1,
-    /// a voice channel within a server
-    GuildVoice = 2,
-    /// a direct message between multiple users
-    GroupDm = 3,
-    /// an [organizational category](https://support.discord.com/hc/en-us/articles/115001580171-Channel-Categories-101)
-    /// that contains up to 50 channels
-    GuildCategory = 4,
-    /// a channel that [users can follow and crosspost into their own server](https://support.discord.com/hc/en-us/articles/360032008192)
-    GuildNews = 5,
-    /// a channel in which game developers can
-    /// [sell their game on Discord](https://discord.com/developers/docs/game-and-server-management/special-channels)
-    GuildStore = 6,
+serde_repr! {
+    #[derive(TryFromPrimitive)]
+    pub enum ChannelType: u8 {
+        /// a text channel within a server
+        GuildText = 0,
+        /// a direct message between users
+        Dm = 1,
+        /// a voice channel within a server
+        GuildVoice = 2,
+        /// a direct message between multiple users
+        GroupDm = 3,
+        /// an [organizational category](https://support.discord.com/hc/en-us/articles/115001580171-Channel-Categories-101)
+        /// that contains up to 50 channels
+        GuildCategory = 4,
+        /// a channel that [users can follow and crosspost into their own server](https://support.discord.com/hc/en-us/articles/360032008192)
+        GuildNews = 5,
+        /// a channel in which game developers can
+        /// [sell their game on Discord](https://discord.com/developers/docs/game-and-server-management/special-channels)
+        GuildStore = 6,
+    }
 }
 
 pub trait ChannelMarkupExt: Id<Id=ChannelId> {

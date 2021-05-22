@@ -397,7 +397,7 @@ impl Update for ChannelPinsUpdate {
 /// This event can be sent in three different scenarios:
 /// 1. When a user is initially connecting, to lazily load and backfill information for all
 /// unavailable guilds sent in the [Ready] event. Guilds that are unavailable due to an outage will
-/// send a [GuildDelete] event.
+/// send a [`GuildDelete`] event.
 /// 2. When a [Guild] becomes available again to the client.
 /// 3. When the current user joins a new Guild.
 /// The inner payload is a [Guild], with all the extra fields specified.
@@ -697,7 +697,8 @@ impl Update for GuildMemberRemove {
 
 /// Sent when a guild member is updated. This will also fire when the user of a guild member changes.
 ///
-/// [`GUILD_MEMBERS`](crate::shard::intents::Intents::GUILD_MEMBERS) is required to receive this.
+/// The [`GUILD_MEMBERS`](crate::shard::intents::Intents::GUILD_MEMBERS) intent is required to
+/// receive this.
 #[derive(Deserialize, Debug, Clone)]
 pub struct GuildMemberUpdate {
     /// the id of the guild

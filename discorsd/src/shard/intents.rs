@@ -22,8 +22,7 @@ bitflags! {
         const DIRECT_MESSAGE_REACTIONS = 1 << 13;
         const DIRECT_MESSAGE_TYPING = 1 << 14;
 
-        const PRIVELEGED = Intents::GUILD_PRESENCES.bits | Intents::GUILD_MEMBERS.bits;
+        const PRIVELEGED = Self::GUILD_PRESENCES.bits | Self::GUILD_MEMBERS.bits;
     }
 }
-// #[allow(clippy::use_self)]
 serde_bitflag!(Intents: u16);

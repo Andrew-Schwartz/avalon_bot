@@ -138,7 +138,7 @@ impl Permissions {
         let everyone = cache.everyone_role(&guild).await;
 
         let base_permissions = Self::base_permissions(
-            cache, &member, channel.guild_id().unwrap(), &everyone,
+            cache, member, channel.guild_id().unwrap(), &everyone,
         ).await;
         base_permissions.overwrites(member, channel, &everyone).await
     }

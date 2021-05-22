@@ -88,6 +88,7 @@ pub trait SlashCommand: Sized + Send + Sync + Debug + Downcast + DynClone + Slas
     /// [`Deferred`](Deferred) if the [`run`](Self::run) method only
     /// [`defer`](InteractionUse::<Unused>::defer)s the interaction, to automatically delete the
     /// interaction after the [`run`](Self::run) method finishes.
+    // todo this probably is not worth it
     type Use: NotUnused + Send;
 
     /// The name that this command is invoked in Discord with.

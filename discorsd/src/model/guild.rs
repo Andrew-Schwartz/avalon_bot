@@ -2,7 +2,6 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
-use serde_repr::*;
 
 use crate::cache::IdMap;
 use crate::model::{ImageFormat, StillImage};
@@ -189,55 +188,50 @@ impl Guild {
     }
 }
 
-#[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum NotificationLevel {
-    AllMessage = 0,
-    OnlyMentions = 1,
+serde_repr! {
+    pub enum NotificationLevel: u8 {
+        AllMessage = 0,
+        OnlyMentions = 1,
+    }
 }
 
-#[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum ExplicitFilterLevel {
-    Disabled = 0,
-    MembersWithoutRoles = 1,
-    AllMembers = 2,
+serde_repr! {
+    pub enum ExplicitFilterLevel: u8 {
+        Disabled = 0,
+        MembersWithoutRoles = 1,
+        AllMembers = 2,
+    }
 }
 
-#[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum MfaLevel {
-    None = 0,
-    Elevated = 1,
+serde_repr! {
+    pub enum MfaLevel: u8 {
+        None = 0,
+        Elevated = 1,
+    }
 }
 
-#[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum VerificationLevel {
-    /// unrestricted
-    None = 0,
-    /// must have verified email on account
-    Low = 1,
-    /// must be registered on Discord for longer than 5 minutes
-    Medium = 2,
-    /// must be a member of the server for longer than 10 minutes
-    High = 3,
-    /// must have a verified phone number
-    VeryHigh = 4,
+serde_repr! {
+    pub enum VerificationLevel: u8 {
+        /// unrestricted
+        None = 0,
+        /// must have verified email on account
+        Low = 1,
+        /// must be registered on Discord for longer than 5 minutes
+        Medium = 2,
+        /// must be a member of the server for longer than 10 minutes
+        High = 3,
+        /// must have a verified phone number
+        VeryHigh = 4,
+    }
 }
 
-#[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum PremiumTier {
-    None = 0,
-    Tier1 = 1,
-    Tier2 = 2,
-    Tier3 = 3,
+serde_repr! {
+    pub enum PremiumTier: u8 {
+        None = 0,
+        Tier1 = 1,
+        Tier2 = 2,
+        Tier3 = 3,
+    }
 }
 
 bitflags! {
@@ -439,12 +433,11 @@ pub struct Integration {
 }
 id_impl!(Integration => IntegrationId);
 
-#[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum ExpireBehavior {
-    RemoveRole = 0,
-    Kick = 1,
+serde_repr! {
+    pub enum ExpireBehavior: u8 {
+        RemoveRole = 0,
+        Kick = 1,
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

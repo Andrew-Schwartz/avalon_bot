@@ -9,7 +9,6 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::ser::SerializeSeq;
-use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::cache::IdMap;
 use crate::errors::{CommandOptionTypeParsed, OptionType};
@@ -190,9 +189,9 @@ impl Serialize for TopLevelOption {
 #[derive(Debug, Clone)]
 pub struct SubCommand {
     /// 1-32 character name
-    pub name: &'static str,
+    pub name: Cow<'static, str>,
     /// 1-100 character description
-    pub description: &'static str,
+    pub description: Cow<'static, str>,
     /// the parameters to this subcommand
     pub options: Vec<DataOption>,
 }
@@ -201,8 +200,8 @@ impl Serialize for SubCommand {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         SerializeOption {
             kind: ApplicationCommandOptionType::SubCommand,
-            name: self.name.into(),
-            description: self.description.into(),
+            name: self.name.clone(),
+            description: self.description.clone(),
             default: false,
             required: false,
             choices: vec![],
@@ -214,9 +213,9 @@ impl Serialize for SubCommand {
 #[derive(Debug, Clone)]
 pub struct SubCommandGroup {
     /// 1-32 character name
-    pub name: &'static str,
+    pub name: Cow<'static, str>,
     /// 1-100 character description
-    pub description: &'static str,
+    pub description: Cow<'static, str>,
     /// the subcommands in this subcommand group
     pub sub_commands: Vec<SubCommand>,
 }
@@ -225,8 +224,8 @@ impl Serialize for SubCommandGroup {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         SerializeOption {
             kind: ApplicationCommandOptionType::SubCommandGroup,
-            name: self.name.into(),
-            description: self.description.into(),
+            name: self.name.clone(),
+            description: self.description.clone(),
             default: false,
             required: false,
             choices: vec![],
@@ -422,6 +421,7 @@ impl<T> CommandChoice<T> {
     }
 }
 
+// to help with type inference
 impl CommandChoice<&'static str> {
     pub fn new_str(name_value: &'static str) -> Self {
         Self::new(name_value, name_value)
@@ -543,13 +543,13 @@ mod tests {
             "Get or edit permissions for a user or a role",
             TopLevelOption::Groups(vec![
                 SubCommandGroup {
-                    name: "user",
-                    description: "Get or edit permissions for a user",
+                    name: "user".into(),
+                    description: "Get or edit permissions for a user".into(),
                     sub_commands: vec![],
                 },
                 SubCommandGroup {
-                    name: "role",
-                    description: "Get or edit permissions for a role",
+                    name: "role".into(),
+                    description: "Get or edit permissions for a role".into(),
                     sub_commands: vec![],
                 }
             ]),
@@ -607,33 +607,33 @@ mod tests {
             "Get or edit permissions for a user or a role",
             TopLevelOption::Groups(vec![
                 SubCommandGroup {
-                    name: "user",
-                    description: "Get or edit permissions for a user",
+                    name: "user".into(),
+                    description: "Get or edit permissions for a user".into(),
                     sub_commands: vec![
                         SubCommand {
-                            name: "get",
-                            description: "Get permissions for a user",
+                            name: "get".into(),
+                            description: "Get permissions for a user".into(),
                             options: vec![],
                         },
                         SubCommand {
-                            name: "edit",
-                            description: "Edit permissions for a user",
+                            name: "edit".into(),
+                            description: "Edit permissions for a user".into(),
                             options: vec![],
                         }
                     ],
                 },
                 SubCommandGroup {
-                    name: "role",
-                    description: "Get or edit permissions for a role",
+                    name: "role".into(),
+                    description: "Get or edit permissions for a role".into(),
                     sub_commands: vec![
                         SubCommand {
-                            name: "get",
-                            description: "Get permissions for a role",
+                            name: "get".into(),
+                            description: "Get permissions for a role".into(),
                             options: vec![],
                         },
                         SubCommand {
-                            name: "edit",
-                            description: "Edit permissions for a role",
+                            name: "edit".into(),
+                            description: "Edit permissions for a role".into(),
                             options: vec![],
                         }
                     ],
@@ -745,12 +745,12 @@ mod tests {
             "Get or edit permissions for a user or a role",
             TopLevelOption::Groups(vec![
                 SubCommandGroup {
-                    name: "user",
-                    description: "Get or edit permissions for a user",
+                    name: "user".into(),
+                    description: "Get or edit permissions for a user".into(),
                     sub_commands: vec![
                         SubCommand {
-                            name: "get",
-                            description: "Get permissions for a user",
+                            name: "get".into(),
+                            description: "Get permissions for a user".into(),
                             options: vec![
                                 DataOption::User(CommandDataOption::new(
                                     "user",
@@ -763,8 +763,8 @@ mod tests {
                             ],
                         },
                         SubCommand {
-                            name: "edit",
-                            description: "Edit permissions for a user",
+                            name: "edit".into(),
+                            description: "Edit permissions for a user".into(),
                             options: vec![
                                 DataOption::User(CommandDataOption::new(
                                     "user",
@@ -779,12 +779,12 @@ mod tests {
                     ],
                 },
                 SubCommandGroup {
-                    name: "role",
-                    description: "Get or edit permissions for a role",
+                    name: "role".into(),
+                    description: "Get or edit permissions for a role".into(),
                     sub_commands: vec![
                         SubCommand {
-                            name: "get",
-                            description: "Get permissions for a role",
+                            name: "get".into(),
+                            description: "Get permissions for a role".into(),
                             options: vec![
                                 DataOption::Role(CommandDataOption::new(
                                     "role",
@@ -797,8 +797,8 @@ mod tests {
                             ],
                         },
                         SubCommand {
-                            name: "edit",
-                            description: "Edit permissions for a role",
+                            name: "edit".into(),
+                            description: "Edit permissions for a role".into(),
                             options: vec![
                                 DataOption::Role(CommandDataOption::new(
                                     "role",
@@ -887,18 +887,17 @@ pub struct ApplicationCommandOption {
 }
 
 // honestly this would probably be best as a generic I think?
-#[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum ApplicationCommandOptionType {
-    SubCommand = 1,
-    SubCommandGroup = 2,
-    String = 3,
-    Integer = 4,
-    Boolean = 5,
-    User = 6,
-    Channel = 7,
-    Role = 8,
+serde_repr! {
+    pub enum ApplicationCommandOptionType: u8 {
+        SubCommand = 1,
+        SubCommandGroup = 2,
+        String = 3,
+        Integer = 4,
+        Boolean = 5,
+        User = 6,
+        Channel = 7,
+        Role = 8,
+    }
 }
 
 /// If you specify `choices` for an option, they are the **only** valid values for a user to pick
@@ -1170,12 +1169,11 @@ impl InteractionSource {
     }
 }
 
-#[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum InteractionType {
-    Ping = 1,
-    ApplicationCommand = 2,
+serde_repr! {
+    pub enum InteractionType: u8 {
+        Ping = 1,
+        ApplicationCommand = 2,
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Eq, PartialEq)]
@@ -1186,7 +1184,7 @@ pub struct InteractionData {
     pub options: InteractionDataOption,
 }
 
-#[derive(/*Deserialize,*/ Serialize, Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize, Debug, Clone, Eq, PartialEq)]
 pub struct GroupOption {
     pub name: String,
     pub lower: CommandOption,

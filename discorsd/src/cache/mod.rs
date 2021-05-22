@@ -46,7 +46,7 @@ pub struct Cache {
 }
 
 impl Cache {
-    /// Gets the bot's [ApplicationId].
+    /// Gets the bot's [`ApplicationId`].
     ///
     /// # Panics
     ///

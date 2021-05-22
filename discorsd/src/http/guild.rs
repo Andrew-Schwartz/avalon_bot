@@ -1,4 +1,7 @@
 //! Discord API requests involving guilds.
+//!
+//! Use these [`impl DiscordClient`](../struct.DiscordClient.html#impl-1) methods for the low level api
+//! for channel related requests.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -12,17 +15,17 @@ use crate::model::ids::{CommandId, GuildId, Id, RoleId, UserId};
 use crate::model::message::Color;
 use crate::model::permissions::{Permissions, Role};
 
+/// Guild related http requests
 impl DiscordClient {
-    /// Returns a [GuildMember](GuildMember) for the specified user.
+    /// Returns a [`GuildMember`] for the specified user.
     pub async fn get_guild_member(&self, guild: GuildId, user: UserId) -> ClientResult<GuildMember> {
         self.get(GetGuildMember(guild, user)).await
     }
 
-    // todo link docs
     /// Adds a role to a guild member.
-    /// Requires the [Permissions::MANAGE_ROLES](Permissions::MANAGE_ROLES) permission
+    /// Requires the [`MANAGE_ROLES`](Permissions::MANAGE_ROLES) permission
     ///
-    /// Fires a Guild Member Update Gateway event.
+    /// Fires a [`GuildMemberUpdate`](crate::shard::dispatch::GuildMemberUpdate) Gateway event.
     pub async fn add_guild_member_role(
         &self,
         guild: GuildId,
@@ -33,9 +36,9 @@ impl DiscordClient {
     }
 
     /// Removes a role to a guild member.
-    /// Requires the [Permissions::MANAGE_ROLES](Permissions::MANAGE_ROLES) permission
+    /// Requires the [`MANAGE_ROLES`](Permissions::MANAGE_ROLES) permission
     ///
-    /// Fires a Guild Member Update Gateway event.
+    /// Fires a [`GuildMemberUpdate`](crate::shard::dispatch::GuildMemberUpdate) Gateway event.
     pub async fn remove_guild_member_role(
         &self,
         guild: GuildId,
@@ -50,15 +53,18 @@ impl DiscordClient {
         self.get(GetGuildRoles(guild)).await
     }
 
-    /// Create a new role for the guild. Requires the [Permissions::MANAGE_ROLES](Permissions::MANAGE_ROLES) permission.
+    /// Create a new role for the guild. Requires the [`MANAGE_ROLES`](Permissions::MANAGE_ROLES)
+    /// permission.
     ///
-    /// Fires a Guild Role Create Gateway event.
+    /// Fires a [`GuildMemberUpdate`](crate::shard::dispatch::GuildMemberUpdate) Gateway event.
     pub async fn create_guild_role(&self, guild: GuildId, role: CreateRole) -> ClientResult<Role> {
         self.post(CreateGuildRole(guild), role).await
     }
 }
 
-// todo more of these (only getters, since other ones trigger events)
+// todo more of these (only getters, since other ones trigger events), also document this in the
+//  mod level docs
+/// Guild related caching http requests
 impl<B: Send + Sync + 'static> BotState<B> {
     pub async fn cache_guild_member(&self, guild: GuildId, user: UserId) -> ClientResult<GuildMember> {
         let member = self.client.get_guild_member(guild, user).await?;
@@ -69,6 +75,7 @@ impl<B: Send + Sync + 'static> BotState<B> {
     }
 }
 
+/// Data needed to create a new role in a guild, with the [`DiscordClient::create_guild_role`] method.
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct CreateRole {
     /// name of the role
@@ -93,41 +100,52 @@ pub struct CreateRole {
     pub mentionable: bool,
 }
 
-impl CreateRole {
-    pub fn new<N: Into<String>>(name: N) -> Self {
-        Self { name: Some(name.into()), ..Self::default() }
-    }
-
-    pub const fn color(mut self, color: Color) -> Self {
-        self.color = Some(color);
-        self
-    }
-}
-
-// todo impl a similar trait on guild
+// todo impl a similar trait on guild?
 #[async_trait]
-pub trait CommandPermsExt {
+pub trait CommandPermsExt: Id<Id=CommandId> + Sized {
     async fn edit_permissions<B, State>(
-        // todo should this really take mut self?
-        &self,
+        self,
         state: State,
         guild: GuildId,
         permissions: Vec<CommandPermissions>,
     ) -> ClientResult<()>
         where B: Send + Sync + 'static,
-              State: AsRef<BotState<B>> + Send;
+              State: AsRef<BotState<B>> + Send
+    {
+        let state = state.as_ref();
+        let id = self.id();
+        state.client.edit_application_command_permissions(
+            state.application_id(),
+            guild,
+            id,
+            permissions,
+        ).await
+    }
 
     async fn default_permissions<B, State>(
-        &self,
+        self,
         state: State,
         guild: GuildId,
         usable: bool,
     ) -> ClientResult<ApplicationCommand>
         where B: Send + Sync + 'static,
-              State: AsRef<BotState<B>> + Send;
+              State: AsRef<BotState<B>> + Send
+    {
+        let state = state.as_ref();
+        let id = self.id();
+        state.client.edit_guild_command(
+            state.application_id(),
+            guild,
+            id,
+            None,
+            None,
+            None,
+            Some(usable),
+        ).await
+    }
 
     async fn allow_roles<B, State, Roles, R>(
-        &self,
+        self,
         state: State,
         guild: GuildId,
         roles: Roles,
@@ -145,7 +163,7 @@ pub trait CommandPermsExt {
     }
 
     async fn disallow_roles<B, State, Roles, R>(
-        &self,
+        self,
         state: State,
         guild: GuildId,
         roles: Roles,
@@ -163,7 +181,7 @@ pub trait CommandPermsExt {
     }
 
     async fn allow_users<B, State, Users, U>(
-        &self,
+        self,
         state: State,
         guild: GuildId,
         users: Users,
@@ -181,7 +199,7 @@ pub trait CommandPermsExt {
     }
 
     async fn disallow_users<B, State, Users, U>(
-        &self,
+        self,
         state: State,
         guild: GuildId,
         users: Users,
@@ -199,55 +217,15 @@ pub trait CommandPermsExt {
     }
 }
 
-// todo maybe it makes more sense to specifically impl this on `&CommandId`, `Command`, and `&mut Command`??
-//  and ApplicationCommand
-#[async_trait]
-impl<C: Id<Id=CommandId> + Send + Sync> CommandPermsExt for C {
-    async fn edit_permissions<B, State>(
-        &self,
-        state: State,
-        guild: GuildId,
-        permissions: Vec<CommandPermissions>,
-    ) -> ClientResult<()>
-        where B: Send + Sync + 'static,
-              State: AsRef<BotState<B>> + Send,
-    {
-        let state = state.as_ref();
-        let id = self.id();
-        state.client.edit_application_command_permissions(
-            state.application_id(),
-            guild,
-            id,
-            permissions,
-        ).await
-    }
+impl CommandPermsExt for ApplicationCommand {}
 
-    async fn default_permissions<B, State>(
-        &self,
-        state: State,
-        guild: GuildId,
-        usable: bool,
-    ) -> ClientResult<ApplicationCommand>
-        where
-            B: Send + Sync + 'static,
-            State: AsRef<BotState<B>> + Send,
-    {
-        let state = state.as_ref();
-        state.client.edit_guild_command(
-            state.application_id(),
-            guild,
-            self.id(),
-            None,
-            None,
-            None,
-            Some(usable),
-        ).await
-    }
-}
+impl CommandPermsExt for &mut ApplicationCommand {}
+
+impl CommandPermsExt for CommandId {}
 
 // todo duplicate ^ here?
 #[async_trait]
-pub trait GuildCommandPermsExt {
+pub trait GuildCommandPermsExt: Id<Id=GuildId> {
     /// This endpoint will overwrite ALL existing permissions for all commands in a guild, even
     /// those not in the `permissions` list.
     async fn batch_edit_permissions<B, State>(
@@ -256,19 +234,7 @@ pub trait GuildCommandPermsExt {
         permissions: Vec<GuildCommandPermissions>,
     ) -> ClientResult<()>
         where B: Send + Sync + 'static,
-              State: AsRef<BotState<B>> + Send;
-}
-
-#[async_trait]
-impl<G: Id<Id=GuildId> + Send + Sync> GuildCommandPermsExt for G {
-    async fn batch_edit_permissions<B, State>(
-        &self,
-        state: State,
-        permissions: Vec<GuildCommandPermissions>,
-    ) -> ClientResult<()>
-        where B: Send + Sync + 'static,
-              State: AsRef<BotState<B>> + Send,
-    {
+              State: AsRef<BotState<B>> + Send {
         let state = state.as_ref();
         let id = self.id();
         state.client.batch_edit_application_command_permissions(
@@ -278,3 +244,5 @@ impl<G: Id<Id=GuildId> + Send + Sync> GuildCommandPermsExt for G {
         ).await
     }
 }
+
+impl<G: Id<Id=GuildId>> GuildCommandPermsExt for G {}

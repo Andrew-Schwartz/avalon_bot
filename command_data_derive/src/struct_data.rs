@@ -3,23 +3,30 @@ use std::iter::FromIterator;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use proc_macro_error::emit_error;
 use quote::{quote, quote_spanned};
-use syn::{Attribute, Fields, Ident, Index, LitStr, Path, Type};
+use syn::{Attribute, Fields, Ident, Index, LitStr, Path, Type, TypeParam};
 use syn::spanned::Spanned;
 
 use crate::utils::*;
 
-pub fn struct_impl(ty: &Ident, fields: Fields, attributes: &[Attribute]) -> TokenStream2 {
-    let strukt = Struct::from_fields(fields, attributes);
-    let (command_data_impl, command_type) = command_data_impl(strukt.command_type.as_ref());
+pub fn struct_impl(ty: &Ident, generics: Vec<TypeParam>, fields: Fields, attributes: &[Attribute]) -> TokenStream2 {
+    let generic_ty = {
+        let generic_names = generics.iter().map(|g| {
+            let ident = &g.ident;
+            quote_spanned! { ident.span() => #ident }
+        });
+        quote_spanned! { ty.span() => #ty<#(#generic_names),*> }
+    };
+    let strukt = Struct::from_fields(fields, attributes, generics);
+    let (command_data_impl, command_type) = command_data_impl(strukt.command_type.as_ref(), &strukt.generics);
     let from_options_body = strukt.impl_from_options(
-        ty,
+        &generic_ty,
         &Path::from(ty.clone()),
         &command_type,
     );
     let data_options = strukt.data_options(&command_type);
 
     let tokens = quote! {
-        #command_data_impl for #ty {
+        #command_data_impl for #generic_ty {
             // all structs are built from a Vec<ValueOption>
             type Options = ::std::vec::Vec<::discorsd::model::interaction::ValueOption>;
 
@@ -35,6 +42,8 @@ pub fn struct_impl(ty: &Ident, fields: Fields, attributes: &[Attribute]) -> Toke
             fn make_args(command: &#command_type) -> Vec<Self::VecArg> {
                 #data_options
             }
+
+            type Choice = Self;
         }
     };
     tokens
@@ -52,6 +61,7 @@ pub struct Field {
     pub required: Option<Path>,
     /// see [Vararg](Vararg) for details
     pub vararg: Option<Vararg>,
+    // todo now uses the enum type
     /// how to filter the choices, if `choices` is true
     ///
     /// must be a function callable as
@@ -86,6 +96,13 @@ impl FieldIdent {
             Self::Unnamed(UnnamedField { index }) => Ident::new(&format!("_{}", index.index), index.span)
         }
     }
+
+    fn ident(&self) -> TokenStream2 {
+        match self {
+            FieldIdent::Named(NamedField { ident, .. }) => quote! { #ident },
+            FieldIdent::Unnamed(UnnamedField { index }) => quote! { #index },
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -94,10 +111,23 @@ pub struct NamedField {
     pub rename: Option<LitStr>,
 }
 
+impl NamedField {
+    fn rename_with_generics(&self, generics: &[TypeParam]) -> Option<TokenStream2> {
+        if let Some(rename) = &self.rename {
+            let mut format_string = rename.value();
+            replace_generics(&mut format_string, generics)
+                .or_else(|| Some(quote! { #format_string }))
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct UnnamedField {
     index: Index,
     // todo presumably rename
+    //  NO THAT WOULDN'T MAKE SENSE FOR AN UNNAMED FIELD IF YOU THINK ABOUT IT
 }
 
 #[derive(Debug, Default)]
@@ -157,17 +187,22 @@ impl VarargNames {
 }
 
 impl Field {
-    fn arg_name(&self) -> String {
+    fn arg_name(&self, generics: &[TypeParam]) -> TokenStream2 {
         match &self.name {
-            FieldIdent::Named(named) => named.rename.as_ref()
-                .map(LitStr::value)
+            FieldIdent::Named(named) => named.rename_with_generics(generics)
                 .or_else(|| self.vararg.as_ref()
                     .and_then(|v| v.names.as_index())
-                    .map(LitStr::value))
-                .unwrap_or_else(|| named.ident.to_string()),
-            FieldIdent::Unnamed(unnamed) => self.vararg.as_ref()
-                .and_then(|v| v.names.as_index())
-                .map_or_else(|| unnamed.index.index.to_string(), LitStr::value),
+                    .map(|str| quote! { #str }))
+                .unwrap_or_else(|| {
+                    let string = named.ident.to_string();
+                    quote! { #string }
+                }),
+            FieldIdent::Unnamed(unnamed) => {
+                let string = self.vararg.as_ref()
+                    .and_then(|v| v.names.as_index())
+                    .map_or_else(|| unnamed.index.index.to_string(), LitStr::value);
+                quote! { #string }
+            }
         }
     }
 }
@@ -288,12 +323,13 @@ pub struct Struct {
     fields: Vec<Field>,
     /// settable with `#[command(type = MyCommand)]` on a struct
     pub command_type: Option<Type>,
+    generics: Vec<TypeParam>,
 }
 
 impl Struct {
-    const UNIT: Self = Self { fields: Vec::new(), command_type: None };
+    const UNIT: Self = Self { fields: Vec::new(), command_type: None, generics: Vec::new() };
 
-    pub fn from_fields(fields: Fields, attributes: &[Attribute]) -> Self {
+    pub fn from_fields(fields: Fields, attributes: &[Attribute], generics: Vec<TypeParam>) -> Self {
         let mut strukt = match fields {
             Fields::Named(fields) => fields.named
                 .into_iter()
@@ -304,8 +340,9 @@ impl Struct {
                 .enumerate()
                 .map(Field::from)
                 .collect(),
-            Fields::Unit => Struct::UNIT,
+            Fields::Unit => Self::UNIT,
         };
+        strukt.generics = generics;
         for attr in attributes {
             if !attr.path.is_ident("command") { continue; }
             strukt.handle_attribute(attr);
@@ -313,7 +350,12 @@ impl Struct {
         strukt
     }
 
-    pub fn impl_from_options(&self, return_type: &Ident, return_ctor: &Path, command_ty: &TokenStream2) -> TokenStream2 {
+    pub fn impl_from_options(
+        &self,
+        return_type: &TokenStream2,
+        return_ctor: &Path,
+        command_ty: &TokenStream2,
+    ) -> TokenStream2 {
         let num_fields = self.fields.len();
         let builder_struct = self.builder_struct(return_type, return_ctor);
         let varargs_match = self.varargs_match(command_ty);
@@ -326,8 +368,8 @@ impl Struct {
             TokenStream2::new()
         } else {
             quote! {
-                const FIELDS: [&'static str; #num_fields] = #fields_array;
                 const VARARGS: [fn(&str, usize) -> bool; #num_fields] = #varargs_array;
+                let fields: [::std::borrow::Cow<'static, str>; #num_fields] = #fields_array;
 
                 let mut options = options;
                 let mut options = options.drain(0..).peekable();
@@ -382,8 +424,8 @@ impl Struct {
     }
 
     fn fields_array(&self) -> TokenStream2 {
-        let fields = self.fields.iter().map(Field::arg_name);
-        quote! { [#(#fields),*] }
+        let fields = self.fields.iter().map(|f| f.arg_name(&self.generics));
+        quote! { [#(#fields.into()),*] }
     }
 
     fn match_branches(&self, command_ty: &TokenStream2) -> TokenStream2 {
@@ -396,7 +438,7 @@ impl Struct {
                 }
             } else {
                 quote_spanned! { ty.span() =>
-                    #i => if option.name == FIELDS[#i] {
+                    #i => if option.name == fields[#i] {
                         builder.#builder_ident = ::std::option::Option::Some(
                             <#ty as ::discorsd::commands::CommandData<#command_ty>>::from_options(option)?
                         );
@@ -415,46 +457,65 @@ impl Struct {
         }
     }
 
-    fn builder_struct(&self, return_type: &Ident, return_ctor: &Path) -> TokenStream2 {
+    fn builder_struct(
+        &self,
+        generic_return_type: &TokenStream2,
+        return_ctor: &Path,
+    ) -> TokenStream2 {
         let builder_prefix: String = return_ctor.segments.iter()
             .map(|seq| seq.ident.to_string())
             .collect();
-        let name = Ident::new(&format!("{}Builder", builder_prefix), Span::call_site());
+        // todo span these to the declaration of the struct
+        let builder_ident = Ident::new(&format!("{}Builder", builder_prefix), Span::call_site());
+        let option_ctor_generic_bound = std::iter::once(quote! { ::discorsd::commands::OptionCtor });
+        let bounded_generics = declaration_generics(&self.generics, option_ctor_generic_bound);
+        let use_generics = use_generics(&self.generics);
+
         let fields = self.fields.iter().map(|f| {
             let ident = &f.name.builder_ident();
             let ty = &f.ty;
             quote_spanned! { f.name.span() => #ident: ::std::option::Option<#ty> }
         });
+        let default_fields = self.fields.iter().map(|f| {
+            let ident = &f.name.builder_ident();
+            quote_spanned! { f.name.span() => #ident: ::std::option::Option::None }
+        });
         let builder = self.fields.iter().map(|f| {
             let builder_ident = &f.name.builder_ident();
-            let self_ident = match &f.name {
-                FieldIdent::Named(named) => {
-                    let ident = &named.ident;
-                    quote_spanned! { named.ident.span() => #ident }
-                }
-                FieldIdent::Unnamed(unnamed) => {
-                    let index = &unnamed.index;
-                    quote_spanned! { unnamed.index.span => #index }
-                }
-            };
-            let name = self_ident.to_string();
+            let self_ident = f.name.ident();
+            // f.name.
+            // let name = self_ident.to_string();
+            let missing_option_string = f.arg_name(&self.generics);
             let opt_handler = if let Some(path) = &f.default {
                 quote_spanned! { path.span() => unwrap_or_else(#path) }
             } else {
-                quote! { ok_or_else(|| ::discorsd::errors::CommandParseError::MissingOption(#name.to_string()))? }
+                quote! {
+                    ok_or_else(|| ::discorsd::errors::CommandParseError::MissingOption(
+                        #missing_option_string.to_string()
+                    ))?
+                }
             };
-            quote_spanned! {
-                f.name.span() => #self_ident: self.#builder_ident.#opt_handler
+            quote_spanned! { f.name.span() =>
+                #self_ident: self.#builder_ident.#opt_handler
             }
         });
         quote! {
-            #[derive(Default)]
-            struct #name {
+            // can't derive Default, since it has to work for generics that don't implement Default,
+            // because the only default we ever want is Option::<T>::None
+            struct #builder_ident<#bounded_generics> {
                 #(#fields),*
             }
 
-            impl #name {
-                fn build(self) -> ::std::result::Result<#return_type, ::discorsd::errors::CommandParseError> {
+            impl<#bounded_generics> ::std::default::Default for #builder_ident<#use_generics> {
+                // #[derive(Default)] marks it as inline, so I will too
+                #[inline]
+                fn default() -> Self {
+                    Self { #(#default_fields),* }
+                }
+            }
+
+            impl<#bounded_generics> #builder_ident<#use_generics> {
+                fn build(self) -> ::std::result::Result<#generic_return_type, ::discorsd::errors::CommandParseError> {
                     #[allow(clippy::used_underscore_binding)]
                     ::std::result::Result::Ok(#return_ctor {
                         #(#builder),*
@@ -462,7 +523,7 @@ impl Struct {
                 }
             }
 
-            let mut builder = #name::default();
+            let mut builder = #builder_ident::default();
         }
     }
 
@@ -479,7 +540,9 @@ impl Struct {
                 }
             } else {
                 quote_spanned! { ty.span() =>
-                    #i => return ::std::result::Result::Err(CommandParseError::UnexpectedSingleOption(FIELDS[idx].to_owned(), idx))
+                    #i => return ::std::result::Result::Err(
+                        CommandParseError::UnexpectedSingleOption(fields[idx].to_string(), idx)
+                    )
                 }
             }
         });
@@ -489,7 +552,7 @@ impl Struct {
                 #(#branches,)*
                 // todo specific vararg error type
                 _ => return ::std::result::Result::Err(CommandParseError::BadOrder(
-                    FIELDS[idx].to_owned(), idx, 0..#num_fields
+                    fields[idx].to_string(), idx, 0..#num_fields
                 ))
             }
         }
@@ -512,9 +575,14 @@ impl Struct {
             if let Some(vararg) = &f.vararg {
                 f.vararg_option(vararg, command_type)
             } else {
-                let name = f.arg_name();
-                let desc = description_len_check(&f.desc).unwrap_or_else(|| name.clone());
-                let single_option = f.single_option(Some((name, desc)), None);
+                let name = f.arg_name(&self.generics);
+                let desc = description_len_check(&f.desc, &self.generics)
+                    .unwrap_or_else(|| name.clone());
+                let single_option = f.single_option(
+                    Some((name, desc)),
+                    None,
+                    command_type,
+                );
                 quote_spanned! { single_option.span() =>
                     ::std::iter::once(#single_option)
                 }
@@ -528,21 +596,26 @@ impl Struct {
     }
 }
 
-pub fn description_len_check(desc: &Option<LitStr>) -> Option<String> {
+pub fn description_len_check(desc: &Option<LitStr>, generics: &[TypeParam]) -> Option<TokenStream2> {
     if let Some(lit_desc) = desc {
-        let desc = lit_desc.value();
-        let len = desc.len();
-        if len > 100 {
-            emit_error!(
+        let mut desc = lit_desc.value();
+        if let Some(fmt) = replace_generics(&mut desc, generics) {
+            Some(fmt)
+        } else {
+            if desc.is_empty() {
+                emit_error!(lit_desc, "Command option descriptions can't be empty. Leave the desc \
+                                   empty to use the name as the description.");
+            }
+            let len = desc.len();
+            if len > 100 {
+                emit_error!(
                 lit_desc,
                 "Command option descriptions can be at most 100 characters, this is {} characters",
                 len,
             );
+            }
+            Some(quote! { #desc })
         }
-        if len < 1 {
-            emit_error!(lit_desc, "Command option descriptions can't be empty");
-        }
-        Some(desc)
     } else {
         None
     }
@@ -552,8 +625,9 @@ impl Field {
     /// data options for not varargs
     fn single_option(
         &self,
-        name_desc: Option<(String, String)>,
+        name_desc: Option<(TokenStream2, TokenStream2)>,
         required_if_i_less_than: Option<usize>,
+        command_type: &TokenStream2,
     ) -> TokenStream2 {
         let let_name_desc = if let Some((name, desc)) = name_desc {
             quote! {
@@ -586,7 +660,8 @@ impl Field {
             .unwrap_or(&self.ty);
         let retain = if let Some(path) = &self.retain {
             quote_spanned! { path.span() =>
-                choices.retain(|choice| #path(command, choice));
+                // all choices are `Copy`
+                choices.retain(|&choice| #path(command, choice));
             }
         } else {
             TokenStream2::new()
@@ -595,7 +670,7 @@ impl Field {
             {
                 #let_name_desc
                 #[allow(unused_mut)]
-                let mut choices = <#ty>::make_choices(command);
+                let mut choices = <#ty as ::discorsd::commands::CommandData<#command_type>>::make_choices();
                 #retain
                 if choices.is_empty() {
                     #[allow(unused_mut)]
@@ -605,7 +680,7 @@ impl Field {
                 } else {
                     #[allow(unused_mut)]
                     let mut option = ::discorsd::commands::CommandDataOption::new_str(name, desc)
-                                        .choices(choices);
+                                        .choices(choices.into_iter().map(<#ty as ::discorsd::commands::CommandData<#command_type>>::into_command_choice).collect());
                     #required
                     ::discorsd::commands::DataOption::String(option)
                 }
@@ -619,7 +694,7 @@ impl Field {
         let take = vararg.num.take_n();
         // todo make this settable too
         let descriptions = &names;
-        let single_opt = self.single_option(None, vararg.required);
+        let single_opt = self.single_option(None, vararg.required, command_type);
 
         quote! {
             // `command` is in scope from `CommandData::make_args` param
@@ -639,6 +714,6 @@ impl Field {
 impl FromIterator<Field> for Struct {
     fn from_iter<I: IntoIterator<Item=Field>>(iter: I) -> Self {
         let fields: Vec<Field> = iter.into_iter().collect();
-        Self { fields, command_type: None }
+        Self { fields, command_type: None, generics: Vec::new() }
     }
 }

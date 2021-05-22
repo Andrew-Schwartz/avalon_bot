@@ -1,26 +1,73 @@
 use std::fmt::Display;
+use std::ops::Not;
 
 use proc_macro2::{Ident, TokenStream as TokenStream2};
 use quote::{quote, quote_spanned};
-use syn::{GenericArgument, PathArguments, spanned::Spanned, Type};
+use syn::{GenericArgument, PathArguments, spanned::Spanned, Type, TypeParam};
 
-pub fn command_data_impl(command_type: Option<&Type>) -> (TokenStream2, TokenStream2) {
-    match command_type {
-        None => {
-            (quote! {
-                impl<C: ::discorsd::commands::SlashCommandRaw> ::discorsd::model::commands::CommandData<C>
-            }, quote! {
-                C
-            })
+/// Generics including type bounds
+pub fn declaration_generics<I>(generics: &[TypeParam], additional_bounds: I) -> TokenStream2
+    where I: Iterator<Item=TokenStream2>
+{
+    let additional_bounds = quote! { #(#additional_bounds)+* };
+    let generics = generics.iter().map(|g| {
+        let ident = &g.ident;
+        let bounds = &g.bounds;
+        let plus = bounds.is_empty().not().then(|| quote! { + });
+        quote_spanned! { g.span() =>
+            #ident: #bounds #plus #additional_bounds
         }
-        Some(ident) => {
-            (quote_spanned! { ident.span() =>
-                impl ::discorsd::model::commands::CommandData<#ident>
-            }, quote_spanned! { ident.span() =>
-                #ident
-            })
+    });
+    quote! { #(#generics,)* }
+}
+
+/// Generics without type bounds, no angle brackets
+pub fn use_generics(generics: &[TypeParam]) -> TokenStream2 {
+    let generics = generics.iter().map(|g| {
+        let ident = &g.ident;
+        quote_spanned! { g.span() => #ident }
+    });
+    quote! { #(#generics,)* }
+}
+
+pub fn replace_generics(format_string: &mut String, generics: &[TypeParam]) -> Option<TokenStream2> {
+    let mut generics_used = Vec::new();
+    for TypeParam { ident, .. } in generics {
+        let pattern = format!("<{}>", ident);
+        if let Some(idx) = format_string.find(&pattern) {
+            format_string.replace_range(idx..idx + pattern.len(), "{}");
+            generics_used.push(ident);
         }
     }
+    generics_used.is_empty().not()
+        .then(|| quote! { format!(#format_string #(, #generics_used::ARG_NAME)*) })
+}
+
+/// returns (impl statement, command type)
+pub fn command_data_impl(command_type: Option<&Type>, generics: &[TypeParam]) -> (TokenStream2, TokenStream2) {
+    let ty = match command_type {
+        None => quote! { C },
+        Some(ident) => quote_spanned! { ident.span() => #ident },
+    };
+    let generics = generics.iter().map(|g| {
+        let ident = &g.ident;
+        let bounds = &g.bounds;
+        let plus = bounds.is_empty().not().then(|| quote! { + });
+        quote_spanned! { g.span() =>
+            #ident: #bounds
+                #plus ::discorsd::commands::OptionCtor
+                + ::discorsd::commands::CommandData<
+                        #ty,
+                        Options=::discorsd::commands::ValueOption,
+                        Choice=#ident
+                   >
+        }
+    });
+    let impl_statement = match command_type {
+        None => quote! { impl<C: ::discorsd::commands::SlashCommandRaw, #(#generics),*> ::discorsd::commands::CommandData<C> },
+        Some(ident) => quote_spanned! { ident.span() => impl<#(#generics),*> ::discorsd::commands::CommandData<#ident> },
+    };
+    (impl_statement, ty)
 }
 
 pub trait TypeExt {

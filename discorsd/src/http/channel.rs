@@ -1,7 +1,7 @@
 //! Discord API requests involving channels.
 //!
-//! Use these [impl DiscordClient](../struct.DiscordClient.html#impl) methods for the low level api
-//! for channel related requests, and the [MessageChannelExt] extension trait for higher level api
+//! Use these [`impl DiscordClient`](../struct.DiscordClient.html#impl) methods for the low level api
+//! for channel related requests, and the [`MessageChannelExt`] extension trait for higher level api
 //! access to some of the requests.
 
 use std::borrow::Cow;
@@ -71,7 +71,7 @@ impl DiscordClient {
 
     /// Edits the specified message according to `edit`.
     ///
-    /// Only [MessageFlags::SUPPRESS_EMBEDS] can be set/unset, but trying to send other flags is not
+    /// Only [`MessageFlags::SUPPRESS_EMBEDS`] can be set/unset, but trying to send other flags is not
     /// an error.
     ///
     /// # Errors
@@ -408,7 +408,7 @@ impl Message {
 /// Instances of this struct come from its `impl`s of `From<P>, From<(String, P)> where P: AsRef<Path>`
 /// (for sending files, with an optionally specified name) and `From<(String, Vec<u8>)>` for sending
 /// arbitrary byte streams by name. There also exists `From<(String, AttachmentSource)>` if for some
-/// reason you have an [AttachmentSource] already.
+/// reason you have an [`AttachmentSource`] already.
 ///
 /// The name will have **any** whitespace removed, since Discord cannot handle file names with
 /// spaces.
@@ -433,7 +433,7 @@ impl Hash for MessageAttachment {
 }
 
 // todo consider making Bytes an Rc/Arc?
-/// Represents a file that can be used as an attachment in a [CreateMessage].
+/// Represents a file that can be used as an attachment in a [`CreateMessage`].
 #[derive(Clone, Debug)]
 pub enum AttachmentSource {
     /// Upload the file at this location.
@@ -526,20 +526,20 @@ impl<S: ToString> From<(S, AttachmentSource)> for MessageAttachment {
 }
 
 /// Sent to Discord to create a message with [`DiscordClient::create_message`]. The easist way to
-/// send a method is using the [MessageChannelExt::send] method, which takes accepts any type that
+/// send a method is using the [`MessageChannelExt::send`] method, which takes accepts any type that
 /// implements `Into<CreateMessage>`, as described below.
 ///
 /// This can be created most easily `From`:
 /// * any type that impls `Into<Cow<'static, str>>` (most notably
 /// `&'static str` and `String`), using that string as the [content](CreateMessage::content),
-/// * [RichEmbed], which is an embed builder type, using that as the [embed](CreateMessage::embed),
-/// * [MessageAttachment], using that attachment as the single attachment in
+/// * [`RichEmbed`], which is an embed builder type, using that as the [embed](CreateMessage::embed),
+/// * [`MessageAttachment`], using that attachment as the single attachment in
 /// [files](CreateMessage::files),
-/// * [Message], using that message's content, its first embed, if it is tts, etc,
-/// * and of course [CreateMessage] itself.
+/// * [`Message`], using that message's content, its first embed, if it is tts, etc,
+/// * and of course [`CreateMessage`] itself.
 ///
 /// This type also uses the builder pattern for field by field configuration and construction, if
-/// desired. This starts with either [create_message] or [CreateMessage::build].
+/// desired. This starts with either [`create_message`] or [`CreateMessage::build`].
 #[derive(Serialize, Clone, Debug, Default, Eq, PartialEq)]
 pub struct CreateMessage {
     /// the message contents (up to 2000 characters)
@@ -602,9 +602,9 @@ impl From<Message> for CreateMessage {
     }
 }
 
-/// Easily build a message to create in some channel with [MessageChannelExt::send] and similar
+/// Easily build a message to create in some channel with [`MessageChannelExt::send`] and similar
 /// methods. Most useful for creating messages with both content and an embed, since
-/// [CreateMessage]'s `From` impls provide simpler ways to get a [CreateMessage] for just one of
+/// [`CreateMessage`]'s `From` impls provide simpler ways to get a [`CreateMessage`] for just one of
 /// them.
 ///
 /// ```rust
@@ -621,7 +621,7 @@ pub fn create_message<F: FnOnce(&mut CreateMessage)>(builder: F) -> CreateMessag
 }
 
 impl CreateMessage {
-    /// Easily build a message to create in some channel with [MessageChannelExt::send] and similar
+    /// Easily build a message to create in some channel with [`MessageChannelExt::send`] and similar
     /// methods. Most useful for creating messages with both content and an embed, since
     /// `CreateMessage`'s `From` impls provide simpler ways to get a `CreateMessage` for just one of
     /// them.
@@ -650,19 +650,19 @@ impl CreateMessage {
         self.content = content.into();
     }
 
-    /// Build a [RichEmbed] and attach it to this message.
+    /// Build a [`RichEmbed`] and attach it to this message.
     pub fn embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) {
         let embed = self.embed.take().unwrap_or_default();
         self.embed_with(embed, builder);
     }
 
-    /// Build a [RichEmbed] by modifying an already existing `RichEmbed` and attach it to this
+    /// Build a [`RichEmbed`] by modifying an already existing `RichEmbed` and attach it to this
     /// message.
     pub fn embed_with<F: FnOnce(&mut RichEmbed)>(&mut self, embed: RichEmbed, builder: F) {
         self.embed = Some(RichEmbed::build(embed, builder));
     }
 
-    /// Attach an image to this message. See [MessageAttachment] for details about what types impl
+    /// Attach an image to this message. See [`MessageAttachment`] for details about what types impl
     /// `Into<MessageAttachment>`.
     pub fn image<A: Into<MessageAttachment>>(&mut self, attachment: A) {
         self.files.insert(attachment.into());
@@ -761,7 +761,7 @@ pub fn embed<F: FnOnce(&mut RichEmbed)>(f: F) -> RichEmbed {
 }
 
 /// Similar to [embed], but works by modifying an existing embed rather than creating an entire new
-/// [RichEmbed]. [Embed]s already sent to Discord implement `Into<RichEmbed>`.
+/// [`RichEmbed`]. [Embed]s already sent to Discord implement `Into<RichEmbed>`.
 ///
 /// ```rust
 /// # use discorsd::http::ClientResult;
@@ -831,7 +831,7 @@ impl RichEmbed {
 
     /// Sets this embed's [timestamp](Self::timestamp).
     ///
-    /// To set the timestamp to the current time, use [timestamp_now](Self::timestamp_now).
+    /// To set the timestamp to the current time, use [`timestamp_now`](Self::timestamp_now).
     pub fn timestamp<Tz: TimeZone>(&mut self, timestamp: &DateTime<Tz>) {
         self.timestamp = Some(timestamp.with_timezone(&Utc));
     }
@@ -858,7 +858,7 @@ impl RichEmbed {
     // todo example because of `A`
     /// Adds a footer to this embed with the specified text and image.
     ///
-    /// To add a footer just text, use [footer_text](Self::footer_text).
+    /// To add a footer just text, use [`footer_text`](Self::footer_text).
     pub fn footer<S: ToString, A: Into<MessageAttachment>>(&mut self, text: S, icon: A) {
         let attachment = icon.into();
         self.footer = Some(EmbedFooter::with_icon(text, format!("attachment://{}", attachment.name)));
@@ -901,12 +901,12 @@ impl RichEmbed {
 
     /// Adds a new field to this embed with the specified name and value.
     ///
-    /// To add an inline field, use [add_inline_field](Self::add_inline_field).
+    /// To add an inline field, use [`add_inline_field`](Self::add_inline_field).
     ///
     /// # Panics
     ///
     /// Panics if either `name` or `value` are empty. To add a blank field, use
-    /// [add_blank_field](Self::add_blank_field).
+    /// [`add_blank_field`](Self::add_blank_field).
     pub fn add_field<S: ToString, V: ToString>(&mut self, name: S, value: V) {
         self.field(EmbedField::new(name, value))
     }
@@ -917,17 +917,17 @@ impl RichEmbed {
     /// # Panics
     ///
     /// Panics if either `name` or `value` are empty. To add a blank inline field, use
-    /// [add_blank_inline_field](Self::add_blank_inline_field).
+    /// [`add_blank_inline_field`](Self::add_blank_inline_field).
     pub fn add_inline_field<S: ToString, V: ToString>(&mut self, name: S, value: V) {
         self.field(EmbedField::new_inline(name, value))
     }
 
-    /// Adds a blank field ([EmbedField::blank]) to this embed. Useful for spacing embed fields.
+    /// Adds a blank field ([`EmbedField::blank`]) to this embed. Useful for spacing embed fields.
     pub fn add_blank_field(&mut self) {
         self.field(EmbedField::blank())
     }
 
-    /// Adds a blank inline field ([EmbedField::blank_inline]) to this embed. Useful for spacing
+    /// Adds a blank inline field ([`EmbedField::blank_inline`]) to this embed. Useful for spacing
     /// embed fields.
     pub fn add_blank_inline_field(&mut self) {
         self.field(EmbedField::blank_inline())
@@ -937,7 +937,7 @@ impl RichEmbed {
     /// where `N: ToString, V: ToString`. `N` is the name for the field, `V` is the value, and if
     /// a bool is present, it determines if the field is inline (the 2 element tuple is not inline).
     ///
-    /// The [add_field](Self::add_field) method may be easier to use in most situations.
+    /// The [`add_field`](Self::add_field) method may be easier to use in most situations.
     ///
     /// All of the three below calls to `field` below add the same field to `e`.
     /// ```rust
@@ -979,7 +979,7 @@ impl RichEmbed {
 }
 
 /// Sent to Discord to create a message with [`DiscordClient::edit_message`]. To create an
-/// `EditMessage`, use one of [EditMessage::build], `From<RichEmbed>`, or `From<Message>`.
+/// `EditMessage`, use one of [`EditMessage::build`], `From<RichEmbed>`, or `From<Message>`.
 ///
 /// Params with nested `Option`s are serialized as follows:
 ///
@@ -1032,7 +1032,7 @@ impl From<Message> for EditMessage {
 }
 
 impl EditMessage {
-    /// Build an [EditMessage] for use [Message::edit] and other similar methods.
+    /// Build an [`EditMessage`] for use [`Message::edit`] and other similar methods.
     ///
     /// ```rust
     /// # use discorsd::http::ClientResult;
@@ -1053,7 +1053,7 @@ impl EditMessage {
         Self::build_with(Self::default(), f)
     }
 
-    /// Similar to [build](Self::build), but modifies an already existing [EditMessage] rather than
+    /// Similar to [build](Self::build), but modifies an already existing [`EditMessage`] rather than
     /// creating a new one.
     pub fn build_with<F: FnOnce(&mut Self)>(mut edit: Self, f: F) -> Self {
         f(&mut edit);
@@ -1071,8 +1071,8 @@ impl EditMessage {
     }
 
     /// Edit the embed of this message. The `&mut RichEmbed` your `builder` function operates on is
-    /// the current [embed](Self::embed) of this [EditMessage], for instance if this [EditMessage]
-    /// was created with the impl `From<Message>` or `From<RichEmbed>`.
+    /// the current [embed](Self::embed) of this [`EditMessage`], for instance if this
+    /// [`EditMessage`] was created with the impl `From<Message>` or `From<RichEmbed>`.
     pub fn embed<F: FnOnce(&mut RichEmbed)>(&mut self, builder: F) {
         let embed = self.embed.as_mut()
             .and_then(Option::take)

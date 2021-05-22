@@ -3,17 +3,18 @@ use std::iter::FromIterator;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_error::*;
 use quote::{quote, quote_spanned};
-use syn::{Attribute, DataEnum, Fields, Ident, LitStr, Path, Type};
+use syn::{Attribute, DataEnum, Fields, Ident, LitStr, Path, Type, TypeParam};
 use syn::spanned::Spanned;
 
 use crate::struct_data::{description_len_check, Field, Struct};
-use crate::utils::command_data_impl;
+use crate::utils::{command_data_impl, use_generics};
 
-pub fn enum_impl(ty: &Ident, data: DataEnum, attrs: &[Attribute]) -> TokenStream2 {
+pub fn enum_impl(ty: &Ident, generics: Vec<TypeParam>, data: DataEnum, attrs: &[Attribute]) -> TokenStream2 {
     let mut variants: Enum = data.variants
         .into_iter()
         .map(Variant::from)
         .collect();
+    variants.generics = generics;
     for attr in attrs {
         if !attr.path.is_ident("command") { continue; };
         variants.handle_attribute(attr);
@@ -33,6 +34,7 @@ pub struct Variant {
 }
 
 impl Variant {
+    // todo this might have to be able to handle generics
     fn name(&self) -> String {
         if let Some(lit) = &self.rename {
             lit.value().to_lowercase()
@@ -41,8 +43,8 @@ impl Variant {
         }
     }
 
-    fn description(&self, name: &str) -> String {
-        description_len_check(&self.desc).unwrap_or_else(|| name.to_string())
+    fn description(&self, name: &str, generics: &[TypeParam]) -> TokenStream2 {
+        description_len_check(&self.desc, generics).unwrap_or_else(|| quote! { #name })
     }
 }
 
@@ -75,6 +77,7 @@ pub struct Enum {
     variants: Vec<Variant>,
     /// settable with `#[command(type = MyCommand)]` on an enum
     pub command_type: Option<Type>,
+    generics: Vec<TypeParam>,
 }
 
 impl Enum {
@@ -82,11 +85,12 @@ impl Enum {
     fn from_options_branches(&self, ty: &Ident, command_ty: &TokenStream2) -> TokenStream2 {
         let branches = self.variants.iter().map(|v| {
             // todo filter out the attributes this used (might not be a thing)
-            let fields = Struct::from_fields(v.fields.clone(), &[]);
+            let fields = Struct::from_fields(v.fields.clone(), &[], self.generics.clone());
             let patt = v.name();
             match syn::parse_str(&format!("{}::{}", ty, v.ident)) {
                 Ok(path) => {
-                    let try_from_body = fields.impl_from_options(ty, &path, command_ty);
+                    let ty = quote_spanned! { ty.span() => #ty };
+                    let try_from_body = fields.impl_from_options(&ty, &path, command_ty);
                     quote_spanned! { v.ident.span() =>
                         #patt => {
                             #try_from_body
@@ -104,9 +108,9 @@ impl Enum {
     fn make_args_vec(&self, command_type: &TokenStream2) -> TokenStream2 {
         let chains = self.variants.iter().map(|v| {
             // todo filter out the attributes this used (might not be a thing)
-            let strukt = Struct::from_fields(v.fields.clone(), &[]);
+            let strukt = Struct::from_fields(v.fields.clone(), &[], self.generics.clone());
             let name = v.name();
-            let desc = v.description(&name);
+            let desc = v.description(&name, &self.generics);
             let options = strukt.data_options(command_type);
             let take = if let Some(enable) = &v.enable_if {
                 quote_spanned! { enable.span() =>
@@ -224,7 +228,11 @@ impl Enum {
     /// ```
     /// This also works if the inner of the newtype is an enum, as long as you `#[derive(CommandData)]`
     fn newtype_structs(&self, ty: &Ident) -> TokenStream2 {
-        let (args_impl_statement, c_ty) = command_data_impl(self.command_type.as_ref());
+        let generic_ty = {
+            let use_generics = use_generics(&self.generics);
+            quote! { #ty<#use_generics> }
+        };
+        let (command_data_impl, c_ty) = command_data_impl(self.command_type.as_ref(), &self.generics);
         let first_variant_ty = &self.variants.iter()
             .find(|v| !matches!(&v.fields, Fields::Unit))
             .expect("Enum is not empty")
@@ -234,7 +242,7 @@ impl Enum {
             .ty;
         let args = self.variants.iter().map(|v| {
             let name = v.name();
-            let desc = v.description(&name);
+            let desc = v.description(&name, &self.generics);
             let make_args = if let Some(f) = &v.fields.iter().next() {
                 let new_ty = &f.ty;
                 quote_spanned! { new_ty.span() => <#new_ty>::make_args(command) }
@@ -269,7 +277,7 @@ impl Enum {
         let variants_array = self.variants_array();
 
         quote! {
-            #args_impl_statement for #ty {
+            #command_data_impl for #generic_ty {
                 // god that's ugly v2
                 type Options =
                 <
@@ -300,6 +308,8 @@ impl Enum {
                 fn make_args(command: &#c_ty) -> ::std::vec::Vec<Self::VecArg> {
                     vec![#(#args),*]
                 }
+
+                type Choice = Self;
             }
         }
     }
@@ -325,7 +335,7 @@ impl Enum {
     /// }
     /// ```
     fn inline_structs(&self, ty: &Ident) -> TokenStream2 {
-        let (command_data_impl_statement, c_ty) = command_data_impl(self.command_type.as_ref());
+        let (command_data_impl_statement, c_ty) = command_data_impl(self.command_type.as_ref(), &self.generics);
         let from_option_branches = self.from_options_branches(ty, &c_ty);
         let variants_array = self.variants_array();
         let make_args_vec = self.make_args_vec(&c_ty);
@@ -354,6 +364,8 @@ impl Enum {
                 fn make_args(command: &#c_ty) -> ::std::vec::Vec<Self::VecArg> {
                     #make_args_vec
                 }
+
+                type Choice = Self;
             }
         }
     }
@@ -361,6 +373,6 @@ impl Enum {
 
 impl FromIterator<Variant> for Enum {
     fn from_iter<T: IntoIterator<Item=Variant>>(iter: T) -> Self {
-        Self { variants: iter.into_iter().collect(), command_type: None }
+        Self { variants: iter.into_iter().collect(), command_type: None, generics: Vec::new() }
     }
 }

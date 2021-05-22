@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::model::guild::Integration;
 use crate::model::ids::*;
@@ -142,17 +141,16 @@ bitflags! {
         const EARLY_VERIFIED_BOT_DEVELOPER = 1 << 17;
     }
 }
-#[allow(clippy::use_self)]
+// #[allow(clippy::use_self)]
 serde_bitflag!(UserFlags: u32);
 
-/// Premium types denote the level of premium a user has.
-#[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum PremiumType {
-    None = 0,
-    NitroClassic = 1,
-    Nitro = 2,
+serde_repr! {
+    /// Premium types denote the level of premium a user has.
+    pub enum PremiumType: u8 {
+        None = 0,
+        NitroClassic = 1,
+        Nitro = 2,
+    }
 }
 
 /// The connection object that the user has attached.
@@ -179,12 +177,11 @@ pub struct Connection {
     pub visibility: ConnectionVisibility,
 }
 
-#[derive(Deserialize_repr, Serialize_repr, Debug, Copy, Clone, Eq, PartialEq)]
-#[repr(u8)]
-#[allow(clippy::use_self)]
-pub enum ConnectionVisibility {
-    /// invisible to everyone except the user themselves
-    None = 0,
-    /// visible to everyone
-    Everyone = 1,
+serde_repr! {
+    pub enum ConnectionVisibility: u8 {
+        /// invisible to everyone except the user themselves
+        None = 0,
+        /// visible to everyone
+        Everyone = 1,
+    }
 }
