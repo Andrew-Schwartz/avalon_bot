@@ -84,22 +84,22 @@ pub enum UnpinData {
     All,
     #[command(desc = "Unpin the most recent n messages in this channel")]
     Recent {
-        #[command(desc = "How many messages to unpin (negative unpins all but this many). Same as old (#pins - number)")]
+        #[command(desc = "How many messages to unpin (negative unpins all but this many, ie -1 keeps only most recent pin).")]
         number: i64,
     },
     #[command(desc = "Unpin the oldest n messages in this channel")]
     Old {
-        #[command(desc = "How many messages to unpin (negative unpins all but this many). Same as recent (#pins - number)")]
+        #[command(desc = "How many messages to unpin (negative unpins all but this many, ie -1 keeps only oldest pin)")]
         number: i64,
     },
     #[command(desc = "Unpin specific messages in this channel by id")]
     Messages(
         #[command(vararg = "message", va_count = 25, va_req = 1)]
-        HashSet<MessageId>
+        HashSet<MessageId>,
     ),
     #[command(desc = "Unpin all messages in this channel except for certain ids")]
     Exclude(
         #[command(vararg = "message", va_count = 25, va_req = 1)]
-        HashSet<MessageId>
+        HashSet<MessageId>,
     ),
 }

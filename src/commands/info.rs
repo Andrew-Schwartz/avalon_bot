@@ -35,16 +35,20 @@ impl SlashCommand for InfoCommand {
                 e.title("Avalon Bot");
                 e.color(Color::GOLD);
                 e.url("https://github.com/Andrew-Schwartz/avalon_bot");
-                let perms = Permissions::ADD_REACTIONS
-                    | Permissions::VIEW_CHANNEL
-                    | Permissions::SEND_MESSAGES
-                    | Permissions::MANAGE_MESSAGES
-                    | Permissions::ATTACH_FILES
-                    | Permissions::READ_MESSAGE_HISTORY
-                    | Permissions::USE_EXTERNAL_EMOJIS
-                    | Permissions::MANAGE_ROLES;
+                // todo figure this out again
+                // let perms = Permissions::ADD_REACTIONS
+                //     | Permissions::VIEW_CHANNEL
+                //     | Permissions::SEND_MESSAGES
+                //     | Permissions::MANAGE_MESSAGES
+                //     | Permissions::ATTACH_FILES
+                //     | Permissions::READ_MESSAGE_HISTORY
+                //     | Permissions::USE_EXTERNAL_EMOJIS
+                //     | Permissions::MANAGE_ROLES;
+                let perms = Permissions::ADMINISTRATOR;
+                let scopes = ["bot", "applications.commands", "applications.commands.permissions.update"]
+                    .join("%20");
                 let url = format!(
-                    "https://discord.com/oauth2/authorize?scope=applications.commands%20bot&client_id={}&permissions={}",
+                    "https://discord.com/oauth2/authorize?scope={scopes}&client_id={}&permissions={}",
                     user.id, perms.bits()
                 );
                 e.description(format!(

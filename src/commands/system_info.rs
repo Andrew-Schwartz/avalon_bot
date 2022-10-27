@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use itertools::Itertools;
 use once_cell::sync::Lazy;
-use sysinfo::{ComponentExt, ProcessorExt, System, SystemExt};
+use sysinfo::{ComponentExt, Cpu, CpuExt, System, SystemExt};
 
 use command_data_derive::*;
 use discorsd::{async_trait, BotState};
@@ -48,27 +48,27 @@ impl SlashCommand for SysInfoCommand {
             sys.refresh_all();
 
             if data.0.iter().any(|it| matches!(it, Choices::Cpu | Choices::All)) {
-                let processors = sys.get_processors();
-                let value = if processors.is_empty() {
+                let cpus = sys.cpus();
+                let value = if cpus.is_empty() {
                     "No CPUs found".to_owned()
                 } else {
-                    let value = processors.iter()
-                        .map(|p| format!("{}: {:.2}%", p.get_name(), p.get_cpu_usage()))
+                    let value = cpus.iter()
+                        .map(|cpu| format!("{}: {:.2}%", cpu.name(), cpu.cpu_usage()))
                         .join("\n");
-                    if processors.len() == 1 {
+                    if cpus.len() == 1 {
                         value
                     } else {
-                        let avg: f32 = processors.iter()
-                            .map(ProcessorExt::get_cpu_usage)
+                        let avg: f32 = cpus.iter()
+                            .map(Cpu::cpu_usage)
                             .sum();
-                        format!("```{}\nAverage: {:.2}%```", value, avg / processors.len() as f32)
+                        format!("```{}\nAverage: {:.2}%```", value, avg / cpus.len() as f32)
                     }
                 };
                 embed.field(("CPU Usage", value))
             }
             if data.0.iter().any(|it| matches!(it, Choices::Memory | Choices::All)) {
-                let used = sys.get_used_memory();
-                let total = sys.get_total_memory();
+                let used = sys.used_memory();
+                let total = sys.total_memory();
                 let string = format!(
                     "```    {:.2}%\n\
                      Used : {} MB\n\
@@ -80,18 +80,18 @@ impl SlashCommand for SysInfoCommand {
                 embed.field(("Memory Usage", string));
             }
             if data.0.iter().any(|it| matches!(it, Choices::Temperature | Choices::All)) {
-                let components = sys.get_components();
+                let components = sys.components();
                 let value = if components.is_empty() {
                     "No components found".to_owned()
                 } else {
                     let value = components.iter()
-                        .map(|c| format!("{}: {:.2} °C", c.get_label(), c.get_temperature()))
+                        .map(|c| format!("{}: {:.2} °C", c.label(), c.temperature()))
                         .join("\n");
                     if components.len() == 1 {
                         value
                     } else {
                         let avg: f32 = components.iter()
-                            .map(ComponentExt::get_temperature)
+                            .map(ComponentExt::temperature)
                             .sum();
                         format!("```{}\nAverage: {:.2} °C```", value, avg / components.len() as f32)
                     }

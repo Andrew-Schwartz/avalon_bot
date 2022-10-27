@@ -3,7 +3,7 @@ use std::sync::Arc;
 use discorsd::{async_trait, BotState};
 use discorsd::commands::ReactionCommand;
 use discorsd::errors::BotError;
-use discorsd::http::channel::embed;
+use discorsd::http::channel::{embed, MessageChannelExt};
 use discorsd::model::emoji::Emoji;
 use discorsd::model::ids::{GuildId, MessageId};
 use discorsd::model::message::Color;
@@ -26,7 +26,7 @@ impl ReactionCommand<Bot> for GuessCommand {
                 Emoji::Unicode { name } => {
                     name.chars().next()
                         .filter(|c| ('🇦'..'🇿').contains(c))
-                        .is_some()
+                        .is_some() || name == "❓"
                 }
             }
     }
@@ -34,6 +34,11 @@ impl ReactionCommand<Bot> for GuessCommand {
     async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError> {
         let guild = self.0;
         let guess = reaction.emoji.as_unicode().unwrap().chars().next().unwrap();
+        if guess == '❓' {
+            return reaction.channel_id.send(&state, "React with a letter to guess!").await
+                .map(|_| ())
+                .map_err(|e| e.into())
+        }
         let guess = std::char::from_u32(guess as u32 - ('🇦' as u32 - 'a' as u32)).unwrap();
 
         let mut games = state.bot.hangman_games.write().await;
@@ -55,6 +60,7 @@ impl ReactionCommand<Bot> for GuessCommand {
                 format!("Correct! There {} {} {}{} in the word.", verb, count, guess, plural)
             };
         }
+        println!("game.feedback = {:?}", game.feedback);
         game.handle_guess(&state).await?;
 
         // handle win
@@ -78,6 +84,7 @@ impl ReactionCommand<Bot> for GuessCommand {
             })).await?;
         }
 
+        println!("done");
         Ok(())
     }
 }

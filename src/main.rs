@@ -27,20 +27,13 @@ use std::prelude::v1::Result::Ok;
 use std::sync::Arc;
 
 use chrono::{DateTime, Local, Utc};
-use itertools::Itertools;
-use log::{error, info};
-use log::LevelFilter;
-use once_cell::sync::OnceCell;
-use serde::Deserialize;
-use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-
 use discorsd::{Bot as _, BotExt, BotState, GuildCommands, IdMap, shard};
 use discorsd::async_trait;
 use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::{embed, MessageChannelExt};
 use discorsd::http::ClientResult;
-use discorsd::http::guild::{CommandPermsExt, GuildCommandPermsExt};
+use discorsd::http::guild::CommandPermsExt;
 use discorsd::model::channel::Channel;
 use discorsd::model::guild::{Guild, Integration};
 use discorsd::model::ids::*;
@@ -48,10 +41,18 @@ use discorsd::model::interaction::Interaction;
 use discorsd::model::message::Message;
 use discorsd::model::permissions::{Permissions, Role};
 use discorsd::shard::dispatch::ReactionUpdate;
+use discorsd::shard::intents::Intents;
 use discorsd::shard::model::{Activity, ActivityType, Identify, UpdateStatus};
+use itertools::Itertools;
+use log::{error, info};
+use log::LevelFilter;
+use once_cell::sync::OnceCell;
+use serde::Deserialize;
+use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::avalon::Avalon;
 use crate::avalon::game::AvalonGame;
+use crate::avalon::setup::SetupCommand;
 use crate::commands::info::InfoCommand;
 use crate::commands::ll::LowLevelCommand;
 use crate::commands::ping::PingCommand;
@@ -62,7 +63,6 @@ use crate::commands::unpin::UnpinCommand;
 use crate::commands::uptime::UptimeCommand;
 use crate::hangman::Hangman;
 use crate::hangman::random_words::GuildHist;
-use crate::avalon::setup::SetupCommand;
 
 #[macro_use]
 mod macros;
@@ -116,6 +116,13 @@ impl Bot {
 
 #[tokio::main]
 async fn main() -> shard::ShardResult<()> {
+    // #[derive(serde::Serialize, Default)]
+    // struct Test {
+    //     map: HashMap<u32, String>,
+    // }
+    // println!("{:?}", serde_json::to_string(&Test::default()));
+    // return Ok(());
+
     env_logger::builder()
         .format(|f, record|
             writeln!(f,
@@ -165,6 +172,7 @@ impl discorsd::Bot for Bot {
 
     fn identify(&self) -> Identify {
         Identify::new(self.token())
+            .add_intents(Intents::MESSAGE_CONTENT)
             .presence(UpdateStatus::with_activity(
                 Activity::for_bot("Avalon - try /addme", ActivityType::Game)
             ))
@@ -188,7 +196,7 @@ impl discorsd::Bot for Bot {
             *self.log_in.write().await = Some(now);
         }
 
-        state.bot.config.channel.send_unchecked(&state, embed(|e| {
+        state.bot.config.channel.send(&state, embed(|e| {
             e.title("Avalon Bot is logged on!");
             e.timestamp_now();
             e.url("https://github.com/Andrew-Schwartz/AvalonBot")
@@ -254,25 +262,25 @@ impl discorsd::Bot for Bot {
                 info!("{:#?}", state.cache.debug().await);
                 message.channel.send(&state, "logged!").await?;
             }
-            "!commands" => {
-                let commands = state.commands.read().await;
-                for (guild, commands) in commands.iter() {
-                    let commands = commands.read().await;
-                    println!("\nGUILD {}\n------------------------------", guild);
-                    for command in commands.iter() {
-                        println!("command = {:?}", command);
-                    }
-                }
-                println!("\nEXISTING COMMANDS\n------------------------------");
-                let commands = state.client.get_guild_commands(
-                    state.application_id(),
-                    message.guild_id.unwrap(),
-                ).await?;
-                for command in commands {
-                    println!("command = {:?}", command);
-                }
-                message.channel.send(&state, "logged!").await?;
-            }
+            // "!commands" => {
+            //     let commands = state.commands.read().await;
+            //     for (guild, commands) in commands.iter() {
+            //         let commands = commands.read().await;
+            //         println!("\nGUILD {}\n------------------------------", guild);
+            //         for command in commands.iter() {
+            //             println!("command = {:?}", command);
+            //         }
+            //     }
+            //     println!("\nEXISTING COMMANDS\n------------------------------");
+            //     let commands = state.client.get_guild_commands(
+            //         state.application_id(),
+            //         message.guild_id.unwrap(),
+            //     ).await?;
+            //     for command in commands {
+            //         println!("command = {:?}", command);
+            //     }
+            //     message.channel.send(&state, "logged!").await?;
+            // }
             _ => {}
         }
         Ok(())
@@ -431,8 +439,9 @@ impl Bot {
             .entry(guild)
             .or_default() = RwLock::new(command_names);
 
+        // todo
         // clear any left over perms
-        guild.batch_edit_permissions(state, vec![]).await?;
+        // guild.batch_edit_permissions(state, vec![]).await?;
         Ok(())
     }
 
