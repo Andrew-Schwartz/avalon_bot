@@ -23,22 +23,23 @@ use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
 use std::fmt::{self, Debug};
 use std::io::Write;
+use std::path::Path;
 use std::prelude::v1::Result::Ok;
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::{DateTime, Local, Utc};
 use discorsd::{Bot as _, BotExt, BotState, GuildCommands, IdMap, shard};
 use discorsd::async_trait;
 use discorsd::commands::*;
 use discorsd::errors::BotError;
-use discorsd::http::channel::{embed, MessageChannelExt};
+use discorsd::http::channel::{create_message, embed, MessageChannelExt};
 use discorsd::http::ClientResult;
-use discorsd::http::guild::CommandPermsExt;
 use discorsd::model::channel::Channel;
 use discorsd::model::guild::{Guild, Integration};
 use discorsd::model::ids::*;
-use discorsd::model::interaction::Interaction;
 use discorsd::model::message::Message;
+use discorsd::model::new_interaction::Interaction;
 use discorsd::model::permissions::{Permissions, Role};
 use discorsd::shard::dispatch::ReactionUpdate;
 use discorsd::shard::intents::Intents;
@@ -58,9 +59,10 @@ use crate::commands::ll::LowLevelCommand;
 use crate::commands::ping::PingCommand;
 use crate::commands::rules::RulesCommand;
 use crate::commands::system_info::SysInfoCommand;
-use crate::commands::test::Test;
+use crate::commands::test::TestCommand;
 use crate::commands::unpin::UnpinCommand;
 use crate::commands::uptime::UptimeCommand;
+use crate::coup::Coup;
 use crate::hangman::Hangman;
 use crate::hangman::random_words::GuildHist;
 
@@ -69,6 +71,7 @@ mod macros;
 mod commands;
 mod avalon;
 mod hangman;
+mod coup;
 pub mod utils;
 pub mod games;
 
@@ -93,8 +96,10 @@ impl Debug for Config {
 pub struct Bot {
     config: Config,
     avalon_games: RwLock<HashMap<GuildId, Avalon>>,
+    coup_games: RwLock<HashMap<GuildId, Coup>>,
     hangman_games: RwLock<HashMap<GuildId, Hangman>>,
     guild_hist_words: RwLock<IdMap<GuildHist>>,
+    // todo this needs to also track which game they're in for it to be robust
     user_games: RwLock<HashMap<UserId, HashSet<GuildId>>>,
     first_log_in: OnceCell<DateTime<Utc>>,
     log_in: RwLock<Option<DateTime<Utc>>>,
@@ -105,6 +110,7 @@ impl Bot {
         Self {
             config,
             avalon_games: Default::default(),
+            coup_games: Default::default(),
             hangman_games: Default::default(),
             guild_hist_words: Default::default(),
             user_games: Default::default(),
@@ -116,13 +122,6 @@ impl Bot {
 
 #[tokio::main]
 async fn main() -> shard::ShardResult<()> {
-    // #[derive(serde::Serialize, Default)]
-    // struct Test {
-    //     map: HashMap<u32, String>,
-    // }
-    // println!("{:?}", serde_json::to_string(&Test::default()));
-    // return Ok(());
-
     env_logger::builder()
         .format(|f, record|
             writeln!(f,
@@ -135,7 +134,7 @@ async fn main() -> shard::ShardResult<()> {
         .init();
 
     tokio::spawn(async {
-        use tokio::{io::AsyncWriteExt, fs::File, time::sleep};
+        use tokio::{fs::File, io::AsyncWriteExt, time::sleep};
 
         loop {
             match File::create("../uptime.txt").await {
@@ -147,7 +146,7 @@ async fn main() -> shard::ShardResult<()> {
             }
 
             // write file every 15 mins
-            sleep(std::time::Duration::from_secs(60 * 15)).await;
+            sleep(Duration::from_secs(60 * 15)).await;
         }
     });
 
@@ -180,7 +179,7 @@ impl discorsd::Bot for Bot {
 
     fn global_commands() -> &'static [&'static dyn SlashCommandRaw<Bot=Self>] {
         &[
-            &InfoCommand, &PingCommand, &UptimeCommand, &SysInfoCommand, &RulesCommand, &UnpinCommand
+            &InfoCommand, &PingCommand, &UptimeCommand, &SysInfoCommand, &RulesCommand, &UnpinCommand, &TestCommand
         ]
     }
 
@@ -201,6 +200,21 @@ impl discorsd::Bot for Bot {
             e.timestamp_now();
             e.url("https://github.com/Andrew-Schwartz/AvalonBot")
         })).await?;
+
+        let message = state.bot.config.channel.send(&state, create_message(|m| {
+            m.attachment(Path::new("images/avalon/avalonLogo.png"));
+            m.embed(|e| {
+                e.title("ASDASUDASDSAD");
+                // e.image(Path::new("images/avalon/board/R.jpg"));
+            });
+            m.content("ASDSAD");
+        })).await?;
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        state.client.trigger_typing(state.bot.config.channel).await?;
+
+        state.client.add_pinned_message(message.channel, message.id).await?;
+        message.react(&state.client, '🙂').await?;
 
         Ok(())
     }
@@ -323,20 +337,26 @@ impl discorsd::Bot for Bot {
 
     // todo should just be one method but have an enum for Create/Update/Delete
     async fn role_create(&self, guild: GuildId, role: Role, state: Arc<BotState<Self>>) -> Result<()> {
-        let unpin_command = state.global_command_id::<UnpinCommand>().await;
-        unpin_command.edit_permissions(state, guild, vec![CommandPermissions {
-            id: role.id.into(),
-            permission: unpin_perms(&role),
-        }]).await?;
+        println!("updating unpin perms");
+        // state.global_command_id::<UnpinCommand>()
+        //     .await
+        //     .edit_permissions(state, guild, vec![CommandPermissions {
+        //         id: role.id.into(),
+        //         permission: unpin_perms(&role),
+        //     }])
+        //     .await?;
         Ok(())
     }
 
     async fn role_update(&self, guild: GuildId, role: Role, state: Arc<BotState<Self>>) -> Result<()> {
-        let unpin_command = state.global_command_id::<UnpinCommand>().await;
-        unpin_command.edit_permissions(state, guild, vec![CommandPermissions {
-            id: role.id.into(),
-            permission: unpin_perms(&role),
-        }]).await?;
+        println!("updating unpin perms");
+        // state.global_command_id::<UnpinCommand>()
+        //     .await
+        //     .edit_permissions(state, guild, vec![CommandPermissions {
+        //         id: role.id.into(),
+        //         permission: unpin_perms(&role),
+        //     }])
+        //     .await?;
         Ok(())
     }
 
@@ -377,8 +397,8 @@ impl Bot {
             let disallow = guild.roles.iter()
                 .filter(|r| !unpin_perms(r))
                 .map(Role::id);
-            unpin_command.disallow_roles(&state, guild.id, disallow).await?;
-            unpin_command.allow_users(&state, guild.id, &[guild.owner_id]).await?;
+            // unpin_command.disallow_roles(&state, guild.id, disallow).await?;
+            // unpin_command.allow_users(&state, guild.id, &[guild.owner_id]).await?;
 
             if guild.id == self.config.guild {
                 println!("guild = {:?}", guild);
@@ -388,22 +408,23 @@ impl Bot {
                     guild.id,
                     LowLevelCommand.command(),
                 ).await?;
-                commands.insert(command.id, Box::new(LowLevelCommand));
-                command.id.allow_users(&state, guild.id, &[self.config.owner]).await?;
+                commands.insert(command.data.id(), Box::new(LowLevelCommand));
+                println!("ll perms");
+                // command.id.allow_users(&state, guild.id, &[self.config.owner]).await?;
 
                 let command = state.client.create_guild_command(
                     state.application_id(),
                     guild.id,
-                    Test.command(),
+                    TestCommand.command(),
                 ).await?;
-                commands.insert(command.id, Box::new(Test));
+                commands.insert(command.data.id(), Box::new(TestCommand));
 
                 let command = state.client.create_guild_command(
                     state.application_id(),
                     guild.id,
                     SetupCommand.command(),
                 ).await?;
-                commands.insert(command.id, Box::new(SetupCommand));
+                commands.insert(command.data.id(), Box::new(SetupCommand));
             }
         }
         Ok(())
@@ -426,7 +447,7 @@ impl Bot {
         ).await
             .unwrap()
             .into_iter()
-            .map(|c| c.id)
+            .map(|c| c.data.id())
             .zip(guild_commands)
             .collect();
         let command_names = guild_commands.iter()
@@ -456,6 +477,7 @@ impl Bot {
     pub async fn debug(&self) -> DebugBot<'_> {
         let Self {
             config,
+            coup_games,
             hangman_games,
             guild_hist_words,
             first_log_in: ready,
@@ -467,6 +489,7 @@ impl Bot {
         DebugBot {
             config,
             games: games.read().await,
+            coup_games: coup_games.read().await,
             hangman_games: hangman_games.read().await,
             guild_hist_words: guild_hist_words.read().await,
             user_games: user_games.read().await,
@@ -482,6 +505,7 @@ impl Bot {
 pub struct DebugBot<'a> {
     config: &'a Config,
     games: RwLockReadGuard<'a, HashMap<GuildId, Avalon>>,
+    coup_games: RwLockReadGuard<'a, HashMap<GuildId, Coup>>,
     hangman_games: RwLockReadGuard<'a, HashMap<GuildId, Hangman>>,
     guild_hist_words: RwLockReadGuard<'a, IdMap<GuildHist>>,
     user_games: RwLockReadGuard<'a, HashMap<UserId, HashSet<GuildId>>>,

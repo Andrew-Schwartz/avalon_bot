@@ -34,17 +34,16 @@ impl PartialEq for GuildHist {
 impl GuildHist {
     // todo remove this when impl'd
     #[allow(clippy::needless_pass_by_value)]
-    pub fn new(_guild: Guild) -> Self {
-        // let channels = guild.channels
-        //     .into_iter()
-        //     .filter(|c| c.channel_type() == ChannelType::GuildText)
-        //     .collect();
-        // Self {
-        //     guild: guild.id,
-        //     channels,
-        //     idx: 0,
-        // }
-        todo!()
+    pub fn new(guild: Guild) -> Self {
+        let channels = guild.channels
+            .into_iter()
+            .flat_map(|c| c.into_text())
+            .collect();
+        Self {
+            guild: guild.id,
+            channels,
+            idx: 0,
+        }
     }
 
     pub async fn word(&mut self) -> (String, String) {
@@ -59,6 +58,8 @@ impl GuildHist {
             let message_id_around: MessageId = time.into();
 
             println!("message_id_around = {:?}", message_id_around);
+
+            todo!("get the message - apparantly this doesn't work anymore");
         }
 
         // todo!()

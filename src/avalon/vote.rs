@@ -397,9 +397,9 @@ pub async fn party_vote_results(
             state.reaction_commands.write().await
                 .push(Box::new(quest_vote));
 
-            if let Err(e) = state.enable_command::<VoteStatus>(guild).await {
-                return Err((avalon, e.into()));
-            }
+            // if let Err(e) = state.enable_command::<VoteStatus>(guild).await {
+            //     return Err((avalon, e.into()));
+            // }
 
             AvalonState::Questing(votes)
         };

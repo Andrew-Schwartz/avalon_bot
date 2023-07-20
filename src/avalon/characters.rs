@@ -65,12 +65,6 @@ impl Character {
     }
 }
 
-impl fmt::Display for Character {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(self.name())
-    }
-}
-
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Loyalty { Good, Evil }
 

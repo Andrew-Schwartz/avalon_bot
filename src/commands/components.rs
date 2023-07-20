@@ -5,7 +5,8 @@ use command_data_derive::*;
 use discorsd::{async_trait, BotState};
 use discorsd::commands::{ButtonCommand, ButtonPressData, InteractionUse, MenuCommand, MenuSelectData, SlashCommand, SlashCommandData, Unused, Used};
 use discorsd::errors::BotError;
-use discorsd::model::interaction;
+use discorsd::http::interaction;
+use discorsd::model::interaction_response::message;
 
 use crate::Bot;
 use crate::utils::ListIterGrammatically;
@@ -43,19 +44,19 @@ impl SlashCommand for ComponentsCommand {
     ) -> Result<InteractionUse<SlashCommandData, Used>, BotError> {
         match data.component {
             ComponentType::Button => {
-                interaction.respond(&state, interaction::message(|m| {
+                interaction.respond(&state, message(|m| {
                     m.content("Message with buttons");
                     m.buttons(&state, vec![Box::new(TestButton) as _]);
                 })).await.map_err(|e| e.into())
             }
             ComponentType::Menu => {
-                interaction.respond(&state, interaction::message(|m| {
+                interaction.respond(&state, message(|m| {
                     m.content("Message with a menu!");
                     m.menu(&state, TestMenu);
                 })).await.map_err(|e| e.into())
             }
             ComponentType::Both => {
-                interaction.respond(&state, interaction::message(|m| {
+                interaction.respond(&state, message(|m| {
                     m.content("Message with a button and a message!");
                     m.buttons(&state, vec![Box::new(TestButton) as _]);
                     m.menu(&state, TestMenu);

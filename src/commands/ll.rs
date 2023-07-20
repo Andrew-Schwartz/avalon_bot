@@ -115,6 +115,7 @@ impl SlashCommand for LowLevelCommand {
     }
 }
 
+// #[derive(Debug)]
 #[derive(CommandData, Debug)]
 pub enum Data {
     Get(Get),

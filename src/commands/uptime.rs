@@ -8,7 +8,7 @@ use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::embed;
-use discorsd::http::interaction::message;
+use discorsd::model::interaction_response::message;
 use discorsd::model::message::Color;
 
 use crate::Bot;
@@ -39,12 +39,10 @@ impl SlashCommand for UptimeCommand {
             });
             // `map_or_else` tries to move `embed` in both branches, so it doesn't work
             if let Some(resume) = *state.bot.log_in.read().await {
-                message(|m| m.embed_with(embed, |e| {
-                    e.add_field("Time since last reconnect", Duration(Utc::now().signed_duration_since(resume)));
-                }))
+                embed.build(|e| e.add_field("Time since last reconnect", Duration(Utc::now().signed_duration_since(resume))))
             } else {
-                message(|m| m.embed(|e| *e = embed))
-            }
+                embed
+            }.into()
         } else {
             log::warn!("somehow not connected, yet /uptime ran???");
             message(|m| {

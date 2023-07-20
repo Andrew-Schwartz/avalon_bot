@@ -6,7 +6,6 @@ use discorsd::{BotState, GuildCommands};
 use discorsd::commands::*;
 use discorsd::http::channel::{create_message, embed, MessageChannelExt};
 use discorsd::http::ClientResult;
-use discorsd::http::guild::CommandPermsExt;
 use discorsd::model::ids::*;
 use discorsd::model::message::{ChannelMessageId, Color};
 use discorsd::model::user::UserMarkupExt;
@@ -136,7 +135,7 @@ impl Avalon {
                     });
                 })).await?;
                 let (assassinate_id, assassinate) = state.get_command_mut::<AssassinateCommand>(guild, &mut commands).await;
-                assassinate_id.allow_users(&state, guild, &[assassin.id()]).await?;
+                // assassinate_id.allow_users(&state, guild, &[assassin.id()]).await?;
                 assassinate.0 = assassin.id();
                 assassinate.edit_command(&state, guild, assassinate_id).await?;
 
@@ -169,7 +168,7 @@ impl Avalon {
             let (lotl_id, lotl_command) = state.get_command_mut::<LotlCommand>(guild, &mut commands).await;
             lotl_command.0 = lotl.id();
             lotl_command.edit_command(&state, guild, lotl_id).await?;
-            lotl_id.allow_users(&state, guild, &[lotl.id()]).await?;
+            // lotl_id.allow_users(&state, guild, &[lotl.id()]).await?;
 
             AvalonState::Lotl
         } else {
@@ -191,11 +190,11 @@ impl AvalonGame {
         mut commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
     ) -> ClientResult<()> {
         let round = self.round();
-        state.disable_command::<VoteStatus>(guild).await?;
+        // state.disable_command::<VoteStatus>(guild).await?;
         let (quest_id, quest) = state.get_command_mut::<QuestCommand>(guild, &mut commands).await;
         quest.0 = round.players;
         quest.edit_command(&state, guild, quest_id).await?;
-        quest_id.allow_users(&state, guild, &[self.leader().id()]).await?;
+        // quest_id.allow_users(&state, guild, &[self.leader().id()]).await?;
 
         self.channel.send(&state, create_message(|m| {
             m.content(self.leader().ping_nick());

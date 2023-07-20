@@ -95,6 +95,7 @@ impl SlashCommand for StartCommand {
         match game {
             GameType::Avalon => avalon::start::start(&state, &deferred).await?,
             GameType::Hangman => hangman::start::start(&state, &deferred).await?,
+            GameType::Coup => todo!(),
             GameType::Kittens => todo!(),
         }
 

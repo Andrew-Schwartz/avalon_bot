@@ -7,6 +7,7 @@ use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::embed;
 use discorsd::model::ids::UserId;
+use discorsd::model::interaction_response::message;
 use discorsd::model::message::Color;
 use discorsd::model::user::UserMarkupExt;
 

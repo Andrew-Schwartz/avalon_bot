@@ -2,25 +2,24 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use itertools::Itertools;
-use tokio::sync::Mutex;
-
 use command_data_derive::CommandData;
 use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::{AvalonError, BotError};
 use discorsd::http::channel::{create_message, embed};
 use discorsd::http::ClientResult;
-use discorsd::http::guild::CommandPermsExt;
 use discorsd::http::user::UserExt;
 use discorsd::model::ids::{Id, UserId};
+use discorsd::model::interaction_response::message;
 use discorsd::model::message::ChannelMessageId;
 use discorsd::model::user::UserMarkupExt;
+use itertools::Itertools;
+use tokio::sync::Mutex;
 
 use crate::avalon::AvalonPlayer;
 use crate::avalon::game::AvalonState;
 use crate::avalon::quest::QuestUserError::{Duplicate, NotPlaying};
-use crate::avalon::vote::{PartyVote, VoteStatus};
+use crate::avalon::vote::PartyVote;
 use crate::Bot;
 use crate::utils::ListIterGrammatically;
 
@@ -128,9 +127,9 @@ impl SlashCommand for QuestCommand {
                             crate::avalon::vote::party_vote_results,
                         ));
 
-                        state.enable_command::<VoteStatus>(guild).await?;
-                        state.command_id::<QuestCommand>(guild).await
-                            .disallow_users(&state, guild, &[leader.id()]).await?;
+                        // state.enable_command::<VoteStatus>(guild).await?;
+                        // state.command_id::<QuestCommand>(guild).await
+                        //     .disallow_users(&state, guild, &[leader.id()]).await?;
                         game.state = AvalonState::PartyVote(votes, party);
                     }
                     result

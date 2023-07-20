@@ -6,6 +6,7 @@ use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::{create_message, MessageChannelExt};
+use discorsd::model::new_interaction::{GuildUser, InteractionUser};
 
 use crate::avalon::characters::Character;
 use crate::avalon::config::AvalonConfig;
@@ -82,7 +83,7 @@ impl ButtonCommand for JoinButton {
                  state: Arc<BotState<Self::Bot>>,
                  interaction: InteractionUse<ButtonPressData, Unused>,
     ) -> Result<InteractionUse<ButtonPressData, Used>, BotError> {
-        if let InteractionSource::Guild(GuildSource { id: _id, member }) = &interaction.source {
+        if let InteractionUser::Guild(GuildUser { id: _id, member, locale }) = &interaction.source {
             {
                 let mut guard = state.buttons.write().unwrap();
                 let config = &mut guard

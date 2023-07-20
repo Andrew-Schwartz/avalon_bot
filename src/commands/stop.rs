@@ -142,6 +142,7 @@ impl SlashCommand for StopCommand {
                 }
                 Ok(interaction)
             }
+            GameType::Coup => todo!(),
             GameType::Hangman => todo!("figure out how to stop hangman"),
             GameType::Kittens => todo!(),
         }

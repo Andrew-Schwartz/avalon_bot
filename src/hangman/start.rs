@@ -25,7 +25,7 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Slas
 
     // remove hangman command (start command too?)
     {
-        state.disable_command::<HangmanCommand>(guild).await?;
+        // state.disable_command::<HangmanCommand>(guild).await?;
         // todo edit start command
     }
 

@@ -6,9 +6,9 @@ use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::create_message;
-use discorsd::http::guild::CommandPermsExt;
 use discorsd::http::user::UserExt;
 use discorsd::model::ids::{Id, UserId};
+use discorsd::model::interaction_response::message;
 use discorsd::model::user::UserMarkupExt;
 
 use crate::avalon::game::AvalonGame;
@@ -75,13 +75,13 @@ impl SlashCommand for LotlCommand {
                     } else {
                         self.0.send_dm(&*state, create_message(|m| {
                             m.content(format!("{} is {}", target.ping_nick(), target.role.loyalty()));
-                            m.image(target.role.loyalty().image());
+                            m.attachment(target.role.loyalty().image());
                         })).await?;
                         let target_idx = game.players.iter()
                             .position(|p| p.id() == target.id())
                             .unwrap();
-                        state.command_id::<LotlCommand>(guild).await
-                            .disallow_users(&state, guild, &[self.0]).await?;
+                        // state.command_id::<LotlCommand>(guild).await
+                        //     .disallow_users(&state, guild, &[self.0]).await?;
 
                         game.lotl = Some(target_idx);
                         game.prev_ladies.push(self.0);
