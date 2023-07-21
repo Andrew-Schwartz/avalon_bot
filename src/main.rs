@@ -408,7 +408,7 @@ impl Bot {
                     guild.id,
                     LowLevelCommand.command(),
                 ).await?;
-                commands.insert(command.data.id(), Box::new(LowLevelCommand));
+                commands.insert(command.id(), Box::new(LowLevelCommand));
                 println!("ll perms");
                 // command.id.allow_users(&state, guild.id, &[self.config.owner]).await?;
 
@@ -417,14 +417,14 @@ impl Bot {
                     guild.id,
                     TestCommand.command(),
                 ).await?;
-                commands.insert(command.data.id(), Box::new(TestCommand));
+                commands.insert(command.id(), Box::new(TestCommand));
 
                 let command = state.client.create_guild_command(
                     state.application_id(),
                     guild.id,
                     SetupCommand.command(),
                 ).await?;
-                commands.insert(command.data.id(), Box::new(SetupCommand));
+                commands.insert(command.id(), Box::new(SetupCommand));
             }
         }
         Ok(())
@@ -447,7 +447,7 @@ impl Bot {
         ).await
             .unwrap()
             .into_iter()
-            .map(|c| c.data.id())
+            .map(|c| c.id())
             .zip(guild_commands)
             .collect();
         let command_names = guild_commands.iter()
