@@ -30,9 +30,9 @@ impl SlashCommand for UnpinCommand {
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  data: Self::Data,
-    ) -> Result<InteractionUse<SlashCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
         let interaction = interaction.defer(&state).await?;
 
         let start = Instant::now();
@@ -70,11 +70,11 @@ impl SlashCommand for UnpinCommand {
         }
 
         let message = match (ok, err) {
-            (ok, 0) => format!("✅ Unpinned {} messages in {:?} ✅", ok, start.elapsed()),
-            (0, err) => format!("❌ Failed to unpin {} messages in {:?} ❌", err, start.elapsed()),
-            (ok, err) => format!("Unpinned {} of {} messages in {:?}", ok, ok + err, start.elapsed()),
+            (ok, 0) => format!("✅ Unpinned {ok} messages in {:?} ✅", start.elapsed()),
+            (0, err) => format!("❌ Failed to unpin {err} messages in {:?} ❌", start.elapsed()),
+            (ok, err) => format!("Unpinned {ok} of {} messages in {:?}", ok + err, start.elapsed()),
         };
-        interaction.edit(&state, message).await.map_err(|e| e.into())
+        interaction.edit(&state, message).await.map_err(Into::into)
     }
 }
 

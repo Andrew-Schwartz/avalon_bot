@@ -17,7 +17,7 @@ use discorsd::http::user::UserExt;
 use discorsd::model::emoji::Emoji;
 use discorsd::model::ids::*;
 use discorsd::model::message::{ChannelMessageId, Color, EmbedField};
-use discorsd::model::user::UserMarkupExt;
+use discorsd::model::user::UserMarkup;
 use discorsd::shard::dispatch::{ReactionType::*, ReactionUpdate};
 
 use crate::avalon::Avalon;
@@ -158,9 +158,9 @@ impl SlashCommand for VoteStatus {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  _data: (),
-    ) -> Result<InteractionUse<SlashCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
         let guard = state.bot.avalon_games.read().await;
         let game = guard.get(&interaction.guild().unwrap()).unwrap().game_ref();
         match &game.state {
@@ -170,16 +170,16 @@ impl SlashCommand for VoteStatus {
                     .filter(|(_, vote)| **vote == 0)
                     .collect_vec();
                 let list = not_voted.iter()
-                    .list_grammatically(|((_, user), _)| user.ping_nick(), "and");
+                    .list_grammatically(|((_, user), _)| user.ping(), "and");
                 interaction.respond(&state.client, match not_voted.len() {
                     0 => "no one".to_string(),
                     1 => format!("{} has not voted", list),
                     _ => format!("{} have not voted", list),
                 },
-                ).await.map_err(|e| e.into())
+                ).await.map_err(Into::into)
             }
             _ => {
-                interaction.respond(&state, "Everyone has voted").await.map_err(|e| e.into())
+                interaction.respond(&state, "Everyone has voted").await.map_err(Into::into)
             }
         }
     }
@@ -209,7 +209,7 @@ pub async fn vote_checker<G, F, Fut>(
                 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
                 if let Ok(channel) = user.dm(&state).await {
                     let reactions: Result<Vec<_>, _> = state.client.get_all_reactions(
-                        channel.id, msg, yes_no.into_iter(),
+                        channel.id, msg, yes_no,
                     ).await.map(|vec| vec.into_iter()
                         .map(|vec| vec.into_iter()
                             .filter(|u| u.id == user)
@@ -229,7 +229,7 @@ pub async fn vote_checker<G, F, Fut>(
                     }
                     Err((a, e)) => {
                         *avalon = a;
-                        error!("{}", e.display_error(&state).await)
+                        error!("{}", e.display_error(&state).await);
                     }
                 }
                 None
@@ -338,7 +338,7 @@ pub async fn party_vote_results(
                         if loyalty == Evil {
                             format!(", or {} to fail it", QuestVote::FAIL)
                         } else {
-                            "".into()
+                            String::new()
                         }
                     )).await?;
                     let msg = ChannelMessageId::from(msg);
@@ -425,7 +425,7 @@ pub async fn quest_vote_results(
     let round = game.round();
     if let AvalonState::Questing(votes) = &mut game.state {
         let fails = votes.iter().filter(|(_, v)| **v == -1).count();
-        let questers = votes.keys().map(|(_, u)| u).list_grammatically(UserId::ping_nick, "and");
+        let questers = votes.keys().map(|(_, u)| u).list_grammatically(UserId::ping, "and");
 
         if fails >= round.fails {
             game.good_won.push(false);

@@ -10,7 +10,6 @@ use discorsd::model::ids::*;
 use discorsd::model::interaction_response::message;
 
 use crate::Bot;
-use crate::coup::Coup;
 use crate::games::GameType;
 
 #[derive(Clone, Debug)]
@@ -29,14 +28,14 @@ impl SlashCommand for AddMeCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  data: AddMeData,
-    ) -> Result<InteractionUse<SlashCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
         let id = data.player.unwrap_or_else(|| interaction.user().id());
         match data.game {
             GameType::Avalon => avalon(&*state, interaction, id).await,
-            GameType::Coup => coup(&*state, interaction, id).await,
-            GameType::Hangman => hangman(&state, interaction, id).await,
+            GameType::Coup => unreachable!(),
+            GameType::Hangman => unreachable!(),
             GameType::Kittens => {
                 interaction.respond(&state.client, format!(r#""added" to {:?}"#, data.game)).await
             }
@@ -54,9 +53,9 @@ pub struct AddMeData {
 
 async fn avalon(
     state: &BotState<Bot>,
-    interaction: InteractionUse<SlashCommandData, Unused>,
+    interaction: InteractionUse<AppCommandData, Unused>,
     user: UserId,
-) -> ClientResult<InteractionUse<SlashCommandData, Used>> {
+) -> ClientResult<InteractionUse<AppCommandData, Used>> {
     let guild = interaction.guild().unwrap();
 
     let mut games = state.bot.avalon_games.write().await;
@@ -103,79 +102,6 @@ async fn avalon(
     let guard = state.commands.read().await;
     let commands = guard.get(&guild).unwrap().write().await;
     config.start_command(state, commands, config.startable(), guild).await?;
-    config.update_embed(state, &deferred).await?;
-    deferred.delete(&state).await
-}
-
-async fn coup(
-    state: &BotState<Bot>,
-    interaction: InteractionUse<SlashCommandData, Unused>,
-    user: UserId,
-) -> ClientResult<InteractionUse<SlashCommandData, Used>> {
-    // let guild = interaction.guild().unwrap();
-    //
-    // let mut games = state.bot.coup_games.write().await;
-    // let game = games.entry(guild).or_default();
-    // let config = match game {
-    //     Coup::Config(config) => config,
-    //     Coup::Game(_) => todo!("return well")
-    // };
-    //
-    // let result = if let Some(idx) = config.players.iter().position(|m| m.id() == user) {
-    //     // remove player
-    //     config.players.remove(idx);
-    //     interaction.respond(&state, message(|m| {
-    //         m.content("Removed you from the game");
-    //         m.ephemeral();
-    //     })).await
-    // } else {
-    //     // add player
-    //     if config.players.len() == 6 {
-    //         return interaction.respond(&state, message(|m| {
-    //             m.content("Only 6 people can play Coup!");
-    //             m.ephemeral();
-    //         })).await;
-    //     }
-    //     if interaction.channel == state.bot.config.channel && user == state.bot.config.owner {
-    //         for _ in 0..1_usize.saturating_sub(config.players.len()) {
-    //             config.players.push(interaction.member().unwrap().clone());
-    //         }
-    //     } else if let Some(member) = state.cache.member(guild.user).await {
-    //         config.players.push(member);
-    //     }
-    // };
-
-    todo!()
-}
-
-async fn hangman(
-    state: &BotState<Bot>,
-    interaction: InteractionUse<SlashCommandData, Unused>,
-    user: UserId,
-) -> ClientResult<InteractionUse<SlashCommandData, Used>> {
-    let guild = interaction.guild().unwrap();
-
-    let mut games = state.bot.hangman_games.write().await;
-    let game = games.entry(guild).or_default();
-    let config = game.config_mut();
-
-    // track which guilds this user is in a game in
-    {
-        let mut users = state.bot.user_games.write().await;
-        let guilds = users.entry(user).or_default();
-
-        if config.players.iter().any(|u| u == &user) {
-            // remove player
-            config.players.retain(|&u| u != user);
-            guilds.remove(&guild);
-        } else {
-            // add player
-            config.players.push(user);
-            guilds.insert(guild);
-        }
-    }
-
-    let deferred = interaction.defer(&state).await?;
     config.update_embed(state, &deferred).await?;
     deferred.delete(&state).await
 }

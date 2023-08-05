@@ -77,7 +77,7 @@ impl Loyalty {
     }
 
     pub fn image(self) -> PathBuf {
-        PathBuf::from(format!("images/avalon/loyalty{}.jpg", self))
+        PathBuf::from(format!("images/avalon/loyalty{self}.jpg"))
     }
 }
 

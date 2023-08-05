@@ -27,9 +27,9 @@ impl SlashCommand for RulesCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  data: RulesData,
-    ) -> Result<InteractionUse<SlashCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
         let deferred = interaction.defer(&state).await?;
         let channel = match data.channel {
             Where::Dm => deferred.user().dm(&state).await?.id,

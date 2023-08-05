@@ -3,10 +3,10 @@ use std::sync::Arc;
 
 use command_data_derive::*;
 use discorsd::{async_trait, BotState};
-use discorsd::commands::{ButtonCommand, ButtonPressData, InteractionUse, MenuCommand, MenuSelectData, SlashCommand, SlashCommandData, Unused, Used};
+use discorsd::commands::{ButtonCommand, InteractionUse, MenuCommand, SlashCommand, AppCommandData, Unused, Used};
 use discorsd::errors::BotError;
-use discorsd::http::interaction;
 use discorsd::model::interaction_response::message;
+use discorsd::model::interaction::{ButtonPressData, MenuSelectData};
 
 use crate::Bot;
 use crate::utils::ListIterGrammatically;
@@ -39,28 +39,28 @@ impl SlashCommand for ComponentsCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  data: Data,
-    ) -> Result<InteractionUse<SlashCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
         match data.component {
             ComponentType::Button => {
                 interaction.respond(&state, message(|m| {
                     m.content("Message with buttons");
-                    m.buttons(&state, vec![Box::new(TestButton) as _]);
-                })).await.map_err(|e| e.into())
+                    m.button(&state, TestButton, |b| b.label("Click Me!"));
+                })).await.map_err(Into::into)
             }
             ComponentType::Menu => {
                 interaction.respond(&state, message(|m| {
                     m.content("Message with a menu!");
-                    m.menu(&state, TestMenu);
-                })).await.map_err(|e| e.into())
+                    m.menu(&state, TestMenu, |m| m.min_max_values(1, 5));
+                })).await.map_err(Into::into)
             }
             ComponentType::Both => {
                 interaction.respond(&state, message(|m| {
                     m.content("Message with a button and a message!");
-                    m.buttons(&state, vec![Box::new(TestButton) as _]);
-                    m.menu(&state, TestMenu);
-                })).await.map_err(|e| e.into())
+                    m.button(&state, TestButton, |b| b.label("Click Me!"));
+                    m.menu(&state, TestMenu, |m| m.min_max_values(1, 5));
+                })).await.map_err(Into::into)
             }
         }
     }
@@ -73,17 +73,13 @@ struct TestButton;
 impl ButtonCommand for TestButton {
     type Bot = Bot;
 
-    fn label(&self) -> String {
-        "Click Me".into()
-    }
-
     async fn run(&self,
                  state: Arc<BotState<Self::Bot>>,
                  interaction: InteractionUse<ButtonPressData, Unused>,
     ) -> Result<InteractionUse<ButtonPressData, Used>, BotError> {
         let message = format!("click id = {:?}", interaction.data.custom_id);
         interaction.respond(state, message).await
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 }
 
@@ -106,17 +102,15 @@ impl MenuCommand for TestMenu {
     type Bot = Bot;
     type Data = TestMenuData;
 
-    fn num_values(&self) -> (Option<u8>, Option<u8>) {
-        (Some(1), Some(5))
-    }
-
-    async fn run(&self,
-                 state: Arc<BotState<Self::Bot>>,
-                 interaction: InteractionUse<MenuSelectData<Self::Data>, Unused>,
-    ) -> Result<InteractionUse<MenuSelectData<Self::Data>, Used>, BotError> {
-        let chosen = interaction.data.values.iter()
+    async fn run(
+        &self,
+        state: Arc<BotState<Self::Bot>>,
+        interaction: InteractionUse<MenuSelectData, Unused>,
+        data: Vec<Self::Data>,
+    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError> {
+        let chosen = data.iter()
             .list_grammatically(|d| format!("{:?}", d), "and");
         interaction.respond(state, format!("You selected: {}", chosen)).await
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 }

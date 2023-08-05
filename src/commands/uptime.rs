@@ -29,10 +29,10 @@ impl SlashCommand for UptimeCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  _: (),
-    ) -> Result<InteractionUse<SlashCommandData, Used>, BotError> {
-        let msg = if let Some(ready) = state.bot.first_log_in.get().cloned() {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
+        let msg = if let Some(ready) = state.bot.first_log_in.get().copied() {
             let embed = embed(|e| {
                 e.color(Color::GOLD);
                 e.title(Duration(Utc::now().signed_duration_since(ready)).to_string());
@@ -46,10 +46,10 @@ impl SlashCommand for UptimeCommand {
         } else {
             log::warn!("somehow not connected, yet /uptime ran???");
             message(|m| {
-                m.content("Not yet connected, somehow :/")
+                m.content("Not yet connected, somehow :/");
             })
         };
-        interaction.respond(&state, msg).await.map_err(|e| e.into())
+        interaction.respond(&state, msg).await.map_err(Into::into)
     }
 }
 
@@ -60,22 +60,22 @@ impl Display for Duration {
         let mut dur = self.0;
         let days = dur.num_days();
         if days > 0 {
-            if days == 1 { write!(f, "1 day, ")? } else { write!(f, "{} days, ", days)? }
+            if days == 1 { write!(f, "1 day, ")? } else { write!(f, "{days} days, ")? }
             dur = dur - chrono::Duration::days(days);
         }
         let hours = dur.num_hours();
         if hours > 0 {
-            if hours == 1 { write!(f, "1 hour, ")? } else { write!(f, "{} hours, ", hours)? }
+            if hours == 1 { write!(f, "1 hour, ")? } else { write!(f, "{hours} hours, ")? }
             dur = dur - chrono::Duration::hours(hours);
         }
         let mins = dur.num_minutes();
         if mins > 0 {
-            if mins == 1 { write!(f, "1 minute, ")? } else { write!(f, "{} minutes, ", mins)? }
+            if mins == 1 { write!(f, "1 minute, ")? } else { write!(f, "{mins} minutes, ")? }
             dur = dur - chrono::Duration::minutes(mins);
         }
         let secs = dur.num_seconds();
         dur = dur - chrono::Duration::seconds(secs);
         let millis = dur.num_milliseconds();
-        write!(f, "{}.{} seconds", secs, millis)
+        write!(f, "{secs}.{millis} seconds")
     }
 }

@@ -10,7 +10,7 @@ use discorsd::BotState;
 use discorsd::commands::*;
 use discorsd::errors::BotError;
 
-use crate::{avalon, Bot, hangman};
+use crate::{avalon, Bot};
 use crate::commands::stop::StopCommand;
 use crate::games::GameType;
 
@@ -37,7 +37,7 @@ impl StartCommand {
         if self.games.is_empty() {
             self.default_permissions = false;
         }
-        removed.then(|| game)
+        removed.then_some(game)
     }
 }
 
@@ -65,7 +65,7 @@ impl SlashCommand for StartCommand {
 
     fn description(&self) -> Cow<'static, str> {
         match self.games.iter().exactly_one() {
-            Ok(game) => format!("Starts {} in this channel", game).into(),
+            Ok(game) => format!("Starts {game} in this channel").into(),
             Err(_) => "Choose a game to start in this channel".into()
         }
     }
@@ -76,9 +76,9 @@ impl SlashCommand for StartCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  data: StartData,
-    ) -> Result<InteractionUse<SlashCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
         let deferred = interaction.defer(&state).await?;
         let guild = deferred.guild().unwrap();
 
@@ -94,7 +94,7 @@ impl SlashCommand for StartCommand {
 
         match game {
             GameType::Avalon => avalon::start::start(&state, &deferred).await?,
-            GameType::Hangman => hangman::start::start(&state, &deferred).await?,
+            GameType::Hangman => todo!(),
             GameType::Coup => todo!(),
             GameType::Kittens => todo!(),
         }

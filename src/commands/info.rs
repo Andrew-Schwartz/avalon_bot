@@ -26,9 +26,9 @@ impl SlashCommand for InfoCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  _data: (),
-    ) -> Result<InteractionUse<SlashCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
         let user = state.user().await;
         interaction.respond(
             &state.client, embed(|e| {
@@ -45,7 +45,7 @@ impl SlashCommand for InfoCommand {
                 //     | Permissions::USE_EXTERNAL_EMOJIS
                 //     | Permissions::MANAGE_ROLES;
                 let perms = Permissions::ADMINISTRATOR;
-                let scopes = ["bot", "applications.commands", "applications.commands.permissions.update"]
+                let scopes = ["bot", "applications.commands"]
                     .join("%20");
                 let url = format!(
                     "https://discord.com/oauth2/authorize?scope={scopes}&client_id={}&permissions={}",
@@ -58,6 +58,6 @@ impl SlashCommand for InfoCommand {
                     \n\nTo see my code, click the title up there.", url));
                 e.timestamp_now();
             }),
-        ).await.map_err(|e| e.into())
+        ).await.map_err(Into::into)
     }
 }

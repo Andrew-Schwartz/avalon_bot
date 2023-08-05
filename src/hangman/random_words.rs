@@ -1,98 +1,100 @@
-use std::time::Duration;
-
 use chrono::{NaiveDateTime, Utc};
+use discorsd::BotState;
+use discorsd::errors::{BotError, HangmanError};
+use discorsd::http::channel::GetMessages;
+use discorsd::model::ids::{ChannelId, GuildId, Id, MessageId};
+use itertools::Itertools;
 use once_cell::sync::Lazy;
-use rand::Rng;
+use rand::{Rng, thread_rng};
+use rand::prelude::SliceRandom;
 use reqwest::Client;
 use serde::Deserialize;
+use discorsd::model::channel::ChannelType;
 
-use discorsd::model::channel::TextChannel;
-use discorsd::model::guild::Guild;
-use discorsd::model::ids::{GuildId, Id, MessageId};
+use crate::Bot;
 
-#[derive(Debug)]
-pub struct GuildHist {
-    guild: GuildId,
-    channels: Vec<TextChannel>,
-    idx: usize,
+const MIN_WORD_LEN: usize = 5;
+
+pub async fn channel_hist_word(state: &BotState<Bot>, channel: ChannelId, guild: Option<GuildId>) -> Result<(String, String), BotError> {
+    let channel_creation = channel.timestamp().timestamp();
+    println!("channel = {:?}", channel);
+    let now = Utc::now().timestamp();
+
+    let rand_time = {
+        let mut rng = thread_rng();
+        rng.gen_range(channel_creation..now)
+    };
+    println!("rand_time = {:?}", rand_time);
+    let time = NaiveDateTime::from_timestamp(rand_time, 0);
+    println!("time = {:?}", time);
+    let message = MessageId::from(time);
+    println!("message = {:?}", message);
+
+    let get = GetMessages::new().limit(100).around(message);
+    let messages = state.client.get_messages(channel, get).await?;
+    let mut rng = thread_rng();
+    messages.into_iter()
+        .find_map(|m| {
+            let mut vec = m.content.split_ascii_whitespace()
+                .filter(|s| s.chars().all(|c| c.is_ascii_alphabetic()))
+                .filter(|s| s.len() >= MIN_WORD_LEN)
+                .collect_vec();
+            println!("vec = {:?}", vec);
+            vec.shuffle(&mut rng);
+            (!vec.is_empty()).then(|| (
+                vec.swap_remove(0).to_ascii_lowercase(),
+                match guild {
+                    Some(guild) => format!("https://discord.com/channels/{guild}/{channel}/{}", m.id),
+                    None => format!("https://discord.com/channels/@me/{channel}/{}", m.id)
+                }
+            ))
+        })
+        .ok_or_else(|| HangmanError::NoWords(channel, guild).into())
 }
 
-impl Id for GuildHist {
-    type Id = GuildId;
-
-    fn id(&self) -> Self::Id {
-        self.guild
-    }
-}
-
-impl PartialEq for GuildHist {
-    fn eq(&self, other: &Self) -> bool {
-        self.id() == other.id()
-    }
-}
-
-impl GuildHist {
-    // todo remove this when impl'd
-    #[allow(clippy::needless_pass_by_value)]
-    pub fn new(guild: Guild) -> Self {
-        let channels = guild.channels
-            .into_iter()
-            .flat_map(|c| c.into_text())
-            .collect();
-        Self {
-            guild: guild.id,
-            channels,
-            idx: 0,
+pub async fn server_hist_word(state: &BotState<Bot>, guild: Result<GuildId, ChannelId>) -> Result<(String, String), BotError> {
+    let (channel, guild) = match guild {
+        Ok(guild) => {
+            let guild = state.cache.guild(guild).await.unwrap();
+            let mut channels = guild.channels.iter()
+                .filter(|c| matches!(c.variant_type(), ChannelType::Text | ChannelType::Dm))
+                .collect_vec();
+            channels.shuffle(&mut thread_rng());
+            (channels[0].id(), Some(guild.id))
         }
-    }
-
-    pub async fn word(&mut self) -> (String, String) {
-        loop {
-            let channel = &self.channels[self.idx];
-            let channel_creation = channel.id.timestamp().timestamp();
-            let now = Utc::now().timestamp();
-
-            let mut rng = rand::thread_rng();
-            let rand_time = rng.gen_range(channel_creation..now);
-            let time = NaiveDateTime::from_timestamp(rand_time, 0);
-            let message_id_around: MessageId = time.into();
-
-            println!("message_id_around = {:?}", message_id_around);
-
-            todo!("get the message - apparantly this doesn't work anymore");
-        }
-
-        // todo!()
-    }
+        Err(channel) => (channel, None),
+    };
+    channel_hist_word(state, channel, guild).await
 }
 
-static URL: Lazy<String> = Lazy::new(|| {
+static WORDNIK_URL: Lazy<String> = Lazy::new(|| {
     let key = std::fs::read_to_string("wordnik.txt").unwrap();
-    format!("https://api.wordnik.com/v4/words.json/randomWord?api_key={}", key)
+    format!(
+        "https://api.wordnik.com/v4/words.json/randomWords?\
+         hasDictionaryDef=true&\
+         includePartOfSpeech=noun,adjective,verb,adverb,preposition&\
+         minLength={MIN_WORD_LEN}&\
+         limit=100&\
+         api_key={key}"
+    )
 });
 
-#[derive(Debug, Default)]
-pub struct Wordnik(Client);
-
-impl Wordnik {
-    pub async fn word(&self) -> (String, String) {
-        #[derive(Deserialize)]
-        struct Word { word: String }
-
-        async fn word_(client: &Client) -> Option<String> {
-            let word: Word = client.get(&*URL)
-                .send().await.ok()?
-                .json().await.ok()?;
-            Some(word.word)
-        }
-        loop {
-            if let Some(word) = word_(&self.0).await {
-                if word.chars().all(|c| matches!(c, 'a'..='z')) {
-                    let source = format!("https://www.wordnik.com/words/{}", word);
-                    break (word, source);
-                }
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
-        }
+pub async fn wordnik_word(client: &Client) -> Result<(String, String), BotError> {
+    #[derive(Deserialize, Debug)]
+    struct Word {
+        word: String,
     }
+
+    let words: Vec<Word> = client.get(&*WORDNIK_URL)
+        .send().await?
+        .json().await?;
+
+    let word = words.into_iter()
+        // all words from wordnik are lowercase
+        .find(|w| w.word.chars().all(|c| c.is_ascii_alphabetic()))
+        .unwrap()
+        .word;
+
+    let source = format!("https://www.wordnik.com/words/{word}");
+    Ok((word, source))
 }

@@ -1,17 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
-use tokio::sync::RwLockWriteGuard;
-
 use discorsd::{BotState, GuildCommands};
 use discorsd::commands::*;
 use discorsd::http::channel::{create_message, embed, MessageChannelExt};
 use discorsd::http::ClientResult;
 use discorsd::model::ids::*;
 use discorsd::model::message::{ChannelMessageId, Color};
-use discorsd::model::user::UserMarkupExt;
+use discorsd::model::user::UserMarkup;
+use tokio::sync::RwLockWriteGuard;
 
 use crate::avalon::board::Board;
-use crate::avalon::vote::VoteStatus;
 use crate::Bot;
 use crate::commands::stop::StopVoteCommand;
 
@@ -118,7 +116,7 @@ impl Avalon {
                 game.players.iter().any(|p| p.role == Merlin),
             ) {
                 game.channel.send(&state, create_message(|m| {
-                    m.content(assassin.ping_nick());
+                    m.content(assassin.ping());
                     m.embed(|e| {
                         e.title("The good guys have succeeded three quests, but the Assassin can still try to kill Merlin");
                         e.description("Use `/assassinate` to assassinate who you think is Merlin");
@@ -153,7 +151,7 @@ impl Avalon {
             })).await;
         } else if let (Some(lotl), 2..=4) = (game.lotl(), game.round) {
             game.channel.send(&state, create_message(|m| {
-                m.content(lotl.ping_nick());
+                m.content(lotl.ping());
                 m.embed(|e| {
                     e.title(format!(
                         "Now {} will use the Lady of the Lake to find someone's alignment",
@@ -197,7 +195,7 @@ impl AvalonGame {
         // quest_id.allow_users(&state, guild, &[self.leader().id()]).await?;
 
         self.channel.send(&state, create_message(|m| {
-            m.content(self.leader().ping_nick());
+            m.content(self.leader().ping());
             m.embed(|e| {
                 e.color(Color::GOLD);
                 e.title(format!("Quest {}: The leader is {}", self.round, self.leader().member.nick_or_name()));

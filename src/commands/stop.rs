@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Duration;
 
 use itertools::Itertools;
 
@@ -36,7 +35,7 @@ impl StopCommand {
         if self.games.is_empty() {
             self.default_permissions = false;
         }
-        removed.then(|| game)
+        removed.then_some(game)
     }
 }
 
@@ -71,7 +70,7 @@ impl SlashCommand for StopCommand {
         format!(
             "Stop the current game{} in this server. Requires 2 additional players to confirm.",
             if self.games.is_empty() {
-                "".to_string()
+                String::new()
             } else {
                 format!(
                     " of {}",
@@ -91,9 +90,9 @@ impl SlashCommand for StopCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  data: StopData,
-    ) -> Result<InteractionUse<SlashCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
         let game = data.game.unwrap_or_else(|| *self.games.iter().exactly_one().unwrap());
 
         match game {
@@ -105,11 +104,7 @@ impl SlashCommand for StopCommand {
                     Self::CONFIRM, Self::CANCEL
                 );
                 let interaction = interaction.respond(&state, message).await?;
-                let message = interaction.get_message(
-                    &state.cache,
-                    Duration::from_millis(5),
-                    Duration::from_secs(2),
-                ).await.unwrap();
+                let message = interaction.get_message(&state).await.unwrap();
                 let id = message.id;
                 let s = Arc::clone(&state);
                 tokio::spawn(async move {
@@ -149,7 +144,7 @@ impl SlashCommand for StopCommand {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StopVoteCommand(MessageId, pub GuildId, Vec<UserId>, UserId, GameType);
 
 #[allow(clippy::use_self)]

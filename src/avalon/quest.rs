@@ -12,7 +12,7 @@ use discorsd::http::user::UserExt;
 use discorsd::model::ids::{Id, UserId};
 use discorsd::model::interaction_response::message;
 use discorsd::model::message::ChannelMessageId;
-use discorsd::model::user::UserMarkupExt;
+use discorsd::model::user::UserMarkup;
 use itertools::Itertools;
 use tokio::sync::Mutex;
 
@@ -44,9 +44,9 @@ impl SlashCommand for QuestCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  data: QuestData,
-    ) -> Result<InteractionUse<SlashCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
         let guild = interaction.guild().unwrap();
         let mut guard = state.bot.avalon_games.write().await;
         let game = guard.get_mut(&guild).unwrap().game_mut();
@@ -58,14 +58,14 @@ impl SlashCommand for QuestCommand {
                         &state.client,
                         embed(|e| {
                             e.title(format!("{} has proposed a party to go on this quest", leader.member.nick_or_name()));
-                            e.description(party.iter().list_grammatically(UserId::ping_nick, "and"));
+                            e.description(party.iter().list_grammatically(UserId::ping, "and"));
                         }),
                     ).await;
 
                     // I think this we should only move on if this works?
                     if let Ok(interaction) = &result {
                         let guild = interaction.guild().unwrap();
-                        let list_party = party.iter().list_grammatically(UserId::ping_nick, "and");
+                        let list_party = party.iter().list_grammatically(UserId::ping, "and");
                         let list_party = Arc::new(list_party);
                         let mut handles = Vec::new();
                         let command_idx: Arc<Mutex<Option<usize>>> = Arc::new(Mutex::new(None));
@@ -144,7 +144,7 @@ impl SlashCommand for QuestCommand {
                                 errors.into_iter()
                                     .map(|(user, error)| format!(
                                         "{} {}.",
-                                        user.ping_nick(),
+                                        user.ping(),
                                         match error {
                                             NotPlaying => "is not playing Avalon",
                                             Duplicate => "was added multiple times",
@@ -159,11 +159,11 @@ impl SlashCommand for QuestCommand {
             interaction.respond(
                 &state.client, message(|m| {
                     m.ephemeral();
-                    m.content(format!("Only the current leader ({}) can choose who goes on the quest", leader.ping_nick()));
+                    m.content(format!("Only the current leader ({}) can choose who goes on the quest", leader.ping()));
                 }),
             ).await
         };
-        result.map_err(|e| e.into())
+        result.map_err(Into::into)
     }
 }
 

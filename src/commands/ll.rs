@@ -7,6 +7,7 @@ use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::model::ids::*;
+use discorsd::model::message::TextMarkup;
 
 use crate::Bot;
 
@@ -31,21 +32,21 @@ impl SlashCommand for LowLevelCommand {
     async fn run(
         &self,
         state: Arc<BotState<Bot>>,
-        interaction: InteractionUse<SlashCommandData, Unused>,
+        interaction: InteractionUse<AppCommandData, Unused>,
         data: Self::Data,
-    ) -> Result<InteractionUse<SlashCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
         fn format<D: Debug>(d: D) -> Vec<String> {
             let mut vec = Vec::new();
 
             // pretty-printed result, with markdown escaped
-            let mut string = format!("{:#?}", d).replace('`', r"\`");
+            let mut string = format!("{d:#?}").replace('`', r"\`");
             while !string.is_empty() {
                 const LEN: usize = "```rs\n```".len();
                 let mut i = 2000 - LEN;
                 while !string.is_char_boundary(i) {
-                    i -= 1
+                    i -= 1;
                 }
-                vec.push(format!("```rs\n{}```", string.drain(0..i).collect::<String>()));
+                vec.push(string.drain(0..i).collect::<String>().code_block("rs"));
             }
 
             vec

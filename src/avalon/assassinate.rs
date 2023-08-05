@@ -9,7 +9,7 @@ use discorsd::http::channel::embed;
 use discorsd::model::ids::UserId;
 use discorsd::model::interaction_response::message;
 use discorsd::model::message::Color;
-use discorsd::model::user::UserMarkupExt;
+use discorsd::model::user::UserMarkup;
 
 use crate::avalon::characters::Character::Merlin;
 use crate::avalon::characters::Loyalty::Evil;
@@ -35,9 +35,9 @@ impl SlashCommand for AssassinateCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  data: AssassinateData,
-    ) -> Result<InteractionUse<SlashCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
         let result = if interaction.user().id == self.0 {
             let target = data.target;
             let guild = interaction.guild().unwrap();
@@ -47,13 +47,13 @@ impl SlashCommand for AssassinateCommand {
             match game.player_ref(target) {
                 None => {
                     interaction.respond(&state.client, message(|m| {
-                        m.content(format!("{} is not playing Avalon", target.ping_nick()));
+                        m.content(format!("{} is not playing Avalon", target.ping()));
                         m.ephemeral();
                     })).await
                 }
                 Some(evil) if evil.role.loyalty() == Evil => {
                     interaction.respond(&state.client, message(|m| {
-                        m.content(format!("{} is evil, you can't assassinate them!", target.ping_nick()));
+                        m.content(format!("{} is evil, you can't assassinate them!", target.ping()));
                         m.ephemeral();
                     })).await
                 }
@@ -83,7 +83,7 @@ impl SlashCommand for AssassinateCommand {
             }
         } else {
             interaction.respond(&state.client, message(|m| {
-                m.content(format!("Only the assassin ({}) can assassinate someone", self.0.ping_nick()));
+                m.content(format!("Only the assassin ({}) can assassinate someone", self.0.ping()));
                 m.ephemeral();
             })).await
         };

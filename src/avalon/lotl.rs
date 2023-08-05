@@ -9,7 +9,7 @@ use discorsd::http::channel::create_message;
 use discorsd::http::user::UserExt;
 use discorsd::model::ids::{Id, UserId};
 use discorsd::model::interaction_response::message;
-use discorsd::model::user::UserMarkupExt;
+use discorsd::model::user::UserMarkup;
 
 use crate::avalon::game::AvalonGame;
 use crate::Bot;
@@ -35,9 +35,9 @@ impl SlashCommand for LotlCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  data: LadyData,
-    ) -> Result<InteractionUse<SlashCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
         let result = if interaction.user().id == self.0 {
             let guild = interaction.guild().unwrap();
             let target = data.target;
@@ -46,7 +46,7 @@ impl SlashCommand for LotlCommand {
             match game.player_ref(target).cloned() {
                 None => {
                     interaction.respond(&state.client, message(|m| {
-                        m.content(format!("{} is not playing Avalon", target.ping_nick()));
+                        m.content(format!("{} is not playing Avalon", target.ping()));
                         m.ephemeral();
                     })).await
                 }
@@ -62,7 +62,7 @@ impl SlashCommand for LotlCommand {
                             m.content(format!(
                                 "You can't use the Lady of the Lake on someone who had the Lady of the \
                                 Lake in the past. {} had the Lady of the Lake {}.",
-                                target.ping_nick(),
+                                target.ping(),
                                 match idx {
                                     0 => "first",
                                     1 => "second",
@@ -74,7 +74,7 @@ impl SlashCommand for LotlCommand {
                         })).await
                     } else {
                         self.0.send_dm(&*state, create_message(|m| {
-                            m.content(format!("{} is {}", target.ping_nick(), target.role.loyalty()));
+                            m.content(format!("{} is {}", target.ping(), target.role.loyalty()));
                             m.attachment(target.role.loyalty().image());
                         })).await?;
                         let target_idx = game.players.iter()
@@ -98,7 +98,7 @@ impl SlashCommand for LotlCommand {
             }
         } else {
             interaction.respond(&state.client, message(|m| {
-                m.content(format!("Only {} can use the Lady of the Lake", self.0.ping_nick()));
+                m.content(format!("Only {} can use the Lady of the Lake", self.0.ping()));
                 m.ephemeral();
             })).await
         };
@@ -128,9 +128,9 @@ impl SlashCommand for ToggleLady {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  data: ToggleData,
-    ) -> Result<InteractionUse<SlashCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
         let interaction = interaction.defer(&state).await?;
         let mut guard = state.bot.avalon_games.write().await;
         let guild = interaction.guild().unwrap();

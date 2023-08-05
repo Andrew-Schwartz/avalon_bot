@@ -17,6 +17,9 @@ pub trait ListIterGrammatically: ExactSizeIterator + Sized {
     /// ```
     // todo can `to_string` also provide a &str? the use in components would really like that
     fn list_grammatically<F: FnMut(Self::Item) -> String>(self, to_string: F, word: &str) -> String {
+        if self.len() == 0 {
+            return String::new()
+        }
         let last = self.len() - 1;
         self.map(to_string)
             .enumerate()
@@ -25,13 +28,11 @@ pub trait ListIterGrammatically: ExactSizeIterator + Sized {
                     if i == last {
                         if i == 1 {
                             acc.push(' ');
-                            acc.push_str(word);
-                            acc.push(' ');
                         } else {
                             acc.push_str(" , ");
-                            acc.push_str(word);
-                            acc.push(' ');
                         }
+                        acc.push_str(word);
+                        acc.push(' ');
                     } else {
                         acc.push_str(", ");
                     }

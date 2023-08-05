@@ -10,10 +10,11 @@
     clippy::option_if_let_else,
     clippy::option_option,
     clippy::default_trait_access,
-    clippy::filter_map,
     clippy::must_use_candidate,
     clippy::similar_names,
     clippy::unit_arg,
+    clippy::single_match_else,
+    clippy::match_bool,
     // nursery
     clippy::missing_const_for_fn,
 )]
@@ -29,17 +30,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Local, Utc};
-use discorsd::{Bot as _, BotExt, BotState, GuildCommands, IdMap, shard};
+use discorsd::{Bot as _, BotExt, BotState, GuildCommands, shard};
 use discorsd::async_trait;
 use discorsd::commands::*;
-use discorsd::errors::BotError;
+use discorsd::errors::{BotError, GameError};
 use discorsd::http::channel::{create_message, embed, MessageChannelExt};
 use discorsd::http::ClientResult;
 use discorsd::model::channel::Channel;
 use discorsd::model::guild::{Guild, Integration};
 use discorsd::model::ids::*;
 use discorsd::model::message::Message;
-use discorsd::model::new_interaction::Interaction;
+use discorsd::model::interaction::Interaction;
 use discorsd::model::permissions::{Permissions, Role};
 use discorsd::shard::dispatch::ReactionUpdate;
 use discorsd::shard::intents::Intents;
@@ -58,13 +59,13 @@ use crate::commands::info::InfoCommand;
 use crate::commands::ll::LowLevelCommand;
 use crate::commands::ping::PingCommand;
 use crate::commands::rules::RulesCommand;
+use crate::commands::start_game::StartGameCommand;
 use crate::commands::system_info::SysInfoCommand;
 use crate::commands::test::TestCommand;
 use crate::commands::unpin::UnpinCommand;
 use crate::commands::uptime::UptimeCommand;
 use crate::coup::Coup;
 use crate::hangman::Hangman;
-use crate::hangman::random_words::GuildHist;
 
 #[macro_use]
 mod macros;
@@ -89,7 +90,7 @@ impl Debug for Config {
             .field("steadfast_id", &self.owner)
             .field("dev_channel", &self.channel)
             .field("guild_id", &self.guild)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -97,9 +98,9 @@ pub struct Bot {
     config: Config,
     avalon_games: RwLock<HashMap<GuildId, Avalon>>,
     coup_games: RwLock<HashMap<GuildId, Coup>>,
-    hangman_games: RwLock<HashMap<GuildId, Hangman>>,
-    guild_hist_words: RwLock<IdMap<GuildHist>>,
+    hangman_games: RwLock<HashMap<ChannelId, Hangman>>,
     // todo this needs to also track which game they're in for it to be robust
+    // todo but also, is this needed at all anymore?
     user_games: RwLock<HashMap<UserId, HashSet<GuildId>>>,
     first_log_in: OnceCell<DateTime<Utc>>,
     log_in: RwLock<Option<DateTime<Utc>>>,
@@ -112,7 +113,6 @@ impl Bot {
             avalon_games: Default::default(),
             coup_games: Default::default(),
             hangman_games: Default::default(),
-            guild_hist_words: Default::default(),
             user_games: Default::default(),
             first_log_in: Default::default(),
             log_in: Default::default(),
@@ -126,7 +126,7 @@ async fn main() -> shard::ShardResult<()> {
         .format(|f, record|
             writeln!(f,
                      "{} [{}] {}",
-                     Local::now().format("%e %T"),
+                     Local::now().format("%d %T"),
                      record.level(),
                      record.args(),
             ))
@@ -165,6 +165,8 @@ type Result<T, E = BotError> = std::result::Result<T, E>;
 
 #[async_trait]
 impl discorsd::Bot for Bot {
+    type Error = GameError;
+
     fn token(&self) -> String {
         self.config.token.clone()
     }
@@ -173,20 +175,19 @@ impl discorsd::Bot for Bot {
         Identify::new(self.token())
             .add_intents(Intents::MESSAGE_CONTENT)
             .presence(UpdateStatus::with_activity(
-                Activity::for_bot("Avalon - try /addme", ActivityType::Game)
+                Activity::for_bot("Avalon - try /start", ActivityType::Game)
             ))
     }
 
     fn global_commands() -> &'static [&'static dyn SlashCommandRaw<Bot=Self>] {
         &[
-            &InfoCommand, &PingCommand, &UptimeCommand, &SysInfoCommand, &RulesCommand, &UnpinCommand, &TestCommand
+            &InfoCommand, &PingCommand, &UptimeCommand, &SysInfoCommand, &RulesCommand, &UnpinCommand, &TestCommand,
         ]
     }
 
     fn guild_commands() -> Vec<Box<dyn SlashCommandRaw<Bot=Self>>> {
         let mut vec = commands::commands();
         vec.extend(avalon::commands());
-        vec.extend(hangman::commands());
         vec
     }
 
@@ -198,7 +199,7 @@ impl discorsd::Bot for Bot {
         state.bot.config.channel.send(&state, embed(|e| {
             e.title("Avalon Bot is logged on!");
             e.timestamp_now();
-            e.url("https://github.com/Andrew-Schwartz/AvalonBot")
+            e.url("https://github.com/Andrew-Schwartz/AvalonBot");
         })).await?;
 
         let message = state.bot.config.channel.send(&state, create_message(|m| {
@@ -210,10 +211,10 @@ impl discorsd::Bot for Bot {
             m.content("ASDSAD");
         })).await?;
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        state.client.trigger_typing(state.bot.config.channel).await?;
+        // tokio::time::sleep(Duration::from_secs(5)).await;
+        // state.client.trigger_typing(state.bot.config.channel).await?;
 
-        state.client.add_pinned_message(message.channel, message.id).await?;
+        // state.client.add_pinned_message(message.channel, message.id).await?;
         message.react(&state.client, '🙂').await?;
 
         Ok(())
@@ -231,6 +232,12 @@ impl discorsd::Bot for Bot {
         info!("Guild Create: {} ({})", guild.name.as_ref().unwrap(), guild.id);
         self.avalon_games.write().await.entry(guild.id).or_default();
 
+        state.client.bulk_overwrite_guild_commands(
+            state.application_id(),
+            guild.id,
+            Vec::new(),
+        ).await?;
+        state.register_guild_commands(&guild, [Box::new(StartGameCommand(guild.id)) as _]).await?;
         self.initialize_guild_commands(&guild, &state).await?;
 
         self.config.channel.send(&state, format!(
@@ -265,8 +272,7 @@ impl discorsd::Bot for Bot {
                             _ => unreachable!(),
                         };
                     }
-                }),
-                ).await?;
+                })).await?;
             }
             "!log" => {
                 info!("{:#?}", self.debug().await);
@@ -393,10 +399,10 @@ impl Bot {
             ).await?;
 
             // set up perms for `/unpin`
-            let unpin_command = state.global_command_id::<UnpinCommand>().await;
-            let disallow = guild.roles.iter()
-                .filter(|r| !unpin_perms(r))
-                .map(Role::id);
+            // let unpin_command = state.global_command_id::<UnpinCommand>();
+            // let disallow = guild.roles.iter()
+            //     .filter(|r| !unpin_perms(r))
+            //     .map(Role::id);
             // unpin_command.disallow_roles(&state, guild.id, disallow).await?;
             // unpin_command.allow_users(&state, guild.id, &[guild.owner_id]).await?;
 
@@ -479,19 +485,17 @@ impl Bot {
             config,
             coup_games,
             hangman_games,
-            guild_hist_words,
             first_log_in: ready,
             log_in: resume,
             avalon_games: games,
             user_games
         } = self;
-        #[allow(clippy::eval_order_dependence)]
+        #[allow(clippy::mixed_read_write_in_expression)]
         DebugBot {
             config,
             games: games.read().await,
             coup_games: coup_games.read().await,
             hangman_games: hangman_games.read().await,
-            guild_hist_words: guild_hist_words.read().await,
             user_games: user_games.read().await,
             ready: ready.get(),
             resume: resume.read().await,
@@ -506,8 +510,7 @@ pub struct DebugBot<'a> {
     config: &'a Config,
     games: RwLockReadGuard<'a, HashMap<GuildId, Avalon>>,
     coup_games: RwLockReadGuard<'a, HashMap<GuildId, Coup>>,
-    hangman_games: RwLockReadGuard<'a, HashMap<GuildId, Hangman>>,
-    guild_hist_words: RwLockReadGuard<'a, IdMap<GuildHist>>,
+    hangman_games: RwLockReadGuard<'a, HashMap<ChannelId, Hangman>>,
     user_games: RwLockReadGuard<'a, HashMap<UserId, HashSet<GuildId>>>,
     ready: Option<&'a DateTime<Utc>>,
     resume: RwLockReadGuard<'a, Option<DateTime<Utc>>>,

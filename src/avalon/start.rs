@@ -13,16 +13,15 @@ use discorsd::http::user::UserExt;
 use discorsd::model::ids::Id;
 use discorsd::model::message::ChannelMessageId;
 use discorsd::model::message::Color;
-use discorsd::model::user::UserMarkupExt;
+use discorsd::model::user::UserMarkup;
 
 use crate::avalon::characters::{Character, Loyalty};
 use crate::avalon::characters::Character::{LoyalServant, MinionOfMordred};
-use crate::avalon::config::AvalonConfig;
 use crate::avalon::game::AvalonGame;
 use crate::avalon::max_evil;
 use crate::Bot;
 
-pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<SlashCommandData, Deferred>) -> Result<(), BotError> {
+pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<AppCommandData, Deferred>) -> Result<(), BotError> {
     let guild = interaction.guild().unwrap();
     let mut guard = state.bot.avalon_games.write().await;
     let avalon = guard.get_mut(&guild).unwrap();
@@ -60,7 +59,7 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Slas
                         "You see",
                         seen_players.iter()
                             .filter(|other| state.bot.config.channel == channel || other.member.id() != player.member.id())
-                            .map(|player| player.member.ping_nick())
+                            .map(|player| player.member.ping())
                             .join("\n"),
                     );
                 }
@@ -80,13 +79,15 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Slas
         });
         handles.push(handle);
     }
-    let pinned = futures::future::join_all(handles).await.into_iter()
+    let pinned = futures::future::join_all(handles)
+        .await
+        .into_iter()
         .map(|res| res.expect("character info tasks do not panic"))
         .collect::<ClientResult<HashSet<_>>>()?;
     game.pins.extend(pinned);
 
     // start info
-    channel.send(&state, embed(|e| {
+    channel.send(state, embed(|e| {
         e.title(format!("Avalon game with {} players", players.len()));
         e.color(Color::GOLD);
         e.add_inline_field(
@@ -94,11 +95,11 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Slas
             players.iter()
                 .enumerate()
                 .map(|(i, player)| if i == 0 {
-                    format!("{} - goes first", player.ping_nick())
+                    format!("{} - goes first", player.ping())
                 } else if lotl.filter(|lotl| *lotl == i).is_some() {
-                    format!("{} - has the Lady of the Lake", player.ping_nick())
+                    format!("{} - has the Lady of the Lake", player.ping())
                 } else {
-                    player.ping_nick()
+                    player.ping()
                 })
                 .join("\n"),
         );
@@ -133,7 +134,7 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Slas
             );
         }
         if let Some(board) = board {
-            e.image(board)
+            e.image(board);
         }
     })).await?;
 
@@ -152,6 +153,6 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<Slas
         .collect_vec();
     state.client.bulk_overwrite_guild_commands(state.application_id(), guild, disabled_commands).await?;
 
-    game.start_round(&*state, guild, commands).await?;
+    game.start_round(state, guild, commands).await?;
     Ok(())
 }

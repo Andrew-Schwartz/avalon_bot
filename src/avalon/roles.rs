@@ -30,9 +30,9 @@ impl SlashCommand for RolesCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  data: RoleData,
-    ) -> Result<InteractionUse<SlashCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
         let interaction = interaction.defer(&state).await?;
         let guild = interaction.guild().unwrap();
         let mut guard = state.bot.avalon_games.write().await;

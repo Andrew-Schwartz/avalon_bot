@@ -6,7 +6,7 @@ use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::{create_message, MessageChannelExt};
-use discorsd::model::new_interaction::{GuildUser, InteractionUser};
+use discorsd::model::interaction::{ButtonPressData, GuildUser, InteractionUser, MenuSelectData};
 
 use crate::avalon::characters::Character;
 use crate::avalon::config::AvalonConfig;
@@ -21,7 +21,7 @@ pub struct SetupCommand;
 //     //     let players_list = if config.players.is_empty() {
 //     //         "None".to_string()
 //     //     } else {
-//     //         config.players.iter().list_grammatically(|u| u.ping_nick(), "and")
+//     //         config.players.iter().list_grammatically(|u| u.ping(), "and")
 //     //     };
 //     //     // todo: list number of MoM/LS
 //     //     let roles_list = if config.roles.is_empty() {
@@ -53,13 +53,13 @@ impl SlashCommand for SetupCommand {
 
     async fn run(&self,
                  state: Arc<BotState<<Self as SlashCommand>::Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  (): Self::Data,
-    ) -> Result<InteractionUse<SlashCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
         interaction.channel.send(&state, create_message(|m| {
             m.content("config");
-            m.button(&state, JoinButton::default());
-            m.menu(&state, RolesMenu::default());
+            m.button(&state, JoinButton::default(), |b| b.label("join/leave game"));
+            m.menu(&state, RolesMenu::default(), |m| m.max_values(6));
         })).await?;
         let interaction = interaction.defer(&state).await?;
         let mut config = AvalonConfig::default();
@@ -74,10 +74,6 @@ struct JoinButton(AvalonConfig);
 #[async_trait]
 impl ButtonCommand for JoinButton {
     type Bot = Bot;
-
-    fn label(&self) -> String {
-        "join/leave game".into()
-    }
 
     async fn run(&self,
                  state: Arc<BotState<Self::Bot>>,
@@ -134,14 +130,12 @@ impl MenuCommand for RolesMenu {
     type Bot = Bot;
     type Data = Role;
 
-    fn num_values(&self) -> (Option<u8>, Option<u8>) {
-        (None, Some(6))
-    }
-
-    async fn run(&self,
-                 state: Arc<BotState<Self::Bot>>,
-                 interaction: InteractionUse<MenuSelectData<Self::Data>, Unused>,
-    ) -> Result<InteractionUse<MenuSelectData<Self::Data>, Used>, BotError> {
+    async fn run(
+        &self,
+        state: Arc<BotState<Self::Bot>>,
+        interaction: InteractionUse<MenuSelectData, Unused>,
+        data: Vec<Self::Data>,
+    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError> {
         let embed = {
             let mut guard = state.menus.write().unwrap();
             let config = &mut guard
@@ -150,7 +144,7 @@ impl MenuCommand for RolesMenu {
                 .downcast_mut::<Self>()
                 .unwrap()
                 .0;
-            config.roles = interaction.data.values.iter()
+            config.roles = data.iter()
                 .map(Character::from)
                 .collect();
             config.embed()

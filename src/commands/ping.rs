@@ -25,9 +25,9 @@ impl SlashCommand for PingCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  _: (),
-    ) -> Result<InteractionUse<SlashCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
         let start = Instant::now();
         let embed = embed(|e| e.title("Pong!"));
         let mut used = interaction.respond(&state, embed.clone()).await?;

@@ -14,12 +14,13 @@ pub mod ll;
 pub mod unpin;
 pub mod test;
 pub mod components;
+pub mod start_game;
 
 pub fn commands() -> Vec<Box<dyn SlashCommandRaw<Bot=Bot>>> {
     vec![
         Box::new(addme::AddMeCommand),
-        Box::new(start::StartCommand::default()),
-        Box::new(stop::StopCommand::default()),
+        Box::<start::StartCommand>::default(),
+        Box::<stop::StopCommand>::default(),
         Box::new(components::ComponentsCommand),
     ]
 }

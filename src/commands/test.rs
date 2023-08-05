@@ -32,9 +32,9 @@ impl SlashCommand for TestCommand {
 
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  (): Self::Data,
-    ) -> Result<InteractionUse<SlashCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
         println!("interaction = {:#?}", interaction);
         interaction.respond(&state, message(|m| {
             m.content("asdsad");
@@ -43,6 +43,6 @@ impl SlashCommand for TestCommand {
                 e.title("TItesl");
             });
         })).await
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 }

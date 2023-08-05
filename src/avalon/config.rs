@@ -11,7 +11,7 @@ use discorsd::model::commands::*;
 use discorsd::model::guild::GuildMember;
 use discorsd::model::ids::*;
 use discorsd::model::message::Message;
-use discorsd::model::user::UserMarkupExt;
+use discorsd::model::user::UserMarkup;
 
 use crate::{avalon, Bot};
 use crate::avalon::characters::Character;
@@ -52,7 +52,7 @@ impl AvalonConfig {
         embed(|e| {
             e.title("__Avalon Setup__");
             let players_list = self.players.iter()
-                .map(UserMarkupExt::ping_nick)
+                .map(UserMarkup::ping)
                 .join("\n");
             e.add_inline_field(
                 format!("Players ({})", self.players.len()),
@@ -99,14 +99,14 @@ impl AvalonConfig {
     pub async fn update_embed(
         &mut self,
         state: &BotState<Bot>,
-        interaction: &InteractionUse<SlashCommandData, Deferred>,
+        interaction: &InteractionUse<AppCommandData, Deferred>,
     ) -> http::ClientResult<()> {
         let embed = self.embed();
         match &mut self.message {
             Some(message) if message.channel == interaction.channel => {
                 // not a followup so it doesn't get deleted
                 let new = interaction.channel.send(&state, embed).await?;
-                let old = mem::replace(message, new);
+                let mut old = mem::replace(message, new);
                 old.delete(&state.client).await?;
             }
             Some(_) | None => {

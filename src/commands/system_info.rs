@@ -34,9 +34,9 @@ impl SlashCommand for SysInfoCommand {
     #[allow(clippy::cast_precision_loss)]
     async fn run(&self,
                  state: Arc<BotState<Bot>>,
-                 interaction: InteractionUse<SlashCommandData, Unused>,
+                 interaction: InteractionUse<AppCommandData, Unused>,
                  data: Self::Data,
-    ) -> Result<InteractionUse<SlashCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
         let mut embed = embed(|e| {
             e.title("System Usage Information");
             // a nice blue
@@ -44,6 +44,8 @@ impl SlashCommand for SysInfoCommand {
         });
 
         {
+            // wrong
+            #[allow(clippy::significant_drop_tightening)]
             let mut sys = SYS_INFO.lock().unwrap();
             sys.refresh_all();
 
@@ -64,7 +66,7 @@ impl SlashCommand for SysInfoCommand {
                         format!("```{}\nAverage: {:.2}%```", value, avg / cpus.len() as f32)
                     }
                 };
-                embed.field(("CPU Usage", value))
+                embed.field(("CPU Usage", value));
             }
             if data.0.iter().any(|it| matches!(it, Choices::Memory | Choices::All)) {
                 let used = sys.used_memory();
@@ -100,7 +102,7 @@ impl SlashCommand for SysInfoCommand {
             }
         }
 
-        interaction.respond(state, embed).await.map_err(|e| e.into())
+        interaction.respond(state, embed).await.map_err(Into::into)
     }
 }
 
