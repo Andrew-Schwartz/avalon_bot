@@ -7,7 +7,7 @@ use discorsd::commands::{AppCommandData, InteractionUse, SlashCommand, Unused, U
 use discorsd::errors::BotError;
 use discorsd::model::ids::GuildId;
 
-use crate::{Bot, coup, hangman};
+use crate::{avalon2, Bot, coup, hangman};
 use crate::coup::StartingCoins;
 use crate::hangman::Source;
 
@@ -46,7 +46,8 @@ impl SlashCommand for StartGameCommand {
     ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
         match data {
             StartGame::Coup { starting_coins } => coup::start_setup(&state, starting_coins, self.0, interaction).await,
-            StartGame::Avalon => todo!("Start Avalon"),
+            StartGame::Avalon => todo!(),
+            // StartGame::Avalon => avalon2::start_setup(),
             // StartGame::Hangman => todo!("Start Hangman"),
             // StartGame::Kittens => todo!("Start Kittens"),
             StartGame::Hangman { word_source } => hangman::start(&state, word_source, interaction).await

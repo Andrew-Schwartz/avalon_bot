@@ -7,6 +7,7 @@ use discorsd::commands::*;
 use discorsd::errors::BotError;
 use discorsd::http::channel::{create_message, MessageChannelExt};
 use discorsd::model::interaction::{ButtonPressData, GuildUser, InteractionUser, MenuSelectData};
+use itertools::Itertools;
 
 use crate::avalon::characters::Character;
 use crate::avalon::config::AvalonConfig;
@@ -150,6 +151,6 @@ impl MenuCommand for RolesMenu {
             config.embed()
         };
         interaction.update(&state, embed).await
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 }

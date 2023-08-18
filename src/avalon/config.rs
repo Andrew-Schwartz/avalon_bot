@@ -126,15 +126,15 @@ impl AvalonConfig {
         enable: bool,
         guild: GuildId,
     ) -> ClientResult<()> {
-        let (start_id, start_command) = state.get_command_mut::<StartCommand>(guild, &mut commands).await;
-        let edit = if enable {
-            matches!(start_command.insert(GameType::Avalon), None)
-        } else {
-            matches!(start_command.remove(GameType::Avalon), Some(_))
-        };
-        if edit {
-            start_command.edit_command(&state, guild, start_id).await?;
-        }
+        // let (start_id, start_command) = state.get_command_mut::<StartCommand>(guild, &mut commands).await;
+        // let edit = if enable {
+        //     matches!(start_command.insert(GameType::Avalon), None)
+        // } else {
+        //     matches!(start_command.remove(GameType::Avalon), Some(_))
+        // };
+        // if edit {
+        //     start_command.edit_command(&state, guild, start_id).await?;
+        // }
         Ok(())
     }
 

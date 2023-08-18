@@ -3,24 +3,22 @@ use std::sync::Arc;
 use discorsd::{async_trait, BotState};
 use discorsd::commands::ReactionCommand;
 use discorsd::errors::BotError;
-use discorsd::http::channel::embed;
 use discorsd::model::emoji::Emoji;
-use discorsd::model::ids::{ChannelId, MessageId};
+use discorsd::model::ids::ChannelId;
 use discorsd::model::interaction::Token;
-use discorsd::model::message::Color;
+use discorsd::model::message::ChannelMessageId;
 use discorsd::shard::dispatch::{ReactionType, ReactionUpdate};
 
 use crate::Bot;
 use crate::hangman::ASCII_ART;
 
 #[derive(Debug, Clone)]
-pub struct GuessCommand(pub ChannelId, pub MessageId, pub Token);
+pub struct GuessCommand(pub ChannelMessageId, pub Token);
 
 #[async_trait]
 impl ReactionCommand<Bot> for GuessCommand {
     fn applies(&self, reaction: &ReactionUpdate) -> bool {
-        let add_letter = reaction.kind == ReactionType::Add &&
-            reaction.message_id == self.1 &&
+        let letter = reaction.message_id == self.0.message &&
             match &reaction.emoji {
                 Emoji::Custom(_) => false,
                 Emoji::Unicode { name } => {
@@ -34,11 +32,11 @@ impl ReactionCommand<Bot> for GuessCommand {
                 Emoji::Custom(_) => false,
                 Emoji::Unicode { name } => name == "❓"
             };
-        add_letter || remove_question
+        letter || remove_question
     }
 
     async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError> {
-        let channel = self.0;
+        let channel = self.0.channel;
 
         let mut games = state.bot.hangman_games.write().await;
         let game = games.get_mut(&channel).unwrap();
@@ -48,7 +46,7 @@ impl ReactionCommand<Bot> for GuessCommand {
             if reaction.user_id == state.cache.own_user().await.id { return Ok(()) }
             match reaction.kind {
                 ReactionType::Add => {
-                    let message = self.2.followup(&state, "React with a letter to guess!").await?;
+                    let message = self.1.followup(&state, "React with a letter to guess!").await?;
                     game.questioners.insert(reaction.user_id, message.id);
                 }
                 ReactionType::Remove => {
@@ -63,6 +61,11 @@ impl ReactionCommand<Bot> for GuessCommand {
             }
             return Ok(());
         }
+
+        if reaction.kind == ReactionType::Remove {
+            return self.0.react(&state, guess).await.map_err(Into::into);
+        }
+
         let guess = std::char::from_u32(guess as u32 - ('🇦' as u32 - 'a' as u32)).unwrap();
 
         if !game.guesses.contains(&guess) {
@@ -78,24 +81,17 @@ impl ReactionCommand<Bot> for GuessCommand {
                 };
                 format!("Correct! There {verb} {count} {guess}{plural} in the word.")
             };
-        }
-        game.token.edit(&state, game.embed()).await?;
 
-        // handle win
-        if game.word.chars().all(|c| game.guesses.contains(&c)) {
-            game.token.followup(&state, embed(|e| {
-                e.color(Color::GOLD);
-                e.title("You win!");
-                e.description(format!("The word was {}.\n{}", game.word, game.source));
-            })).await?;
-            games.remove(&channel);
-        } else if game.wrong == ASCII_ART.len() - 1 {
-            game.token.followup(&state, embed(|e| {
-                e.color(Color::RED);
-                e.title("You lose and the hangman gets to eat");
-                e.description(format!("The word was {}.\n{}", game.word, game.source));
-            })).await?;
-            games.remove(&channel);
+            game.token.edit(&state, game.message(&state)).await?;
+
+            let game_over = game.handle_end_game(
+                &state,
+                game.word.chars().all(|c| game.guesses.contains(&c)),
+                game.wrong == ASCII_ART.len() - 1,
+            ).await?;
+            if game_over {
+                games.remove(&channel);
+            }
         }
 
         Ok(())

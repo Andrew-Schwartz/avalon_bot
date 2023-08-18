@@ -74,7 +74,7 @@ impl SlashCommand for AssassinateCommand {
                             ))
                         }
                     });
-                    let guard = state.commands.read().await;
+                    let guard = state.slash_commands.read().await;
                     let commands = guard.get(&guild).unwrap()
                         .write().await;
                     avalon.game_over(&*state, guild, commands, game_over).await?;

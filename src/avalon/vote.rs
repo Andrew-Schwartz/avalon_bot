@@ -272,7 +272,7 @@ pub async fn party_vote_results(
             let board = game.board_image();
             match game.rejected_quests {
                 5 => {
-                    let guard = state.commands.read().await;
+                    let guard = state.slash_commands.read().await;
                     let commands = guard.get(&guild).unwrap()
                         .write().await;
                     let result = avalon.game_over(&state, guild, commands, embed(|e| {
@@ -301,7 +301,7 @@ pub async fn party_vote_results(
                     if let Err(e) = result {
                         return Err((avalon, e.into()));
                     }
-                    let guard = state.commands.read().await;
+                    let guard = state.slash_commands.read().await;
                     let commands = guard.get(&guild).unwrap()
                         .write().await;
                     let result = game.start_round(&state, guild, commands).await;
@@ -465,7 +465,7 @@ pub async fn quest_vote_results(
                 return Err((avalon, e.into()));
             }
         };
-        let guard = state.commands.read().await;
+        let guard = state.slash_commands.read().await;
         let commands = guard.get(&guild).unwrap()
             .write().await;
         let result = avalon.end_round(&state, guild, commands).await;

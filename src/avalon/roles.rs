@@ -63,7 +63,7 @@ impl SlashCommand for RolesCommand {
             }
         };
         if changed {
-            let guard = state.commands.read().await;
+            let guard = state.slash_commands.read().await;
             let mut commands = guard.get(&guild).unwrap().write().await;
             let roles_cmd = commands.get_mut(&interaction.data.command)
                 .unwrap()

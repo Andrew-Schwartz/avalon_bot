@@ -125,7 +125,7 @@ impl SlashCommand for StopCommand {
                     reaction_commands.push(Box::new(vote));
                 }
                 {
-                    let guard = state.commands.read().await;
+                    let guard = state.slash_commands.read().await;
                     let mut commands = guard.get(&guild).unwrap()
                         .write().await;
                     let this_cmd = commands.get_mut(&interaction.data.command)
@@ -179,7 +179,7 @@ impl ReactionCommand<Bot> for StopVoteCommand {
             _ => {}
         }
         if *confirms >= 2 {
-            let guard = state.commands.read().await;
+            let guard = state.slash_commands.read().await;
             let commands = guard.get(&self.1).unwrap()
                 .write().await;
             // state.client.delete_message(reaction.channel_id, self.0).await?;
@@ -197,11 +197,11 @@ impl ReactionCommand<Bot> for StopVoteCommand {
                 );
             }
             {
-                let commands = state.commands.read().await;
+                let commands = state.slash_commands.read().await;
                 let mut commands = commands.get(&self.1).unwrap().write().await;
-                let (stop_id, stop_command) = state.get_command_mut::<StopCommand>(self.1, &mut commands).await;
-                stop_command.insert(self.4);
-                stop_command.edit_command(&state, self.1, stop_id).await?;
+                // let (stop_id, stop_command) = state.get_command_mut::<StopCommand>(self.1, &mut commands).await;
+                // stop_command.insert(self.4);
+                // stop_command.edit_command(&state, self.1, stop_id).await?;
             }
         }
 

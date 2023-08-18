@@ -99,9 +99,9 @@ async fn avalon(
         }
     };
 
-    let guard = state.commands.read().await;
-    let commands = guard.get(&guild).unwrap().write().await;
-    config.start_command(state, commands, config.startable(), guild).await?;
-    config.update_embed(state, &deferred).await?;
+    // let guard = state.slash_commands.read().await;
+    // let commands = guard.get(&guild).unwrap().write().await;
+    // config.start_command(state, commands, config.startable(), guild).await?;
+    // config.update_embed(state, &deferred).await?;
     deferred.delete(&state).await
 }

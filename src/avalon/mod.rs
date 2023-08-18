@@ -175,7 +175,7 @@ impl Avalon {
         embed: RichEmbed,
     ) -> ClientResult<()> {
         let game = self.game_ref();
-        game.channel.send(&state, embed_with(embed, |e| {
+        game.channel.send(state, embed_with(embed, |e| {
             e.fields(
                 game.players.iter()
                     .map(|p| (
@@ -183,7 +183,7 @@ impl Avalon {
                         p.role.name(),
                         true
                     ))
-            )
+            );
         })).await?;
         // todo keep people in the game?
         {
@@ -195,7 +195,7 @@ impl Avalon {
         }
         for pin in &game.pins {
             if let Err(e) = pin.unpin(&state).await {
-                warn!("Failed to unpin: {}", e.display_error(state).await)
+                warn!("Failed to unpin: {}", e.display_error(state).await);
             }
         }
 

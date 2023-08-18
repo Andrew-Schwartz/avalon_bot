@@ -88,7 +88,7 @@ impl SlashCommand for LotlCommand {
                         game.round += 1;
                         AvalonGame::advance_leader(&mut game.leader, game.players.len());
 
-                        let guard = state.commands.read().await;
+                        let guard = state.slash_commands.read().await;
                         let commands = guard.get(&guild).unwrap()
                             .write().await;
                         game.start_round(&*state, guild, commands).await?;

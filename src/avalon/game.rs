@@ -132,10 +132,10 @@ impl Avalon {
                         );
                     });
                 })).await?;
-                let (assassinate_id, assassinate) = state.get_command_mut::<AssassinateCommand>(guild, &mut commands).await;
+                // let (assassinate_id, assassinate) = state.get_command_mut::<AssassinateCommand>(guild, &mut commands).await;
                 // assassinate_id.allow_users(&state, guild, &[assassin.id()]).await?;
-                assassinate.0 = assassin.id();
-                assassinate.edit_command(&state, guild, assassinate_id).await?;
+                // assassinate.0 = assassin.id();
+                // assassinate.edit_command(&state, guild, assassinate_id).await?;
 
                 AvalonState::Assassinate
             } else {
@@ -163,9 +163,9 @@ impl Avalon {
                     );
                 });
             })).await?;
-            let (lotl_id, lotl_command) = state.get_command_mut::<LotlCommand>(guild, &mut commands).await;
-            lotl_command.0 = lotl.id();
-            lotl_command.edit_command(&state, guild, lotl_id).await?;
+            // let (lotl_id, lotl_command) = state.get_command_mut::<LotlCommand>(guild, &mut commands).await;
+            // lotl_command.0 = lotl.id();
+            // lotl_command.edit_command(&state, guild, lotl_id).await?;
             // lotl_id.allow_users(&state, guild, &[lotl.id()]).await?;
 
             AvalonState::Lotl
@@ -189,9 +189,9 @@ impl AvalonGame {
     ) -> ClientResult<()> {
         let round = self.round();
         // state.disable_command::<VoteStatus>(guild).await?;
-        let (quest_id, quest) = state.get_command_mut::<QuestCommand>(guild, &mut commands).await;
-        quest.0 = round.players;
-        quest.edit_command(&state, guild, quest_id).await?;
+        // let (quest_id, quest) = state.get_command_mut::<QuestCommand>(guild, &mut commands).await;
+        // quest.0 = round.players;
+        // quest.edit_command(&state, guild, quest_id).await?;
         // quest_id.allow_users(&state, guild, &[self.leader().id()]).await?;
 
         self.channel.send(&state, create_message(|m| {

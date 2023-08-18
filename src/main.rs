@@ -17,6 +17,7 @@
     clippy::match_bool,
     // nursery
     clippy::missing_const_for_fn,
+    clippy::collection_is_never_read,
 )]
 // @formatter:on
 
@@ -33,7 +34,7 @@ use chrono::{DateTime, Local, Utc};
 use discorsd::{Bot as _, BotExt, BotState, GuildCommands, shard};
 use discorsd::async_trait;
 use discorsd::commands::*;
-use discorsd::errors::{BotError, GameError};
+use discorsd::errors::BotError;
 use discorsd::http::channel::{create_message, embed, MessageChannelExt};
 use discorsd::http::ClientResult;
 use discorsd::model::channel::Channel;
@@ -71,6 +72,7 @@ use crate::hangman::Hangman;
 mod macros;
 mod commands;
 mod avalon;
+mod avalon2;
 mod hangman;
 mod coup;
 pub mod utils;
@@ -97,6 +99,7 @@ impl Debug for Config {
 pub struct Bot {
     config: Config,
     avalon_games: RwLock<HashMap<GuildId, Avalon>>,
+    // avalon_games2: RwLock<HashMap<GuildId, avalon2::Avalon>>,
     coup_games: RwLock<HashMap<GuildId, Coup>>,
     hangman_games: RwLock<HashMap<ChannelId, Hangman>>,
     // todo this needs to also track which game they're in for it to be robust
@@ -111,6 +114,7 @@ impl Bot {
         Self {
             config,
             avalon_games: Default::default(),
+            // avalon_games2: Default::default(),
             coup_games: Default::default(),
             hangman_games: Default::default(),
             user_games: Default::default(),
@@ -165,8 +169,6 @@ type Result<T, E = BotError> = std::result::Result<T, E>;
 
 #[async_trait]
 impl discorsd::Bot for Bot {
-    type Error = GameError;
-
     fn token(&self) -> String {
         self.config.token.clone()
     }
@@ -283,7 +285,7 @@ impl discorsd::Bot for Bot {
                 message.channel.send(&state, "logged!").await?;
             }
             // "!commands" => {
-            //     let commands = state.commands.read().await;
+            //     let commands = state.slash_commands.read().await;
             //     for (guild, commands) in commands.iter() {
             //         let commands = commands.read().await;
             //         println!("\nGUILD {}\n------------------------------", guild);
@@ -382,7 +384,7 @@ impl Bot {
         state: &BotState<Self>,
     ) -> ClientResult<()> {
         // this should be only place that writes to first level of `commands`
-        let first_time = match state.commands.write().await.entry(guild.id) {
+        let first_time = match state.slash_commands.write().await.entry(guild.id) {
             Entry::Vacant(vacant) => {
                 vacant.insert(Default::default());
                 true
@@ -390,7 +392,7 @@ impl Bot {
             Entry::Occupied(_) => false,
         };
         if first_time {
-            let commands = state.commands.read().await;
+            let commands = state.slash_commands.read().await;
             let mut commands = commands.get(&guild.id).unwrap().write().await;
             let rcs = state.reaction_commands.write().await;
 
@@ -456,15 +458,15 @@ impl Bot {
             .map(|c| c.id())
             .zip(guild_commands)
             .collect();
-        let command_names = guild_commands.iter()
-            .map(|(&id, command)| (command.name(), id))
-            .collect();
+        // let command_names = guild_commands.iter()
+        //     .map(|(&id, command)| (command.name(), id))
+        //     .collect();
 
         **commands = guild_commands;
 
-        *state.command_names.write().await
-            .entry(guild)
-            .or_default() = RwLock::new(command_names);
+        // *state.command_names.write().await
+        //     .entry(guild)
+        //     .or_default() = RwLock::new(command_names);
 
         // todo
         // clear any left over perms

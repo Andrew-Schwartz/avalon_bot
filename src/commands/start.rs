@@ -11,7 +11,6 @@ use discorsd::commands::*;
 use discorsd::errors::BotError;
 
 use crate::{avalon, Bot};
-use crate::commands::stop::StopCommand;
 use crate::games::GameType;
 
 #[derive(Clone, Debug)]
@@ -84,12 +83,12 @@ impl SlashCommand for StartCommand {
 
         let game = data.game.unwrap_or_else(|| *self.games.iter().exactly_one().unwrap());
         {
-            let commands = state.commands.read().await;
+            let commands = state.slash_commands.read().await;
             let mut commands = commands.get(&guild).unwrap()
                 .write().await;
-            let (stop_id, stop_cmd) = state.get_command_mut::<StopCommand>(guild, &mut commands).await;
-            stop_cmd.insert(game);
-            stop_cmd.edit_command(&state, guild, stop_id).await?;
+            // let (stop_id, stop_cmd) = state.get_command_mut::<StopCommand>(guild, &mut commands).await;
+            // stop_cmd.insert(game);
+            // stop_cmd.edit_command(&state, guild, stop_id).await?;
         }
 
         match game {
