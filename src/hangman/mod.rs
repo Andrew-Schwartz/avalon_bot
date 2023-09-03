@@ -9,12 +9,11 @@ use discorsd::errors::BotError;
 use discorsd::http::channel::embed;
 use discorsd::http::ClientResult;
 use discorsd::model::components::ButtonStyle;
-use discorsd::model::ids::{ChannelId, MessageId, UserId};
+use discorsd::model::ids::{MessageId, UserId};
 use discorsd::model::interaction::{ButtonPressData, Token};
 use discorsd::model::interaction_response::{InteractionMessage, message};
 use discorsd::model::message::{ChannelMessageId, Color};
 use itertools::Itertools;
-use tokio::sync::RwLockWriteGuard;
 
 use crate::Bot;
 use crate::hangman::guess_letter::GuessCommand;

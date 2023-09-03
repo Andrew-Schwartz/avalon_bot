@@ -1681,7 +1681,7 @@ impl CoupPlayer {
                 // .rev()
                 .copied()
                 .map(Card::name)
-                .list_grammatically(TextMarkup::bold, "and");
+                .list_grammatically(|s| s.bold(), "and");
             let coins = self.coins.to_string().bold();
             m.content(format!("Your influence: {roles_str}. You have {coins} coins."));
         });

@@ -4,7 +4,6 @@ use discorsd::{async_trait, BotState};
 use discorsd::commands::ReactionCommand;
 use discorsd::errors::BotError;
 use discorsd::model::emoji::Emoji;
-use discorsd::model::ids::ChannelId;
 use discorsd::model::interaction::Token;
 use discorsd::model::message::ChannelMessageId;
 use discorsd::shard::dispatch::{ReactionType, ReactionUpdate};

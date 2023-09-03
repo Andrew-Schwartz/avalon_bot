@@ -43,9 +43,9 @@ impl SlashCommand for SysInfoCommand {
             e.color(Color::from_rgb(0x2E, 0x8B, 0xC0));
         });
 
+        // wrong
+        #[allow(clippy::significant_drop_tightening)]
         {
-            // wrong
-            #[allow(clippy::significant_drop_tightening)]
             let mut sys = SYS_INFO.lock().unwrap();
             sys.refresh_all();
 

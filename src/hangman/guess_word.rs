@@ -5,7 +5,7 @@ use discorsd::commands::{ButtonCommand, InteractionUse, ModalCommand, Unused, Us
 use discorsd::errors::BotError;
 use discorsd::model::components::{ComponentId, TextInput};
 use discorsd::model::interaction::ButtonPressData;
-use discorsd::model::interaction_response::{message, modal2, ModalBuilder};
+use discorsd::model::interaction_response::{message, modal, ModalBuilder};
 use discorsd::model::message::{Color, TextMarkup};
 use itertools::Itertools;
 
@@ -38,14 +38,15 @@ impl ButtonCommand for GuessButton {
             .collect::<String>();
         interaction.respond_modal(
             &state,
-            modal2(
+            modal(
                 &state,
                 GuessModal,
-                ModalBuilder::new("Guess the word!")
-                    .add_field(TextInput::new_short("Word")
+                ModalBuilder::with_input(
+                    "Guess the word!",
+                    TextInput::new_short("Word")
                         .min_max_length(self.0, self.0)
                         .value(value)
-                    ),
+                ),
             ),
         ).await.map_err(Into::into)
     }
