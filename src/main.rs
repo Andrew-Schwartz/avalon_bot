@@ -24,13 +24,12 @@
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
 use std::fmt::{self, Debug};
-use std::io::Write;
 use std::path::Path;
 use std::prelude::v1::Result::Ok;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Utc};
 use discorsd::{Bot as _, BotExt, BotState, GuildCommands, shard};
 use discorsd::async_trait;
 use discorsd::commands::*;
@@ -48,7 +47,6 @@ use discorsd::shard::intents::Intents;
 use discorsd::shard::model::{Activity, ActivityType, Identify, UpdateStatus};
 use itertools::Itertools;
 use log::{error, info};
-use log::LevelFilter;
 use once_cell::sync::OnceCell;
 use serde_derive::Deserialize;
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -128,17 +126,6 @@ impl Bot {
 
 #[tokio::main]
 async fn main() -> shard::ShardResult<()> {
-    env_logger::builder()
-        .format(|f, record|
-            writeln!(f,
-                     "{} [{}] {}",
-                     Local::now().format("%d %T"),
-                     record.level(),
-                     record.args(),
-            ))
-        .filter(None, LevelFilter::Info)
-        .init();
-
     tokio::spawn(async {
         use tokio::{fs::File, io::AsyncWriteExt, time::sleep};
 
@@ -348,7 +335,7 @@ impl discorsd::Bot for Bot {
     }
 
     // todo should just be one method but have an enum for Create/Update/Delete
-    async fn role_create(&self, guild: GuildId, role: Role, state: Arc<BotState<Self>>) -> Result<()> {
+    async fn role_create(&self, _guild: GuildId, _role: Role, _state: Arc<BotState<Self>>) -> Result<()> {
         println!("updating unpin perms");
         // state.global_command_id::<UnpinCommand>()
         //     .await
@@ -360,7 +347,7 @@ impl discorsd::Bot for Bot {
         Ok(())
     }
 
-    async fn role_update(&self, guild: GuildId, role: Role, state: Arc<BotState<Self>>) -> Result<()> {
+    async fn role_update(&self, _guild: GuildId, _role: Role, _state: Arc<BotState<Self>>) -> Result<()> {
         println!("updating unpin perms");
         // state.global_command_id::<UnpinCommand>()
         //     .await

@@ -145,7 +145,7 @@ pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<AppC
     let disabled_commands = commands.iter()
         .map(|(_, c)| c)
         .map(|c| {
-            let mut command = c.command();
+            let command = c.command();
             // if AvalonConfig::is_setup_command(&**c) {
             //     command.default_permission = false;
             // }

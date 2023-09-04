@@ -9,7 +9,7 @@ use rand::{Rng, thread_rng};
 use rand::prelude::SliceRandom;
 use reqwest::Client;
 use discorsd::model::channel::ChannelType;
-use serde::Deserialize;
+
 use serde_derive::Deserialize;
 
 use crate::Bot;

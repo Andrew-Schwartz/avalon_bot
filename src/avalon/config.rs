@@ -119,10 +119,10 @@ impl AvalonConfig {
     /// available in the start command.
     pub async fn start_command(
         &mut self,
-        state: &BotState<Bot>,
-        mut commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
-        enable: bool,
-        guild: GuildId,
+        _state: &BotState<Bot>,
+        _commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
+        _enable: bool,
+        _guild: GuildId,
     ) -> ClientResult<()> {
         // let (start_id, start_command) = state.get_command_mut::<StartCommand>(guild, &mut commands).await;
         // let edit = if enable {

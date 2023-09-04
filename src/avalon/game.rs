@@ -14,12 +14,9 @@ use crate::Bot;
 use crate::commands::stop::StopVoteCommand;
 
 use super::{
-    assassinate::AssassinateCommand,
     Avalon,
     AvalonPlayer,
     characters::{Character::{Assassin, Merlin}, Loyalty::Evil},
-    lotl::LotlCommand,
-    quest::QuestCommand,
     rounds::{Round, Rounds},
     vote::{PartyVote, QuestVote},
 };
@@ -107,7 +104,7 @@ impl Avalon {
         &mut self,
         state: &BotState<Bot>,
         guild: GuildId,
-        mut commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
+        commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
     ) -> ClientResult<()> {
         let game = self.game_mut();
         let new_state = if game.good_won.iter().filter(|g| **g).count() == 3 {
@@ -184,8 +181,8 @@ impl AvalonGame {
     pub async fn start_round(
         &mut self,
         state: &BotState<Bot>,
-        guild: GuildId,
-        mut commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
+        _guild: GuildId,
+        _commands: RwLockWriteGuard<'_, GuildCommands<Bot>>,
     ) -> ClientResult<()> {
         let round = self.round();
         // state.disable_command::<VoteStatus>(guild).await?;

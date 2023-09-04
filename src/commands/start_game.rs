@@ -7,7 +7,7 @@ use discorsd::commands::{AppCommandData, InteractionUse, SlashCommand, Unused, U
 use discorsd::errors::BotError;
 use discorsd::model::ids::GuildId;
 
-use crate::{avalon2, Bot, coup, hangman};
+use crate::{Bot, coup, hangman};
 use crate::coup::StartingCoins;
 use crate::error::GameError;
 use crate::hangman::Source;

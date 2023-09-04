@@ -201,7 +201,7 @@ impl ReactionCommand for StopVoteCommand {
             }
             {
                 let commands = state.slash_commands.read().await;
-                let mut commands = commands.get(&self.1).unwrap().write().await;
+                let _commands = commands.get(&self.1).unwrap().write().await;
                 // let (stop_id, stop_command) = state.get_command_mut::<StopCommand>(self.1, &mut commands).await;
                 // stop_command.insert(self.4);
                 // stop_command.edit_command(&state, self.1, stop_id).await?;

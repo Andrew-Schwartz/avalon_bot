@@ -85,7 +85,7 @@ impl SlashCommand for StartCommand {
         let game = data.game.unwrap_or_else(|| *self.games.iter().exactly_one().unwrap());
         {
             let commands = state.slash_commands.read().await;
-            let mut commands = commands.get(&guild).unwrap()
+            let _commands = commands.get(&guild).unwrap()
                 .write().await;
             // let (stop_id, stop_cmd) = state.get_command_mut::<StopCommand>(guild, &mut commands).await;
             // stop_cmd.insert(game);
