@@ -9,6 +9,7 @@ use discorsd::http::channel::MessageChannelExt;
 use discorsd::http::user::UserExt;
 
 use crate::Bot;
+use crate::error::GameError;
 use crate::games::GameType;
 
 #[derive(Clone, Debug)]
@@ -29,7 +30,7 @@ impl SlashCommand for RulesCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  data: RulesData,
-    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError<GameError>> {
         let deferred = interaction.defer(&state).await?;
         let channel = match data.channel {
             Where::Dm => deferred.user().dm(&state).await?.id,

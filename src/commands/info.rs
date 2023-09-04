@@ -9,6 +9,7 @@ use discorsd::model::message::Color;
 use discorsd::model::permissions::Permissions;
 
 use crate::Bot;
+use crate::error::GameError;
 
 #[derive(Clone, Debug)]
 pub struct InfoCommand;
@@ -28,7 +29,7 @@ impl SlashCommand for InfoCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  _data: (),
-    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError<GameError>> {
         let user = state.user().await;
         interaction.respond(
             &state.client, embed(|e| {

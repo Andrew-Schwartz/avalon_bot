@@ -9,6 +9,7 @@ use discorsd::model::ids::GuildId;
 
 use crate::{avalon2, Bot, coup, hangman};
 use crate::coup::StartingCoins;
+use crate::error::GameError;
 use crate::hangman::Source;
 
 #[derive(CommandData)]
@@ -43,7 +44,7 @@ impl SlashCommand for StartGameCommand {
         state: Arc<BotState<Bot>>,
         interaction: InteractionUse<AppCommandData, Unused>,
         data: Self::Data,
-    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError<GameError>> {
         match data {
             StartGame::Coup { starting_coins } => coup::start_setup(&state, starting_coins, self.0, interaction).await,
             StartGame::Avalon => todo!(),

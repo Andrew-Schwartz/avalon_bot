@@ -16,6 +16,7 @@ use discorsd::model::message::{ChannelMessageId, Color};
 use itertools::Itertools;
 
 use crate::Bot;
+use crate::error::GameError;
 use crate::hangman::guess_letter::GuessCommand;
 use crate::hangman::guess_word::GuessButton;
 use crate::hangman::random_words::{channel_hist_word, server_hist_word, wordnik_word};
@@ -37,7 +38,7 @@ pub async fn start<D: InteractionPayload + Send + Sync>(
     state: &BotState<Bot>,
     word_source: Source,
     interaction: InteractionUse<D, Unused>,
-) -> Result<InteractionUse<D, Used>, BotError> {
+) -> Result<InteractionUse<D, Used>, BotError<GameError>> {
     let channel = interaction.channel;
     let mut game_guard = state.bot.hangman_games.write().await;
 
@@ -112,7 +113,7 @@ impl ButtonCommand for RestartGame {
         &self,
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<ButtonPressData, Unused>,
-    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError> {
+    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError<GameError>> {
         state.bot.hangman_games.write().await
             .remove(&interaction.channel);
         // .map(|h| h.word_source)

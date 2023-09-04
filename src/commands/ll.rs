@@ -10,6 +10,7 @@ use discorsd::model::ids::*;
 use discorsd::model::message::TextMarkup;
 
 use crate::Bot;
+use crate::error::GameError;
 
 #[derive(Copy, Clone, Debug)]
 pub struct LowLevelCommand;
@@ -34,7 +35,7 @@ impl SlashCommand for LowLevelCommand {
         state: Arc<BotState<Bot>>,
         interaction: InteractionUse<AppCommandData, Unused>,
         data: Self::Data,
-    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError<GameError>> {
         fn format<D: Debug>(d: D) -> Vec<String> {
             let mut vec = Vec::new();
 

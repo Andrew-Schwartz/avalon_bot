@@ -10,6 +10,7 @@ use discorsd::model::ids::*;
 use discorsd::model::interaction_response::message;
 
 use crate::Bot;
+use crate::error::GameError;
 use crate::games::GameType;
 
 #[derive(Clone, Debug)]
@@ -30,7 +31,7 @@ impl SlashCommand for AddMeCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  data: AddMeData,
-    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError<GameError>> {
         let id = data.player.unwrap_or_else(|| interaction.user().id());
         match data.game {
             GameType::Avalon => avalon(&*state, interaction, id).await,

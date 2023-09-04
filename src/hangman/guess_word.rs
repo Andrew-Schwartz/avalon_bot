@@ -10,6 +10,7 @@ use discorsd::model::message::{Color, TextMarkup};
 use itertools::Itertools;
 
 use crate::Bot;
+use crate::error::GameError;
 
 #[derive(Debug, Copy, Clone)]
 pub struct GuessButton(pub usize);
@@ -22,7 +23,7 @@ impl ButtonCommand for GuessButton {
         &self,
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<ButtonPressData, Unused>,
-    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError> {
+    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError<GameError>> {
         let guard = state.bot.hangman_games.read().await;
         let Some(game) = guard.get(&interaction.channel) else {
             return interaction.respond(&state, message(|m| {
@@ -65,7 +66,7 @@ impl ModalCommand for GuessModal {
         state: Arc<BotState<<Self as ModalCommand>::Bot>>,
         interaction: InteractionUse<ComponentId, Unused>,
         guess: String,
-    ) -> Result<InteractionUse<ComponentId, Used>, BotError> {
+    ) -> Result<InteractionUse<ComponentId, Used>, BotError<GameError>> {
         if guess.chars().any(|c| !c.is_ascii_alphabetic()) {
             return interaction.respond(&state, message(|m| {
                 m.ephemeral();

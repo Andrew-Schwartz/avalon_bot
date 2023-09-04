@@ -40,8 +40,8 @@ use discorsd::http::ClientResult;
 use discorsd::model::channel::Channel;
 use discorsd::model::guild::{Guild, Integration};
 use discorsd::model::ids::*;
-use discorsd::model::message::Message;
 use discorsd::model::interaction::Interaction;
+use discorsd::model::message::Message;
 use discorsd::model::permissions::{Permissions, Role};
 use discorsd::shard::dispatch::ReactionUpdate;
 use discorsd::shard::intents::Intents;
@@ -50,7 +50,7 @@ use itertools::Itertools;
 use log::{error, info};
 use log::LevelFilter;
 use once_cell::sync::OnceCell;
-use serde::Deserialize;
+use serde_derive::Deserialize;
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::avalon::Avalon;
@@ -66,6 +66,7 @@ use crate::commands::test::TestCommand;
 use crate::commands::unpin::UnpinCommand;
 use crate::commands::uptime::UptimeCommand;
 use crate::coup::Coup;
+use crate::error::GameError;
 use crate::hangman::Hangman;
 
 #[macro_use]
@@ -77,6 +78,7 @@ mod hangman;
 mod coup;
 pub mod utils;
 pub mod games;
+pub mod error;
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -165,10 +167,12 @@ async fn main() -> shard::ShardResult<()> {
     Bot::new(config).run().await
 }
 
-type Result<T, E = BotError> = std::result::Result<T, E>;
+type Result<T, E = BotError<GameError>> = std::result::Result<T, E>;
 
 #[async_trait]
 impl discorsd::Bot for Bot {
+    type Error = GameError;
+
     fn token(&self) -> String {
         self.config.token.clone()
     }
@@ -368,7 +372,7 @@ impl discorsd::Bot for Bot {
         Ok(())
     }
 
-    async fn error(&self, error: BotError, state: Arc<BotState<Self>>) {
+    async fn error(&self, error: BotError<GameError>, state: Arc<BotState<Self>>) {
         // todo can probably deal with the error for real
         error!("{}", error.display_error(&state).await);
     }
@@ -442,7 +446,7 @@ impl Bot {
         state: &BotState<Self>,
         guild: GuildId,
         commands: &mut RwLockWriteGuard<'_, GuildCommands<Self>>,
-        mut reaction_commands: RwLockWriteGuard<'_, Vec<Box<dyn ReactionCommand<Self>>>>,
+        mut reaction_commands: RwLockWriteGuard<'_, Vec<Box<dyn ReactionCommand<Bot=Self>>>>,
     ) -> ClientResult<()> {
         reaction_commands.retain(|rc| !AvalonGame::is_reaction_command(rc.as_ref(), guild));
         drop(reaction_commands);

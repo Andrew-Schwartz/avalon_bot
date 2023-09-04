@@ -13,6 +13,7 @@ use discorsd::errors::BotError;
 use crate::avalon::characters::Character;
 use crate::avalon::characters::Character::{LoyalServant, MinionOfMordred};
 use crate::Bot;
+use crate::error::GameError;
 
 #[derive(Clone, Debug)]
 pub struct RolesCommand(pub Vec<Character>);
@@ -32,7 +33,7 @@ impl SlashCommand for RolesCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  data: RoleData,
-    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError<GameError>> {
         let interaction = interaction.defer(&state).await?;
         let guild = interaction.guild().unwrap();
         let mut guard = state.bot.avalon_games.write().await;

@@ -10,7 +10,7 @@ use tokio::time::Duration;
 
 use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
-use discorsd::errors::{AvalonError, BotError};
+use discorsd::errors::BotError;
 use discorsd::http::channel::{embed, MessageChannelExt};
 use discorsd::http::ClientResult;
 use discorsd::http::user::UserExt;
@@ -24,6 +24,7 @@ use crate::avalon::Avalon;
 use crate::avalon::characters::Loyalty::Evil;
 use crate::avalon::game::{AvalonGame, AvalonState};
 use crate::Bot;
+use crate::error::{AvalonError, GameError};
 use crate::utils::ListIterGrammatically;
 
 #[derive(Clone, Debug)]
@@ -39,12 +40,14 @@ impl PartyVote {
 
 #[allow(clippy::use_self)]
 #[async_trait]
-impl ReactionCommand<Bot> for PartyVote {
+impl ReactionCommand for PartyVote {
+    type Bot = Bot;
+
     fn applies(&self, reaction: &ReactionUpdate) -> bool {
         self.messages.contains(&(reaction.message_id, reaction.user_id))
     }
 
-    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError> {
+    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError<GameError>> {
         if let Emoji::Unicode { name } = &reaction.emoji {
             let delta = match name.chars().next() {
                 Some(Self::APPROVE) => 1,
@@ -98,12 +101,14 @@ impl QuestVote {
 
 #[allow(clippy::use_self)]
 #[async_trait]
-impl ReactionCommand<Bot> for QuestVote {
+impl ReactionCommand for QuestVote {
+    type Bot = Bot;
+
     fn applies(&self, reaction: &ReactionUpdate) -> bool {
         self.messages.contains(&(reaction.message_id, reaction.user_id))
     }
 
-    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError> {
+    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError<GameError>> {
         if let Emoji::Unicode { name } = &reaction.emoji {
             let delta = match name.chars().next() {
                 Some(Self::SUCCEED) => 1,
@@ -160,7 +165,7 @@ impl SlashCommand for VoteStatus {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  _data: (),
-    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError<GameError>> {
         let guard = state.bot.avalon_games.read().await;
         let game = guard.get(&interaction.guild().unwrap()).unwrap().game_ref();
         match &game.state {
@@ -194,7 +199,7 @@ pub async fn vote_checker<G, F, Fut>(
 ) where
     G: Fn(&mut AvalonState) -> Option<&mut HashMap<(MessageId, UserId), i32>> + Send + Sync,
     F: Fn(Arc<BotState<Bot>>, GuildId, Avalon) -> Fut + 'static + Send + Sync,
-    Fut: Future<Output=Result<Avalon, (Avalon, BotError)>> + 'static + Send,
+    Fut: Future<Output=Result<Avalon, (Avalon, BotError<GameError>)>> + 'static + Send,
 {
     let mut interval = tokio::time::interval(Duration::from_secs(30));
     loop {
@@ -247,7 +252,7 @@ pub async fn party_vote_results(
     state: Arc<BotState<Bot>>,
     guild: GuildId,
     mut avalon: Avalon,
-) -> Result<Avalon, (Avalon, BotError)> {
+) -> Result<Avalon, (Avalon, BotError<GameError>)> {
     // `avalon` is write locked, so it still in the game state
     let game = avalon.game_mut();
     let AvalonGame { state: avalon_state, players, .. } = game;
@@ -369,7 +374,7 @@ pub async fn party_vote_results(
                         ClientResult::Ok(())
                     });
 
-                    Result::<_, BotError>::Ok((msg.message, user))
+                    Result::<_, BotError<GameError>>::Ok((msg.message, user))
                 });
                 handles.push(handle);
             }
@@ -419,7 +424,7 @@ pub async fn quest_vote_results(
     state: Arc<BotState<Bot>>,
     guild: GuildId,
     mut avalon: Avalon,
-) -> Result<Avalon, (Avalon, BotError)> {
+) -> Result<Avalon, (Avalon, BotError<GameError>)> {
     // `avalon` is write locked, so it still in the game state
     let game = avalon.game_mut();
     let round = game.round();

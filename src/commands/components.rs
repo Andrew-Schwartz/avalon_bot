@@ -9,6 +9,7 @@ use discorsd::model::interaction_response::message;
 use discorsd::model::interaction::{ButtonPressData, MenuSelectData};
 
 use crate::Bot;
+use crate::error::GameError;
 use crate::utils::ListIterGrammatically;
 
 #[derive(Debug, Copy, Clone)]
@@ -41,7 +42,7 @@ impl SlashCommand for ComponentsCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  data: Data,
-    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError<GameError>> {
         match data.component {
             ComponentType::Button => {
                 interaction.respond(&state, message(|m| {
@@ -76,7 +77,7 @@ impl ButtonCommand for TestButton {
     async fn run(&self,
                  state: Arc<BotState<Self::Bot>>,
                  interaction: InteractionUse<ButtonPressData, Unused>,
-    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError> {
+    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError<GameError>> {
         let message = format!("click id = {:?}", interaction.data.custom_id);
         interaction.respond(state, message).await
             .map_err(Into::into)
@@ -107,7 +108,7 @@ impl MenuCommand for TestMenu {
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<MenuSelectData, Unused>,
         data: Vec<Self::Data>,
-    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError> {
+    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError<GameError>> {
         let chosen = data.iter()
             .list_grammatically(|d| format!("{:?}", d), "and");
         interaction.respond(state, format!("You selected: {}", chosen)).await

@@ -20,7 +20,7 @@
 // pub async fn start_setup(
 //     state: &BotState<Bot>,
 //     interaction: InteractionUse<AppCommandData, Unused>,
-// ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
+// ) -> Result<InteractionUse<AppCommandData, Used>, BotError<GameError>> {
 //     let guild = interaction.guild().expect("Todo show error message if used in dm");
 //
 //     let mut game_guard = state.bot.avalon_games.write().await;

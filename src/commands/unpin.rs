@@ -12,6 +12,7 @@ use discorsd::http::channel::MessageChannelExt;
 use discorsd::model::ids::MessageId;
 
 use crate::Bot;
+use crate::error::GameError;
 
 #[derive(Debug, Clone)]
 pub struct UnpinCommand;
@@ -32,7 +33,7 @@ impl SlashCommand for UnpinCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  data: Self::Data,
-    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError<GameError>> {
         let interaction = interaction.defer(&state).await?;
 
         let start = Instant::now();

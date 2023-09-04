@@ -8,6 +8,7 @@ use discorsd::errors::BotError;
 use discorsd::http::channel::embed;
 
 use crate::Bot;
+use crate::error::GameError;
 
 #[derive(Copy, Clone, Debug)]
 pub struct PingCommand;
@@ -27,7 +28,7 @@ impl SlashCommand for PingCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  _: (),
-    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError<GameError>> {
         let start = Instant::now();
         let embed = embed(|e| e.title("Pong!"));
         let mut used = interaction.respond(&state, embed.clone()).await?;

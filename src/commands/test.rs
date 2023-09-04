@@ -9,6 +9,7 @@ use discorsd::errors::BotError;
 use discorsd::model::interaction_response::message;
 
 use crate::Bot;
+use crate::error::GameError;
 
 #[derive(Debug, Copy, Clone)]
 pub struct TestCommand;
@@ -34,7 +35,7 @@ impl SlashCommand for TestCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  (): Self::Data,
-    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError<GameError>> {
         println!("interaction = {:#?}", interaction);
         interaction.respond(&state, message(|m| {
             m.content("asdsad");

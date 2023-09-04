@@ -13,6 +13,7 @@ use discorsd::model::user::UserMarkup;
 
 use crate::avalon::game::AvalonGame;
 use crate::Bot;
+use crate::error::GameError;
 
 #[derive(Clone, Debug)]
 pub struct LotlCommand(pub UserId);
@@ -37,7 +38,7 @@ impl SlashCommand for LotlCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  data: LadyData,
-    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError<GameError>> {
         let result = if interaction.user().id == self.0 {
             let guild = interaction.guild().unwrap();
             let target = data.target;
@@ -130,7 +131,7 @@ impl SlashCommand for ToggleLady {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  data: ToggleData,
-    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError<GameError>> {
         let interaction = interaction.defer(&state).await?;
         let mut guard = state.bot.avalon_games.write().await;
         let guild = interaction.guild().unwrap();

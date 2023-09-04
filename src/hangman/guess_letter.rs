@@ -9,13 +9,16 @@ use discorsd::model::message::ChannelMessageId;
 use discorsd::shard::dispatch::{ReactionType, ReactionUpdate};
 
 use crate::Bot;
+use crate::error::GameError;
 use crate::hangman::ASCII_ART;
 
 #[derive(Debug, Clone)]
 pub struct GuessCommand(pub ChannelMessageId, pub Token);
 
 #[async_trait]
-impl ReactionCommand<Bot> for GuessCommand {
+impl ReactionCommand for GuessCommand {
+    type Bot = Bot;
+
     fn applies(&self, reaction: &ReactionUpdate) -> bool {
         let letter = reaction.message_id == self.0.message &&
             match &reaction.emoji {
@@ -34,7 +37,7 @@ impl ReactionCommand<Bot> for GuessCommand {
         letter || remove_question
     }
 
-    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError> {
+    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError<GameError>> {
         let channel = self.0.channel;
 
         let mut games = state.bot.hangman_games.write().await;

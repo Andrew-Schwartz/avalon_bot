@@ -12,6 +12,7 @@ use discorsd::model::interaction_response::message;
 use discorsd::model::message::Color;
 
 use crate::Bot;
+use crate::error::GameError;
 
 #[derive(Copy, Clone, Debug)]
 pub struct UptimeCommand;
@@ -31,7 +32,7 @@ impl SlashCommand for UptimeCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  _: (),
-    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError<GameError>> {
         let msg = if let Some(ready) = state.bot.first_log_in.get().copied() {
             let embed = embed(|e| {
                 e.color(Color::GOLD);

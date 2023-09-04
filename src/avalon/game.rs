@@ -95,7 +95,7 @@ impl AvalonGame {
             .map(|image| ("board.jpg", image))
     }
 
-    pub fn is_reaction_command(command: &dyn ReactionCommand<Bot>, guild: GuildId) -> bool {
+    pub fn is_reaction_command(command: &dyn ReactionCommand<Bot=Bot>, guild: GuildId) -> bool {
         matches!(command.downcast_ref::<StopVoteCommand>(), Some(svc) if svc.1 == guild) ||
             matches!(command.downcast_ref::<PartyVote>(), Some(pv) if pv.guild == guild) ||
             matches!(command.downcast_ref::<QuestVote>(), Some(qv) if qv.guild == guild)

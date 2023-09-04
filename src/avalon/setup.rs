@@ -12,6 +12,7 @@ use itertools::Itertools;
 use crate::avalon::characters::Character;
 use crate::avalon::config::AvalonConfig;
 use crate::Bot;
+use crate::error::GameError;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SetupCommand;
@@ -56,7 +57,7 @@ impl SlashCommand for SetupCommand {
                  state: Arc<BotState<<Self as SlashCommand>::Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  (): Self::Data,
-    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError<GameError>> {
         interaction.channel.send(&state, create_message(|m| {
             m.content("config");
             m.button(&state, JoinButton::default(), |b| b.label("join/leave game"));
@@ -79,7 +80,7 @@ impl ButtonCommand for JoinButton {
     async fn run(&self,
                  state: Arc<BotState<Self::Bot>>,
                  interaction: InteractionUse<ButtonPressData, Unused>,
-    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError> {
+    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError<GameError>> {
         if let InteractionUser::Guild(GuildUser { id: _id, member, locale }) = &interaction.source {
             {
                 let mut guard = state.buttons.write().unwrap();
@@ -136,7 +137,7 @@ impl MenuCommand for RolesMenu {
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<MenuSelectData, Unused>,
         data: Vec<Self::Data>,
-    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError> {
+    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError<GameError>> {
         let embed = {
             let mut guard = state.menus.write().unwrap();
             let config = &mut guard

@@ -1,6 +1,6 @@
 use chrono::{NaiveDateTime, Utc};
 use discorsd::BotState;
-use discorsd::errors::{BotError, HangmanError};
+use discorsd::errors::BotError;
 use discorsd::http::channel::GetMessages;
 use discorsd::model::ids::{ChannelId, GuildId, Id, MessageId};
 use itertools::Itertools;
@@ -8,14 +8,16 @@ use once_cell::sync::Lazy;
 use rand::{Rng, thread_rng};
 use rand::prelude::SliceRandom;
 use reqwest::Client;
-use serde::Deserialize;
 use discorsd::model::channel::ChannelType;
+use serde::Deserialize;
+use serde_derive::Deserialize;
 
 use crate::Bot;
+use crate::error::{GameError, HangmanError};
 
 const MIN_WORD_LEN: usize = 5;
 
-pub async fn channel_hist_word(state: &BotState<Bot>, channel: ChannelId, guild: Option<GuildId>) -> Result<(String, String), BotError> {
+pub async fn channel_hist_word(state: &BotState<Bot>, channel: ChannelId, guild: Option<GuildId>) -> Result<(String, String), BotError<GameError>> {
     let channel_creation = channel.timestamp().timestamp();
     println!("channel = {:?}", channel);
     let now = Utc::now().timestamp();
@@ -25,7 +27,7 @@ pub async fn channel_hist_word(state: &BotState<Bot>, channel: ChannelId, guild:
         rng.gen_range(channel_creation..now)
     };
     println!("rand_time = {:?}", rand_time);
-    let time = NaiveDateTime::from_timestamp(rand_time, 0);
+    let time = NaiveDateTime::from_timestamp_opt(rand_time, 0).unwrap();
     println!("time = {:?}", time);
     let message = MessageId::from(time);
     println!("message = {:?}", message);
@@ -52,7 +54,7 @@ pub async fn channel_hist_word(state: &BotState<Bot>, channel: ChannelId, guild:
         .ok_or_else(|| HangmanError::NoWords(channel, guild).into())
 }
 
-pub async fn server_hist_word(state: &BotState<Bot>, guild: Result<GuildId, ChannelId>) -> Result<(String, String), BotError> {
+pub async fn server_hist_word(state: &BotState<Bot>, guild: Result<GuildId, ChannelId>) -> Result<(String, String), BotError<GameError>> {
     let (channel, guild) = match guild {
         Ok(guild) => {
             let guild = state.cache.guild(guild).await.unwrap();
@@ -79,7 +81,7 @@ static WORDNIK_URL: Lazy<String> = Lazy::new(|| {
     )
 });
 
-pub async fn wordnik_word(client: &Client) -> Result<(String, String), BotError> {
+pub async fn wordnik_word(client: &Client) -> Result<(String, String), BotError<GameError>> {
     #[derive(Deserialize, Debug)]
     struct Word {
         word: String,

@@ -11,6 +11,7 @@ use discorsd::commands::*;
 use discorsd::errors::BotError;
 
 use crate::{avalon, Bot};
+use crate::error::GameError;
 use crate::games::GameType;
 
 #[derive(Clone, Debug)]
@@ -77,7 +78,7 @@ impl SlashCommand for StartCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  data: StartData,
-    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError<GameError>> {
         let deferred = interaction.defer(&state).await?;
         let guild = deferred.guild().unwrap();
 

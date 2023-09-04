@@ -4,7 +4,6 @@ use itertools::Itertools;
 use tokio::sync::RwLockWriteGuard;
 
 use discorsd::{BotState, GuildCommands, http};
-use discorsd::commands::SlashCommandExt;
 use discorsd::http::channel::{embed, MessageChannelExt, RichEmbed};
 use discorsd::http::ClientResult;
 use discorsd::model::commands::*;
@@ -21,7 +20,6 @@ use crate::avalon::roles::RolesCommand;
 use crate::avalon::SlashCommandRaw;
 use crate::commands::addme::AddMeCommand;
 use crate::commands::start::StartCommand;
-use crate::games::GameType;
 
 #[derive(Default, Debug, Clone)]
 pub struct AvalonConfig {

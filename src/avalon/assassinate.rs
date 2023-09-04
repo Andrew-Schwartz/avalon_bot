@@ -14,6 +14,7 @@ use discorsd::model::user::UserMarkup;
 use crate::avalon::characters::Character::Merlin;
 use crate::avalon::characters::Loyalty::Evil;
 use crate::Bot;
+use crate::error::GameError;
 
 #[derive(Clone, Debug)]
 pub struct AssassinateCommand(pub UserId);
@@ -37,7 +38,7 @@ impl SlashCommand for AssassinateCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  data: AssassinateData,
-    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError<GameError>> {
         let result = if interaction.user().id == self.0 {
             let target = data.target;
             let guild = interaction.guild().unwrap();

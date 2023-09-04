@@ -24,13 +24,14 @@ use itertools::{Either, Itertools};
 use rand::seq::SliceRandom;
 
 use crate::Bot;
+use crate::error::GameError;
 use crate::utils::ListIterGrammatically;
 
 async fn send_error<S, D, F>(
     state: S,
     interaction: InteractionUse<D, Unused>,
     embed: F,
-) -> Result<InteractionUse<D, Used>, BotError>
+) -> Result<InteractionUse<D, Used>, BotError<GameError>>
     where S: AsRef<DiscordClient> + Send,
           D: InteractionPayload,
           F: FnOnce(&mut RichEmbed) + Send,
@@ -44,7 +45,7 @@ async fn send_error<S, D, F>(
 async fn send_game_error<D: InteractionPayload, S: AsRef<DiscordClient> + Send>(
     state: S,
     interaction: InteractionUse<D, Unused>,
-) -> Result<InteractionUse<D, Used>, BotError> {
+) -> Result<InteractionUse<D, Used>, BotError<GameError>> {
     send_error(state, interaction, |e| {
         e.title("Coup has already started in this server!");
         e.description("Each server can only have one game of Coup at a time");
@@ -55,7 +56,7 @@ async fn send_game_error<D: InteractionPayload, S: AsRef<DiscordClient> + Send>(
 async fn send_config_error<D: InteractionPayload, S: AsRef<DiscordClient> + Send>(
     state: S,
     interaction: InteractionUse<D, Unused>,
-) -> Result<InteractionUse<D, Used>, BotError> {
+) -> Result<InteractionUse<D, Used>, BotError<GameError>> {
     send_error(state, interaction, |e| {
         e.title("Coup has not yet started in this server!");
         e.description("Each server can only have one game of Coup at a time");
@@ -67,7 +68,7 @@ async fn send_non_player_error<D, S, U>(
     state: S,
     interaction: InteractionUse<D, Unused>,
     user: U,
-) -> Result<InteractionUse<D, Used>, BotError>
+) -> Result<InteractionUse<D, Used>, BotError<GameError>>
     where D: InteractionPayload,
           S: AsRef<DiscordClient> + Send,
           U: Id<Id=UserId> + Send + Sync
@@ -93,7 +94,7 @@ pub async fn start_setup(
     starting_coins: StartingCoins,
     guild: GuildId,
     interaction: InteractionUse<AppCommandData, Unused>,
-) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
+) -> Result<InteractionUse<AppCommandData, Used>, BotError<GameError>> {
     let mut game_guard = state.bot.coup_games.write().await;
     let coup = game_guard
         .entry(guild)
@@ -291,7 +292,7 @@ impl MenuCommand for StartingCoinsMenu {
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<MenuSelectData, Unused>,
         mut data: Vec<Self::Data>,
-    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError> {
+    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError<GameError>> {
         {
             let guild = interaction.guild().unwrap();
             let mut games_guard = state.bot.coup_games.write().await;
@@ -319,7 +320,7 @@ impl ButtonCommand for JoinLeaveButton {
         &self,
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<ButtonPressData, Unused>,
-    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError> {
+    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError<GameError>> {
         let guild = interaction.guild().unwrap();
         let mut games_guard = state.bot.coup_games.write().await;
         let coup = games_guard.get_mut(&guild)
@@ -363,7 +364,7 @@ impl ButtonCommand for StartButton {
         &self,
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<ButtonPressData, Unused>,
-    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError> {
+    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError<GameError>> {
         let guild = interaction.guild().unwrap();
         let mut games_guard = state.bot.coup_games.write().await;
         let coup = games_guard.get_mut(&guild)
@@ -739,7 +740,7 @@ impl ButtonCommand for RestartButton {
         &self,
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<ButtonPressData, Unused>,
-    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError> {
+    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError<GameError>> {
         let guild = interaction.guild().unwrap();
 
         let mut game_guard = state.bot.coup_games.write().await;
@@ -771,7 +772,7 @@ impl MenuCommand for ExchangeMenu {
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<MenuSelectData, Unused>,
         data: Vec<Self::Data>,
-    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError> {
+    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError<GameError>> {
         let guild = interaction.guild().unwrap();
 
         let mut game_guard = state.bot.coup_games.write().await;
@@ -1057,7 +1058,7 @@ impl FullAbility {
         state: &Arc<BotState<Bot>>,
         game: &mut CoupGame,
         interaction: InteractionUse<MenuSelectData, Unused>,
-    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError> {
+    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError<GameError>> {
         let guild = interaction.guild().unwrap();
         CoupGame::delete_message(state, game.start_turn.take()).await?;
         if let Some(token) = game.influence_pic.take() {
@@ -1170,7 +1171,7 @@ impl MenuCommand for AbilityMenu {
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<MenuSelectData, Unused>,
         mut data: Vec<Self::Data>,
-    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError> {
+    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError<GameError>> {
         let guild = interaction.guild().unwrap();
         let ability = data.remove(0);
         let mut games_guard = state.bot.coup_games.write().await;
@@ -1209,7 +1210,7 @@ impl ButtonCommand for WaitButton {
         &self,
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<ButtonPressData, Unused>,
-    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError> {
+    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError<GameError>> {
         let guild = interaction.guild().unwrap();
         let interaction_user = interaction.user().id;
 
@@ -1297,7 +1298,7 @@ impl ButtonCommand for UnpauseButton {
         &self,
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<ButtonPressData, Unused>,
-    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError> {
+    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError<GameError>> {
         let guild = interaction.guild().unwrap();
 
         let mut game_guard = state.bot.coup_games.write().await;
@@ -1336,7 +1337,7 @@ impl MenuCommand for AbilityTargetMenu {
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<MenuSelectData, Unused>,
         mut data: Vec<Self::Data>,
-    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError> {
+    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError<GameError>> {
         let guild = interaction.guild().unwrap();
         let target = data.remove(0);
 
@@ -1382,7 +1383,7 @@ impl MenuCommand for BlockMenu {
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<MenuSelectData, Unused>,
         mut data: Vec<Self::Data>,
-    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError> {
+    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError<GameError>> {
         let guild = interaction.guild().unwrap();
         let blocker = interaction.user().id;
         let claim = data.remove(0);
@@ -1498,7 +1499,7 @@ impl ButtonCommand for ContestButton {
         &self,
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<ButtonPressData, Unused>,
-    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError> {
+    ) -> Result<InteractionUse<ButtonPressData, Used>, BotError<GameError>> {
         let guild = interaction.guild().unwrap();
         let contester = interaction.user().id;
 
@@ -1604,7 +1605,7 @@ impl MenuCommand for LostInfluenceMenu {
         state: Arc<BotState<Self::Bot>>,
         interaction: InteractionUse<MenuSelectData, Unused>,
         mut data: Vec<Self::Data>,
-    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError> {
+    ) -> Result<InteractionUse<MenuSelectData, Used>, BotError<GameError>> {
         let lost = data.remove(0);
         let guild = interaction.guild().unwrap();
 

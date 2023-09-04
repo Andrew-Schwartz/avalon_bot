@@ -15,6 +15,7 @@ use discorsd::shard::dispatch::{ReactionType, ReactionUpdate};
 
 use crate::{async_trait, Bot};
 use crate::avalon::AvalonPlayer;
+use crate::error::GameError;
 use crate::games::GameType;
 use crate::utils::ListIterGrammatically;
 
@@ -92,7 +93,7 @@ impl SlashCommand for StopCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  data: StopData,
-    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Self::Use>, BotError<GameError>> {
         let game = data.game.unwrap_or_else(|| *self.games.iter().exactly_one().unwrap());
 
         match game {
@@ -149,13 +150,15 @@ pub struct StopVoteCommand(MessageId, pub GuildId, Vec<UserId>, UserId, GameType
 
 #[allow(clippy::use_self)]
 #[async_trait]
-impl ReactionCommand<Bot> for StopVoteCommand {
+impl ReactionCommand for StopVoteCommand {
+    type Bot = Bot;
+
     fn applies(&self, reaction: &ReactionUpdate) -> bool {
         reaction.message_id == self.0 &&
             self.2.contains(&reaction.user_id)
     }
 
-    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError> {
+    async fn run(&self, state: Arc<BotState<Bot>>, reaction: ReactionUpdate) -> Result<(), BotError<GameError>> {
         let mut guard = state.bot.avalon_games.write().await;
         let avalon = guard.get_mut(&self.1).unwrap();
         let game = avalon.game_mut();

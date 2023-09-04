@@ -5,7 +5,7 @@ use std::sync::Arc;
 use command_data_derive::CommandData;
 use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
-use discorsd::errors::{AvalonError, BotError};
+use discorsd::errors::BotError;
 use discorsd::http::channel::{create_message, embed};
 use discorsd::http::ClientResult;
 use discorsd::http::user::UserExt;
@@ -21,6 +21,7 @@ use crate::avalon::game::AvalonState;
 use crate::avalon::quest::QuestUserError::{Duplicate, NotPlaying};
 use crate::avalon::vote::PartyVote;
 use crate::Bot;
+use crate::error::{AvalonError, GameError};
 use crate::utils::ListIterGrammatically;
 
 #[derive(Clone, Debug)]
@@ -46,7 +47,7 @@ impl SlashCommand for QuestCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  data: QuestData,
-    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError<GameError>> {
         let guild = interaction.guild().unwrap();
         let mut guard = state.bot.avalon_games.write().await;
         let game = guard.get_mut(&guild).unwrap().game_mut();
@@ -109,7 +110,7 @@ impl SlashCommand for QuestCommand {
                                     ClientResult::Ok(())
                                 }).await.expect("reaction task does not panic")?;
 
-                                Result::<_, BotError>::Ok((msg.message, player.id()))
+                                Result::<_, BotError<GameError>>::Ok((msg.message, player.id()))
                             });
                             handles.push(handle);
                         }

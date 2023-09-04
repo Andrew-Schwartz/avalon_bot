@@ -14,6 +14,7 @@ use discorsd::http::channel::embed;
 use discorsd::model::message::Color;
 
 use crate::Bot;
+use crate::error::GameError;
 
 static SYS_INFO: Lazy<Mutex<System>> = Lazy::new(|| Mutex::new(System::new_all()));
 
@@ -36,7 +37,7 @@ impl SlashCommand for SysInfoCommand {
                  state: Arc<BotState<Bot>>,
                  interaction: InteractionUse<AppCommandData, Unused>,
                  data: Self::Data,
-    ) -> Result<InteractionUse<AppCommandData, Used>, BotError> {
+    ) -> Result<InteractionUse<AppCommandData, Used>, BotError<GameError>> {
         let mut embed = embed(|e| {
             e.title("System Usage Information");
             // a nice blue

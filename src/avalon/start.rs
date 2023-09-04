@@ -20,8 +20,9 @@ use crate::avalon::characters::Character::{LoyalServant, MinionOfMordred};
 use crate::avalon::game::AvalonGame;
 use crate::avalon::max_evil;
 use crate::Bot;
+use crate::error::GameError;
 
-pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<AppCommandData, Deferred>) -> Result<(), BotError> {
+pub async fn start(state: &Arc<BotState<Bot>>, interaction: &InteractionUse<AppCommandData, Deferred>) -> Result<(), BotError<GameError>> {
     let guild = interaction.guild().unwrap();
     let mut guard = state.bot.avalon_games.write().await;
     let avalon = guard.get_mut(&guild).unwrap();
