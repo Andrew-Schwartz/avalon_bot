@@ -1,11 +1,13 @@
 use std::borrow::Cow;
 use std::fmt::Debug;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use command_data_derive::CommandData;
 use discorsd::{async_trait, BotState};
 use discorsd::commands::*;
 use discorsd::errors::BotError;
+use discorsd::http::channel::MessageChannelExt;
 use discorsd::model::ids::*;
 use discorsd::model::message::TextMarkup;
 
@@ -106,7 +108,23 @@ impl SlashCommand for LowLevelCommand {
                     }
                 }
             },
-            Data::Post(_) => todo!(),
+            Data::Post(post) => match post {
+                Post::Message { channel, message } => {
+                    match channel.send_unchecked(&state, message).await {
+                        Ok(resp) => format(resp),
+                        Err(e) => vec!["Failed to send message".into(), e.to_string()],
+                    }
+                }
+                Post::MessageExternal { channel, message } => {
+                    match ChannelId::from_str(&channel) {
+                        Ok(channel) => match channel.send_unchecked(&state, message).await {
+                            Ok(resp) => format(resp),
+                            Err(e) => vec!["Failed to send message".into(), e.to_string()],
+                        },
+                        Err(e) => vec!["Failed to parse channel".into(), e.to_string()]
+                    }
+                }
+            },
         };
         let interaction = interaction.respond(&state, responses.remove(0)).await?;
         for response in responses {
@@ -151,9 +169,14 @@ pub enum Get {
 
 #[derive(CommandData, Debug)]
 pub enum Post {
-    User { user: UserId },
     Message {
         channel: ChannelId,
+        message: String,
+    },
+    #[command(desc = "Send message in another server")]
+    MessageExternal {
+        // not ChannelId so clientside validation doesn't get rid of channel id's outside the guild
+        channel: String,
         message: String,
     },
 }

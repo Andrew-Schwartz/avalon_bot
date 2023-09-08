@@ -230,8 +230,11 @@ impl discorsd::Bot for Bot {
             guild.id,
             Vec::new(),
         ).await?;
-        state.register_guild_commands(&guild, [Box::new(StartGameCommand(guild.id)) as _]).await?;
         self.initialize_guild_commands(&guild, &state).await?;
+        state.register_guild_commands(&guild, [Box::new(StartGameCommand(guild.id)) as _]).await?;
+        if guild.id == self.config.guild {
+            state.register_guild_commands(&guild, [Box::new(LowLevelCommand) as _]).await?;
+        }
 
         self.config.channel.send(&state, format!(
             "🎉 Joined new guild **{}** (`{}`) 🎉",
